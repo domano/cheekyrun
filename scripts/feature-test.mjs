@@ -549,6 +549,161 @@ const SCENARIOS = [
     },
   },
   {
+    name: 'perk-tailwind',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.clearField();
+      const m = c.perk('tailwind').mods;
+      assert(Math.abs(m.speedMult - 1.08) < 1e-9, 'Tailwind raises speedMult to 1.08');
+      assert(Math.abs(m.rollMult - 1.10) < 1e-9, 'Tailwind enriches rolls to 1.10');
+      const fast = c.step(1).speed; c.start({ magnetR: 0 }); const slow = c.step(1).speed;
+      assert(fast > slow, 'Tailwind actually makes the run faster');
+      c.start({ magnetR: 0 }); c.clearField(); c.perk('tailwind');
+      c.spawn('roll', 1, -4);
+      const s = c.step(60);
+      assert(s.rollCount === 1, 'the roll is collected');
+      assert(s.rollPoints === Math.round(s.rollValue * 1.10), 'roll points are scaled by Tailwind');
+    },
+  },
+  {
+    name: 'perk-vacuum',
+    fn: (c, assert) => {
+      // An adjacent-lane roll is out of reach with no magnet, but Vacuum's +4
+      // range tugs it across into the player's lane to be collected.
+      const grab = (vac) => {
+        c.start({ magnetR: 0 }); c.clearField();
+        if (vac) { const m = c.perk('vacuum').mods; if (Math.abs(m.magnetBonus - 4) > 1e-9) throw new Error('magnetBonus'); }
+        c.spawn('roll', 0, -6);                 // player in lane 1, roll one lane over
+        return c.step(110).rollCount;
+      };
+      assert(grab(false) === 0, 'an adjacent-lane roll is missed without a magnet');
+      assert(grab(true) === 1, 'Vacuum pulls the adjacent roll in to be grabbed');
+    },
+  },
+  {
+    name: 'perk-memory',
+    fn: (c, assert) => {
+      // Long Memory multiplies the combo window (2.6s) by 1.4. Read the live
+      // comboTimer right after a fresh roll-bump: it must exceed the base window.
+      const win = (mem) => {
+        c.start({ magnetR: 0 }); c.clearField();
+        if (mem) c.perk('memory');
+        c.spawn('roll', 1, -3);
+        const s = c.step(28);                   // just past the grab; window barely decayed
+        return { rc: s.rollCount, ct: s.comboTimer };
+      };
+      const base = win(false), mem = win(true);
+      assert(base.rc === 1 && mem.rc === 1, 'the roll is collected in both runs');
+      assert(base.ct <= 2.6, 'the base combo window is the stock 2.6s');
+      assert(mem.ct > 2.6, 'Long Memory stretches the combo window past 2.6s');
+    },
+  },
+  {
+    name: 'perk-daredevil',
+    fn: (c, assert) => {
+      // Jump an in-lane obstacle for a clean near-miss; Daredevil doubles its pay.
+      const nm = (dd) => {
+        c.start({ magnetR: 0 }); c.clearField();
+        if (dd) c.perk('daredevil');
+        c.spawn('cactus', 1, -5); c.jump();
+        const s = c.step(60);
+        return { st: s.state, rp: s.rollPoints };
+      };
+      const base = nm(false), big = nm(true);
+      assert(base.st === 'playing' && big.st === 'playing', 'jumped clean over the obstacle in both');
+      assert(base.rp > 0, 'a clean near-miss pays out');
+      assert(big.rp === base.rp * 2, 'Daredevil doubles the near-miss payout');
+    },
+  },
+  {
+    name: 'perk-doubledown',
+    fn: (c, assert) => {
+      const pts = (dd) => {
+        c.start({ magnetR: 0 }); c.clearField();
+        if (dd) { const m = c.perk('doubledown').mods; if (m.rollX !== 2) throw new Error('rollX'); }
+        c.spawn('roll', 1, -3);
+        return c.step(40).rollPoints;
+      };
+      const base = pts(false), x2 = pts(true);
+      assert(base > 0, 'a roll pays out normally');
+      assert(x2 === base * 2, 'Double Down doubles roll points');
+    },
+  },
+  {
+    name: 'perk-secondwind',
+    fn: (c, assert) => {
+      // Spend both jumps, then grab a roll while still airborne. Second Wind
+      // hands back a jump; without it you stay grounded-out at zero.
+      const test = (sw) => {
+        c.start({ magnetR: 0 }); c.clearField();
+        if (sw) { const m = c.perk('secondwind').mods; if (!m.jumpOnRoll) throw new Error('jumpOnRoll'); }
+        c.jump(); c.jump();                     // 2 base jumps spent, airborne, jumpsLeft 0
+        c.spawn('roll', 1, -2);                 // close ahead — grab before landing
+        const s = c.step(12);
+        return { jl: s.jumpsLeft, air: !s.player.grounded, rc: s.rollCount };
+      };
+      const base = test(false), sw = test(true);
+      assert(base.rc === 1 && sw.rc === 1, 'the roll is grabbed mid-air in both');
+      assert(base.air && sw.air, 'still airborne when reading the jump count');
+      assert(base.jl === 0, 'without Second Wind, a mid-air roll regains no jump');
+      assert(sw.jl === 1, 'Second Wind hands a jump back on a mid-air roll');
+    },
+  },
+  {
+    name: 'perk-featherfall',
+    fn: (c, assert) => {
+      // Featherfall softens the rise gravity, so a jump floats higher/longer.
+      const peak = (ff) => {
+        c.start({ magnetR: 0 }); c.clearField();
+        if (ff) { const m = c.perk('featherfall').mods; if (Math.abs(m.floatMult - 0.5) > 1e-9) throw new Error('floatMult'); }
+        c.jump(); let max = 0;
+        for (let i = 0; i < 40; i++) max = Math.max(max, c.step(1).player.groundY);
+        return max;
+      };
+      const base = peak(false), floaty = peak(true);
+      assert(base > 0, 'a normal jump leaves the ground');
+      assert(floaty > base, 'Featherfall gives a floatier, higher hop');
+    },
+  },
+  {
+    name: 'perk-pillow-cushion',
+    fn: (c, assert) => {
+      // Pillow Stack is a one-shot cushion grant — it stacks on a bought Cushion.
+      c.boon('pillow');
+      let s = c.start();
+      assert(s.perks.length === 1 && s.perks[0].id === 'pillow', 'the boon perk is drafted at run start');
+      assert(s.shields === 1, 'Pillow Stack begins the run with a cushion');
+      c.fund(1000); c.buy('shield');            // +1 permanent cushion
+      s = c.start();
+      assert(s.shields === 2, 'Pillow adds its cushion on top of the bought Cushion');
+    },
+  },
+  {
+    name: 'meta-unlock-every-perk',
+    fn: (c, assert) => {
+      // Every non-default perk must be purchasable and land in the draft pool.
+      c.fund(99999);
+      const nonDefault = ['doubledown', 'glasscannon', 'greedygut', 'featherfall', 'secondwind', 'overdrive', 'hotstreak', 'featherweight'];
+      for (const id of nonDefault) {
+        assert(!c.state().meta.eligible.includes(id), id + ' starts locked out of the pool');
+        assert(c.buyMeta('unlock:' + id) === true, 'unlock:' + id + ' is purchasable');
+        assert(c.state().meta.eligible.includes(id), id + ' becomes draftable once unlocked');
+      }
+    },
+  },
+  {
+    name: 'upgrade-tiers-max-out',
+    fn: (c, assert) => {
+      // Both floor upgrades climb to their cap, then refuse further purchase.
+      c.fund(99999);
+      assert(c.buy('shield') && c.buy('shield') && c.buy('shield'), 'Cushion buys up through tier 3');
+      assert(c.buy('shield') === false, 'a maxed Cushion can not be bought again');
+      assert(c.effects().shields === 3, 'a maxed Cushion resolves to 3 shields');
+      assert(c.buy('headstart') && c.buy('headstart') && c.buy('headstart'), 'Head Start buys up through tier 3');
+      assert(c.buy('headstart') === false, 'a maxed Head Start can not be bought again');
+      assert(c.start().level === 4, 'a maxed Head Start starts the run on level 4');
+    },
+  },
+  {
     name: 'daily-ignores-perks-and-boon',
     fn: (c, assert) => {
       c.boon('lucky'); c.fund(9999); c.buyMeta('unlock:doubledown');
