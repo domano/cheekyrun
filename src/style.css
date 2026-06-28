@@ -87,8 +87,53 @@ canvas{display:block}
   text-align:center;box-shadow:10px 10px 0 var(--ink);max-height:90vh;overflow-y:auto}
 .title{font-size:44px;line-height:1;font-weight:900;letter-spacing:-1.5px;color:var(--pink);-webkit-text-stroke:2.5px var(--ink)}
 .tag{margin-top:8px;font-size:14px;opacity:.75;font-weight:700}
-.how{margin:18px 0 22px;font-size:13.5px;line-height:1.9;opacity:.9;text-align:left;display:inline-block}
-.how b{color:var(--pink)}
+/* ---------- full-screen main menu ---------- */
+/* The menu fills the viewport and scrolls, with the live 3D scene playing
+   behind a soft top-to-bottom scrim. Game-over keeps the centered .card. */
+#overlay.menu{display:block;padding:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;
+  background:linear-gradient(180deg,rgba(20,8,18,.42) 0%,rgba(20,8,18,.12) 24%,rgba(20,8,18,.16) 60%,rgba(20,8,18,.46) 100%)}
+.menu-inner{min-height:100%;width:100%;max-width:760px;margin:0 auto;
+  display:flex;flex-direction:column;align-items:center;gap:20px;
+  padding:calc(env(safe-area-inset-top,0px) + 66px) 20px calc(env(safe-area-inset-bottom,0px) + 30px)}
+
+.menu-hero{display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center}
+.menu-hero .float{font-size:62px}
+.menu-hero .title{font-size:clamp(48px,14vw,76px);filter:drop-shadow(4px 5px 0 rgba(20,8,18,.35))}
+.menu-hero .tag{color:#fff;opacity:.95;font-size:15px;text-shadow:0 2px 0 rgba(20,8,18,.55)}
+
+.menu-cta{display:flex;flex-direction:column;align-items:center;gap:11px;width:100%;max-width:330px}
+.menu-cta .btn{width:100%}
+.menu-cta .btn#startBtn{font-size:20px;padding:15px 32px}
+
+/* control-hint chips replace the old plain text "how to play" */
+.hints{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;width:100%;max-width:500px}
+.hint{display:flex;align-items:center;gap:11px;text-align:left;
+  background:rgba(255,247,241,.94);border:3px solid var(--ink);border-radius:14px;padding:9px 12px;box-shadow:3px 3px 0 var(--ink)}
+.hint b{flex:0 0 auto;min-width:50px;text-align:center;color:var(--pink);font-size:15px;-webkit-text-stroke:.4px var(--ink)}
+.hint span{font-size:12px;font-weight:800;line-height:1.25;opacity:.85}
+
+/* sections become standalone panels, laid out in a responsive grid */
+.menu-panels{display:grid;grid-template-columns:1fr;gap:18px;width:100%}
+@media (min-width:640px){.menu-panels{grid-template-columns:1fr 1fr}}
+.menu .shop,.menu .cosmetics,.menu .achievements{margin-top:0;border-top:none;padding:16px 16px 18px;
+  background:rgba(255,247,241,.95);border:3px solid var(--ink);border-radius:18px;box-shadow:6px 6px 0 var(--ink)}
+.menu .shop{grid-column:1 / -1}
+
+/* lifetime stats become a pill row that reads on the dark scrim */
+.menu .stats{margin-top:0;gap:8px;opacity:1}
+.menu .stats span{background:rgba(255,247,241,.94);border:2.5px solid var(--ink);border-radius:999px;
+  padding:5px 12px;box-shadow:2px 2px 0 var(--ink)}
+
+/* gentle staggered entrance when the menu first appears */
+.menu .menu-hero,.menu .menu-cta,.menu .stats,.menu .hints,.menu .menu-panels{animation:menurise .5s ease-out both}
+.menu .menu-cta{animation-delay:.05s}
+.menu .stats{animation-delay:.1s}
+.menu .hints{animation-delay:.15s}
+.menu .menu-panels{animation-delay:.2s}
+@keyframes menurise{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){
+  .menu .menu-hero,.menu .menu-cta,.menu .stats,.menu .hints,.menu .menu-panels{animation:none}
+}
 .btn{appearance:none;cursor:pointer;font:inherit;font-weight:900;font-size:18px;color:#fff;background:var(--pink);
   border:3px solid var(--ink);padding:13px 32px;border-radius:999px;box-shadow:5px 5px 0 var(--ink);transition:transform .07s,box-shadow .07s}
 .btn:active{transform:translate(3px,3px);box-shadow:2px 2px 0 var(--ink)}
