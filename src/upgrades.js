@@ -9,6 +9,12 @@ import { save, persist, getWallet, addRolls,
 import { PERKS } from './perks.js';
 export { getWallet, addRolls };
 
+// Note: there's no per-module save cleanup here anymore. The save loader
+// (save.js) normalizes every blob on load — coercing map fields and clamping
+// upgrade tiers to positive ints — so reframed/removed upgrade ids and bad
+// values can't reach this module. Renames across versions belong in save.js's
+// MIGRATIONS chain.
+
 // Each upgrade declares: a max tier, the cost to reach the *next* tier from a
 // given current tier (cost(currentTier) is valid for currentTier < max), the
 // gameplay value at a tier, and a short human label for the current tier.
@@ -32,26 +38,6 @@ export const UPGRADES = [
 ];
 
 const byId = (id) => UPGRADES.find((u) => u.id === id);
-
-// Legacy-save cleanup. Pre-roguelite versions sold magnet/spring/fortune as
-// permanent upgrades; they're draftable perks now (vacuum/hops/lucky). Drop any
-// owned tier whose upgrade no longer exists so an old save stops banking dead
-// keys forward and stops wearing phantom gear it never "owns" anymore. Runs once
-// on import; returns the ids it pruned (handy for tests).
-export function migrateSave() {
-  // Defensive: load() already coerces `owned` to a plain object, but this runs at
-  // import — a stray non-object here (deleting keys off a string throws in strict
-  // mode) would brick the whole app before anything renders. Belt and suspenders.
-  if (!save.owned || typeof save.owned !== 'object' || Array.isArray(save.owned)) save.owned = {};
-  const valid = new Set(UPGRADES.map((u) => u.id));
-  const pruned = Object.keys(save.owned).filter((id) => !valid.has(id));
-  if (pruned.length) { pruned.forEach((id) => delete save.owned[id]); persist(); }
-  return pruned;
-}
-// Runs at import: must never throw, or the whole module graph fails to load and
-// the page goes dead before anything renders. The guard above plus this catch
-// keep a corrupt save from bricking startup here.
-try { migrateSave(); } catch (e) { console.warn('Cheeky Run: save migration failed; ignoring', e); }
 
 export const tierOf = (id) => save.owned[id] | 0;
 
