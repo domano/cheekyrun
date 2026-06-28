@@ -27,6 +27,13 @@ let nextStepTime = 0, seqStep = 0;
 let getState = () => 'menu';
 export function initAudio(stateGetter) { getState = stateGetter; }
 
+// Adaptive intensity (0..1), pushed each frame from the game loop (speed +
+// combo). The scheduler layers in drums and the lead as it climbs, so the music
+// rises with the run instead of being a flat on/off loop.
+let intensity = 0;
+export function setIntensity(x) { intensity = x < 0 ? 0 : x > 1 ? 1 : x; }
+export function getIntensity() { return intensity; }
+
 export function ensureAudio() {
   if (audioReady) { if (actx.state === 'suspended') actx.resume(); return; }
   const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
@@ -65,14 +72,18 @@ function hat(t, acc) { noise(t, acc ? 0.05 : 0.03, acc ? 0.14 : 0.08, 7000, musi
 
 function scheduleStep(s, t) {
   const bar = Math.floor(s / 16) % 4, st = s % 16, ch = PROG[bar], playing = getState() === 'playing';
-  // pulse bass on 8ths, with a fifth pop
-  if (st % 2 === 0) { const bn = ch.root + (st % 8 === 4 ? 7 : 0); osc(t, m2f(bn), STEP * 1.7, 'square', playing ? 0.24 : 0.16, musicGain); }
+  // While racing the energy follows `intensity`; idle menus sit at a low floor.
+  const lvl = playing ? intensity : 0;
+  // pulse bass on 8ths, with a fifth pop — fills out a touch as it heats up
+  if (st % 2 === 0) { const bn = ch.root + (st % 8 === 4 ? 7 : 0); osc(t, m2f(bn), STEP * 1.7, 'square', playing ? 0.2 + 0.08 * lvl : 0.16, musicGain); }
   // arp sparkle on 16ths
-  osc(t, m2f(ch.t[s % ch.t.length] + 12), STEP * 0.9, 'square', playing ? 0.075 : 0.045, musicGain);
-  // lead + drums only while racing
-  if (playing) {
-    const ln = LEAD[s % 64]; if (ln) osc(t, m2f(ln), STEP * 1.6, 'square', 0.15, musicGain);
-    if (KICK[st]) kick(t); if (SNARE[st]) snare(t); hat(t, st % 2 === 0);
+  osc(t, m2f(ch.t[s % ch.t.length] + 12), STEP * 0.9, 'square', playing ? 0.06 + 0.04 * lvl : 0.045, musicGain);
+  if (!playing) return;
+  // Drums kick in once there's a little heat; the lead + hats join at full tilt.
+  if (lvl > 0.28) { if (KICK[st]) kick(t); if (SNARE[st]) snare(t); }
+  if (lvl > 0.62) {
+    const ln = LEAD[s % 64]; if (ln) osc(t, m2f(ln), STEP * 1.6, 'square', 0.1 + 0.08 * lvl, musicGain);
+    hat(t, st % 2 === 0);
   }
 }
 function startMusic() {
@@ -96,7 +107,15 @@ const A = () => audioReady && soundOn;
 export function sfxLane() { if (!A()) return; osc(actx.currentTime, 520, 0.05, 'square', 0.1); }
 export function sfxJump(dbl) { if (!A()) return; const t = actx.currentTime; osc(t, dbl ? 620 : 380, 0.16, 'square', 0.18, sfxGain, dbl ? 1150 : 780); }
 export function sfxDuck() { if (!A()) return; osc(actx.currentTime, 320, 0.14, 'square', 0.16, sfxGain, 120); }
-export function sfxCoin() { if (!A()) return; const t = actx.currentTime; osc(t, m2f(83), 0.07, 'square', 0.16); osc(t + 0.07, m2f(88), 0.14, 'square', 0.16); }
+// Coin chime climbs a pentatonic ladder with the combo (capped) so a hot streak
+// audibly rises instead of fatiguing on the same two notes.
+const COIN_LADDER = [0, 2, 4, 7, 9, 12, 14, 16];
+export function sfxCoin(step = 0) { if (!A()) return; const t = actx.currentTime, o = COIN_LADDER[Math.min(step, COIN_LADDER.length - 1)]; osc(t, m2f(83 + o), 0.07, 'square', 0.16); osc(t + 0.07, m2f(88 + o), 0.14, 'square', 0.16); }
+// A short airy whoosh for a near-miss / skim — a filtered noise sweep that sits
+// quietly under the coin so it reads as "that was close" without nagging.
+export function sfxWhoosh() { if (!A()) return; const t = actx.currentTime; noise(t, 0.16, 0.1, 1200); osc(t, 900, 0.16, 'triangle', 0.05, sfxGain, 2200); }
+// A triumphant rising fanfare for a new personal best.
+export function sfxFanfare() { if (!A()) return; const t = actx.currentTime;[72, 76, 79, 84, 88].forEach((n, i) => osc(t + i * 0.09, m2f(n), 0.22, 'square', 0.18)); }
 export function sfxCrash() { if (!A()) return; const t = actx.currentTime; noise(t, 0.4, 0.5, 400); osc(t, 420, 0.5, 'sawtooth', 0.25, sfxGain, 45); }
 export function sfxStart() { if (!A()) return; const t = actx.currentTime;[60, 64, 67, 72].forEach((n, i) => osc(t + i * 0.07, m2f(n), 0.12, 'square', 0.16)); }
 export function sfxOver() { if (!A()) return; const t = actx.currentTime;[72, 69, 65, 60].forEach((n, i) => osc(t + i * 0.13, m2f(n), 0.2, 'square', 0.16)); }

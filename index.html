@@ -21,7 +21,7 @@
     </div>
     <div class="pill" id="rollpill"><span id="shieldHud" class="hide">🛡️<span id="shields">0</span></span>🧻<span id="rolls">0</span></div>
   </div>
-  <div id="comboHud" class="hide">🔥<b>x<span id="comboMult">1</span></b><small><span id="comboCount">0</span> combo</small></div>
+  <div id="comboHud" class="hide">🔥<b>x<span id="comboMult">1</span></b><small><span id="comboCount">0</span> combo</small><i id="comboBar"></i></div>
   <div id="powerHud" class="hide"><span id="powerIcon">✨</span><div id="powerbar"><div id="powerFill"></div></div></div>
   <div id="perktray" class="hide"></div>
   <div id="banner"></div>
@@ -67,8 +67,8 @@
 
   <div id="gameover" class="scrim hide">
     <div class="card">
-      <div style="font-size:50px">😵🍑</div>
-      <div class="title" style="font-size:32px;margin-top:6px">Wiped out!</div>
+      <div id="goFace" style="font-size:50px">😵🍑</div>
+      <div class="title" id="goTitle" style="font-size:32px;margin-top:6px">Wiped out!</div>
       <div class="final">Score <span id="finalScore">0</span></div>
       <div class="best" id="bestLine">Best: 0</div>
       <div class="banked">🧻 +<span id="earned">0</span> banked</div>

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { LANES, SPAWN_Z, DESPAWN_Z, INK, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE_RAMP, GATE_COOLDOWN, COMBO_WINDOW, comboMult, NEARMISS_MARGIN, NEARMISS_BONUS, POWERUP_DURATION, POWERUP_CHANCE, POWERUP_MIN_DIFF, POWERUP_COOLDOWN, POWERUPS, POWERUP_KINDS, DASH_SPEED_MULT, DRAFT_EVERY, DRAFT_CHOICES, DRAFT_ARM, DRAFT_GRACE, mulberry32, dailyKey, dailySeed, $, buzz, shuffle } from './config.js';
+import { LANES, SPAWN_Z, DESPAWN_Z, INK, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE_RAMP, GATE_COOLDOWN, COMBO_WINDOW, comboMult, NEARMISS_MARGIN, NEARMISS_BONUS, SKIM_MARGIN, SKIM_BONUS, SKIM_WINDOW, SAFE_HAZARD_MIN_DIFF, SAFE_HAZARD_CHANCE, JUMP_BUFFER, HITSTOP_SHIELD, HITSTOP_DEATH, SLOWMO_FACTOR, SLOWMO_TIME, SLOWMO_MIN_MULT, SCORE_FLOW_RATE, POWERUP_DURATION, POWERUP_CHANCE, POWERUP_MIN_DIFF, POWERUP_COOLDOWN, POWERUPS, POWERUP_KINDS, DASH_SPEED_MULT, DRAFT_EVERY, DRAFT_CHOICES, DRAFT_ARM, DRAFT_GRACE, mulberry32, dailyKey, dailySeed, $, buzz, shuffle } from './config.js';
 import { makeGradient, toon } from './materials.js';
 import { makeObstacle, makeHurdle, makeGate, makeRoll, makePowerup, makeTree, makeBush, makeFlower, makeCloud, OBSTACLE_KINDS } from './props.js';
 import { createParticles } from './particles.js';
@@ -16,8 +16,8 @@ import { selectedSkin, selectSkin, getDailyBest, setDailyBest } from './save.js'
 import { SKINS, skinById, skinUnlocked, buySkin, applySkin } from './cosmetics.js';
 import { installDebug } from './debug.js';
 import {
-  initAudio, ensureAudio, toggleSound,
-  sfxLane, sfxJump, sfxDuck, sfxCoin, sfxCrash, sfxStart, sfxOver, sfxLevel, sfxShield, sfxComboBreak,
+  initAudio, ensureAudio, toggleSound, setIntensity, getIntensity,
+  sfxLane, sfxJump, sfxDuck, sfxCoin, sfxCrash, sfxStart, sfxOver, sfxLevel, sfxShield, sfxComboBreak, sfxWhoosh, sfxFanfare,
 } from './audio.js';
 
 let scene, camera, renderer, clock;
@@ -28,7 +28,9 @@ let groundMat, pathMat, discMat, hillMats = [], roadGround, roadPath;
 let state = 'menu';
 let speed, distance, rollCount, rollPoints, rowTimer, sceneAcc, dustAcc, elapsed, difficulty, safeLane, forcedGap;
 let laneIdx, targetX, vy, grounded, jumpsLeft, banked, groundY, duckTimer, duckAmt, shakeT;
-let combo, comboTimer, comboMax;
+let jumpBufferT, laneChangeT;          // buffered-jump timer + time of the last lane change (for skims)
+let hitStopT, slowmoT, worldScale;     // hit-stop freeze / near-miss slow-mo timers + the live sim time-scale
+let combo, comboTimer, comboMax, flowAcc, safeHazardCount;   // flowAcc: fractional combo-flow score; safeHazardCount: compound rows spawned
 let squash;   // signed squash-&-stretch impulse: + on landing, - on launch, decays to 0
 let emoteT, spin;   // emoteT: brief happy-squish timer (rolls/near-miss). spin: remaining radians of a level-up cheer twirl.
 // `simTime` is the animation clock (sum of per-frame dt). Driving it ourselves
@@ -37,6 +39,9 @@ let emoteT, spin;   // emoteT: brief happy-squish timer (rolls/near-miss). spin:
 // `paused` freezes the rAF loop for deterministic stepping. Declared up here so
 // they're initialised before the top-level animate() call (avoids a TDZ throw).
 let simTime = 0, paused = false;
+// Respect the OS "reduce motion" preference for the in-canvas juice (slow-mo,
+// hit-stop) the way the CSS already does for DOM animations.
+let reduceMotion = false;
 let power, powerT, powerCD, gotPower;   // active power-up kind, remaining time, spawn cooldown (rows), grabbed-any flag
 let auraSparkT = 0;                      // throttle for the active-power-up sparkle drift
 let rng = Math.random, daily = false, dailyDay = '';   // daily challenge: seeded RNG + today's key
@@ -76,6 +81,8 @@ function safeInit() {
 
 /* ---------------- setup ---------------- */
 function init() {
+  const mm = matchMedia('(prefers-reduced-motion: reduce)');
+  reduceMotion = mm.matches; mm.addEventListener?.('change', e => { reduceMotion = e.matches; });
   makeGradient();
   scene = new THREE.Scene();
   scene.fog = new THREE.Fog(0xffe1d6, 32, 64);
@@ -180,9 +187,21 @@ function spawnRow() {
     o.position.set(LANES[li], 0, SPAWN_Z); o.userData.lane = li; o.userData.lx = LANES[li]; scene.add(o); obstacles.push(o);
   });
 
-  // rolls only ever sit in open lanes (perks can make them denser)
+  // COMPOUND ROW: once there's heat, the open lane sometimes also holds a
+  // jumpable/duckable hazard — so reaching safety needs a lane-change AND a clear
+  // in the same beat. Still fair (one move + one action); telegraphed like any row.
+  let safeHazard = false;
+  if (d > SAFE_HAZARD_MIN_DIFF && rng() < SAFE_HAZARD_CHANCE * d) {
+    const h = makeObstacle(kinds[(rng() * kinds.length) | 0]);
+    h.position.set(LANES[nextSafe], 0, SPAWN_Z); h.userData.lane = nextSafe; h.userData.lx = LANES[nextSafe]; scene.add(h); obstacles.push(h);
+    safeHazard = true; safeHazardCount++;
+  }
+
+  // rolls only ever sit in open lanes (perks can make them denser); skip the safe
+  // lane when it's carrying a compound hazard so a roll never overlaps it.
   const open = [nextSafe, ...others.slice(blockCount)];
   open.forEach(li => {
+    if (li === nextSafe && safeHazard) return;
     const chance = (li === nextSafe ? 0.4 : 0.5) * mods.rollSpawnMult;
     if (rng() < chance) { const r = makeRoll(); r.position.set(LANES[li], 0.95, SPAWN_Z); r.userData.lx = LANES[li]; scene.add(r); rolls.push(r); }
   });
@@ -336,7 +355,8 @@ function resetGame() {
   speed = 12.5; distance = (level - 1) * LEVEL_DIST; rollCount = 0; rollPoints = 0; rowTimer = 1.8; sceneAcc = 0; dustAcc = 0;
   elapsed = Math.min(70, (level - 1) * 9); difficulty = 0; safeLane = 1; forcedGap = 0;
   laneIdx = 1; targetX = 0; vy = 0; grounded = true; jumpsLeft = 2 + extraJumps + mods.extraJumpsBonus; banked = 0; groundY = 0; duckTimer = 0; duckAmt = 0; shakeT = 0;
-  combo = 0; comboTimer = 0; comboMax = 0; squash = 0; emoteT = 0; spin = 0; power = null; powerT = 0; powerCD = 6; gotPower = false;
+  jumpBufferT = 0; laneChangeT = -99; hitStopT = 0; slowmoT = 0; worldScale = 1;
+  combo = 0; comboTimer = 0; comboMax = 0; flowAcc = 0; safeHazardCount = 0; squash = 0; emoteT = 0; spin = 0; power = null; powerT = 0; powerCD = 6; gotPower = false;
   player.position.set(0, 0, 0); player.rotation.set(0, 0, 0); player.scale.set(1, 1, 1);
   applySkin(playerMats, selectedSkin());
   refreshGear(); fartCount = 0; updatePowerVisual(); renderPerkTray();
@@ -351,14 +371,28 @@ function startGame(isDaily = false) {
   showBanner(daily ? '📅 Daily Challenge' : `Lvl ${level} · ${biomeOf(level).name}`);
 }
 function gameOver() {
-  state = 'over'; shakeT = 0.45; flash('#ff5a6a'); buzz([40, 40, 80]); sfxCrash(); setTimeout(sfxOver, 260);
+  state = 'over'; shakeT = 0.45; hitStopT = reduceMotion ? 0 : HITSTOP_DEATH; flash('#ff5a6a'); buzz([40, 40, 80]); sfxCrash();
   particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.6, 0)), { count: 16, color: 0xff8a6a, speed: 4, up: 4, life: .7, grav: 12 });
-  setBest(score());
-  if (daily) { setDailyBest(dailyDay, score()); renderDaily(); }
+  // Capture the bar to beat BEFORE banking this score, so we can celebrate a new
+  // personal best — the single strongest "one more run" hook in a runner.
+  const sc = score(), prevBest = getBest(), isBest = sc > prevBest && sc > 0;
+  setBest(sc);
+  setTimeout(isBest ? sfxFanfare : sfxOver, 260);
+  if (daily) { setDailyBest(dailyDay, sc); renderDaily(); }
   bumpStats({ runs: 1, dist: Math.floor(distance), rolls: rollCount, maxCombo: comboMax, maxLevel: level });
-  const unlocked = checkAchievements({ run: { level, score: score(), comboMax, rollCount, gotPower }, stats: getStats() });
+  const unlocked = checkAchievements({ run: { level, score: sc, comboMax, rollCount, gotPower }, stats: getStats() });
   addRolls(rollCount);             // bank this run's rolls into the shop wallet
-  $('finalScore').textContent = score(); $('bestLine').textContent = 'Best: ' + getBest();
+  $('finalScore').textContent = sc;
+  $('goFace').textContent = isBest ? '🏆🍑' : '😵🍑';
+  $('goTitle').textContent = isBest ? 'New Best!' : 'Wiped out!';
+  $('gameover').classList.toggle('newbest', isBest);
+  $('bestLine').textContent = isBest
+    ? (prevBest > 0 ? `🏆 +${sc - prevBest} over your old best!` : '🏆 Your first record!')
+    : 'Best: ' + getBest();
+  if (isBest) {                    // a gold pop + confetti so the record is felt, not just read
+    setTimeout(() => flash('#ffd23f'), 180);
+    particles.emit(player.position.clone().add(new THREE.Vector3(0, 1.0, 0)), { count: 20, color: 0xffd23f, speed: 5, up: 6, life: 1.1, grav: 9 });
+  }
   $('earned').textContent = rollCount; renderShop(); renderStats(); renderCosmetics();
   renderAchievements(unlocked.map(a => a.id));   // glow any earned this run, right on the card
   if (unlocked.length) { sfxLevel(); buzz([10, 30, 10]); }
@@ -382,7 +416,12 @@ function updateShieldGear() {
   gear.shield.visible = shields > 0;
   gear.shieldPips.forEach((pip, i) => { pip.visible = i < shields; });
 }
-function popScore(v, mult) { const e = $('scorePop'); e.textContent = '+' + v + (mult > 1 ? ' x' + mult : ''); e.style.opacity = 1; clearTimeout(popScore._t); popScore._t = setTimeout(() => e.style.opacity = 0, 260); }
+// `nm` tints near-misses cyan so the two reward channels read apart from the
+// gold roll pops.
+function popScore(v, mult, nm) { const e = $('scorePop'); e.textContent = '+' + v + (mult > 1 ? ' x' + mult : ''); e.classList.toggle('nm', !!nm); e.style.opacity = 1; clearTimeout(popScore._t); popScore._t = setTimeout(() => e.style.opacity = 0, 260); }
+// The combo chip's drain bar — reflects how much of the window is left, so the
+// player feels the clock ticking on their streak and chases the next pickup.
+function updateComboBar() { if (combo >= 2) { const w = COMBO_WINDOW * mods.comboWindowMult; $('comboBar').style.width = Math.max(0, Math.min(1, comboTimer / w)) * 100 + '%'; } }
 
 // Combo: bump on a roll/near-miss, refresh the window, and pulse the HUD chip.
 let comboHideT;
@@ -406,13 +445,18 @@ function updateComboHud(pulse) {
 }
 
 /* ---------------- controls ---------------- */
-function moveLane(dir) { const n = Math.max(0, Math.min(2, laneIdx + dir)); if (n !== laneIdx) { laneIdx = n; targetX = LANES[laneIdx]; buzz(12); sfxLane(); } }
+function moveLane(dir) { const n = Math.max(0, Math.min(2, laneIdx + dir)); if (n !== laneIdx) { laneIdx = n; targetX = LANES[laneIdx]; laneChangeT = simTime; buzz(12); sfxLane(); } }
 function jump() {
-  if (jumpsLeft > 0) {
-    const dbl = !grounded; vy = (grounded ? 9.4 : 8.4) + extraJumps * 0.5; grounded = false; jumpsLeft--; squash = -0.32; buzz(15); sfxJump(dbl);
-    particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.05, 0.2)), { count: 5, color: 0xeaddc6, speed: 1.6, up: 1.2, life: .4, grav: 6, size: 0.5 });
-    fart();
-  }
+  // A press with no jumps left (e.g. just before touchdown) is buffered, not
+  // dropped — updatePlayer fires it the instant you land, so chained hops feel
+  // responsive instead of eaten.
+  if (jumpsLeft > 0) doJump();
+  else jumpBufferT = JUMP_BUFFER;
+}
+function doJump() {
+  const dbl = !grounded; vy = (grounded ? 9.4 : 8.4) + extraJumps * 0.5; grounded = false; jumpsLeft--; jumpBufferT = 0; squash = -0.32; buzz(15); sfxJump(dbl);
+  particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.05, 0.2)), { count: 5, color: 0xeaddc6, speed: 1.6, up: 1.2, life: .4, grav: 6, size: 0.5 });
+  fart();
 }
 function duck() { duckTimer = 0.5; buzz(12); sfxDuck(); if (!grounded) vy = Math.min(vy, -3) - 6; fart(); }
 // A cheeky little parp — a soft green puff that lingers behind the character on
@@ -460,28 +504,41 @@ function tick(dt) {
   simTime += dt; const t = simTime;
   // Tick down the draft's input lock even while frozen, then unlock the cards.
   if (state === 'draft' && draftArm > 0) { draftArm = Math.max(0, draftArm - dt); if (!draftArm) $('draft').classList.remove('arming'); }
+  // Time-scale for juice: hit-stop fully freezes the world for a beat on impact;
+  // a near-miss can briefly dilate it. Visual systems (camera shake, particles,
+  // the player rig) keep running on real dt so the freeze reads as a snap, not a
+  // stall. `worldScale` lets the scenery/stripes/clouds share the same scaling.
+  worldScale = 1;
+  if (hitStopT > 0) { hitStopT = Math.max(0, hitStopT - dt); worldScale = 0; }
+  else if (slowmoT > 0) { slowmoT = Math.max(0, slowmoT - dt); worldScale = SLOWMO_FACTOR; }
+  const sdt = dt * worldScale;
   if (state === 'playing') {
-    elapsed += dt;
-    invuln = Math.max(0, invuln - dt);
+    elapsed += sdt;
+    invuln = Math.max(0, invuln - sdt);
     difficulty = Math.min(1, elapsed / 70);           // warm up over ~70s
     speed = (12.5 + 13.5 * difficulty) * (1 + 0.045 * (level - 1)) * mods.speedMult;  // levels + perks nudge the pace
     if (power === 'dash') speed *= DASH_SPEED_MULT;                  // Boost: a brief speed surge (you're invuln while it lasts)
-    distance += speed * dt;
+    distance += speed * sdt;
     const lv = levelFromDistance(distance);
     if (lv > level) { level = lv; onLevelUp(); }
-    if (comboTimer > 0) { comboTimer -= dt; if (comboTimer <= 0) breakCombo(); }
+    if (comboTimer > 0) { comboTimer -= sdt; if (comboTimer <= 0) breakCombo(); }
+    // Flow scoring: a hot combo drips bonus score as you run, so a greedy chained
+    // run visibly out-scores a cautious one (kept fractional for clean integers).
+    if (combo >= 2) { flowAcc += speed * sdt * (cmult(combo) - 1) * SCORE_FLOW_RATE; const w = Math.floor(flowAcc); if (w) { rollPoints += w; flowAcc -= w; } }
     const T = (1.35 - 0.6 * difficulty) / (1 + 0.04 * (level - 1));  // seconds between rows
-    rowTimer -= dt; if (rowTimer <= 0) { spawnRow(); rowTimer = T; }
-    sceneAcc += speed * dt; if (sceneAcc >= 5) { sceneAcc = 0; spawnScenery(); }
-    if (power) { powerT -= dt; if (powerT <= 0) { power = null; updatePowerVisual(); } updatePowerHud(); }
-    moveObstacles(dt); moveRolls(dt); movePickups(dt);
+    rowTimer -= sdt; if (rowTimer <= 0) { spawnRow(); rowTimer = T; }
+    sceneAcc += speed * sdt; if (sceneAcc >= 5) { sceneAcc = 0; spawnScenery(); }
+    if (power) { powerT -= sdt; if (powerT <= 0) { power = null; updatePowerVisual(); } updatePowerHud(); }
+    moveObstacles(sdt); moveRolls(sdt); movePickups(sdt);
     if (grounded) {
-      dustAcc += dt; if (dustAcc > 0.11) {
+      dustAcc += sdt; if (dustAcc > 0.11) {
         dustAcc = 0;
         particles.emit(new THREE.Vector3(player.position.x, 0.06, player.position.z + 0.3), { count: 2, color: 0xe7d8be, speed: 1.2, up: 0.8, life: .45, grav: 5, size: 0.4 });
       }
     }
-    updateHud(); updateLevelHud();
+    updateHud(); updateLevelHud(); updateComboBar();
+    // Drive the soundtrack's intensity from raw pace + how hot the combo is.
+    setIntensity((speed - 12.5) / 14 + Math.max(0, cmult(combo) - 1) * 0.12);
     // speed lines ramp in with combo and raw pace, as a high-intensity reward
     speedLines.style.opacity = Math.min(0.6, Math.max(0, cmult(combo) - 1) * 0.15 + Math.max(0, speed - 22) * 0.012);
   } else if (speedLines.style.opacity !== '0') speedLines.style.opacity = 0;
@@ -501,6 +558,7 @@ function moveObstacles(dt) {
       if (!safe && invuln <= 0) {
         if (shields > 0 && !mods.noShields) {
           shields--; invuln = 1.1; updateShieldHud(); breakCombo(); flash('#8fd3ff'); buzz(30); sfxShield(); shakeT = 0.25;
+          hitStopT = reduceMotion ? 0 : HITSTOP_SHIELD;   // freeze the beat so the save reads as a real impact
           particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.6, 0)), { count: 14, color: hitColor(o), speed: 4, up: 3, life: .5, grav: 8 });
           scene.remove(o); obstacles.splice(i, 1); continue;
         }
@@ -508,14 +566,26 @@ function moveObstacles(dt) {
         gameOver(); return;
       }
     }
-    // Near-miss: cleared an obstacle that was right on top of you (jumped/ducked
-    // through it, not side-stepped) the instant it passes — pays out and chains.
-    if (!o.userData.scored && prevZ < player.position.z && o.position.z >= player.position.z && dx < halfW + NEARMISS_MARGIN) {
-      o.userData.scored = true;
-      bumpCombo(); emote();
-      const nm = Math.round(NEARMISS_BONUS * cmult(combo) * mods.nearMissMult);   // skim pays more the hotter your combo
-      rollPoints += nm; popScore(nm, cmult(combo)); buzz(8);
-      particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.9, 0)), { count: 7, color: 0xeaffff, speed: 2.4, up: 2, life: .4, grav: 4, size: 0.4 });
+    // Near-miss / skim: cleared an obstacle the instant it passes without a hit.
+    // A "near-miss" is a clean jump/duck *through* its lane (dx ~ 0); a "skim" is
+    // a tight lateral dodge — lane-changing past an adjacent-lane hazard right as
+    // it goes by. The skim only counts if you actually changed lanes for it
+    // (within SKIM_WINDOW), so parking one lane over earns nothing.
+    if (!o.userData.scored && prevZ < player.position.z && o.position.z >= player.position.z && dx < halfW + SKIM_MARGIN) {
+      const through = dx < halfW + NEARMISS_MARGIN;
+      const skim = !through && (simTime - laneChangeT) < SKIM_WINDOW;
+      if (through || skim) {
+        o.userData.scored = true;
+        bumpCombo(); emote();
+        const m = cmult(combo);                                       // both pay more the hotter your combo
+        const nm = Math.round((through ? NEARMISS_BONUS : SKIM_BONUS) * m * mods.nearMissMult);
+        rollPoints += nm; popScore(nm, m, true); buzz(8); sfxWhoosh();
+        // A streak trailing behind (toward the camera) sells the "whoosh past it".
+        particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.9, 0)),
+          { count: 7, color: through ? 0xeaffff : 0xbfffe0, speed: 3, up: 1, life: .4, grav: 3, size: 0.4, dir: new THREE.Vector3(0, 0, 1) });
+        // On a hot streak, a brief slow-mo makes the close call land.
+        if (!reduceMotion && m >= SLOWMO_MIN_MULT && hitStopT <= 0) slowmoT = Math.max(slowmoT, SLOWMO_TIME);
+      }
     }
     const off = trackOffset(o.position.z, distance); o.position.x = lx + off.x; o.position.y = off.y;
     if (o.position.z > DESPAWN_Z) { scene.remove(o); obstacles.splice(i, 1); }
@@ -539,7 +609,7 @@ function moveRolls(dt) {
     if (dz < 0.9 && dx < 0.95) {
       bumpCombo(); emote();
       const mult = cmult(combo) * (power === 'x2' ? 2 : 1) * mods.rollX, gained = Math.round(rollValue * mult * mods.rollMult);
-      rollCount++; rollPoints += gained; popScore(gained, mult); buzz(18); sfxCoin();
+      rollCount++; rollPoints += gained; popScore(gained, mult); buzz(18); sfxCoin(combo);   // pitch climbs with the streak
       if (mods.jumpOnRoll && !grounded) jumpsLeft = Math.min(jumpsLeft + 1, 2 + extraJumps + mods.extraJumpsBonus);
       particles.emit(o.position.clone(), { count: 12, color: 0xffd56b, speed: 3, up: 3, life: .5, grav: 9, size: 0.5 }); scene.remove(o); rolls.splice(i, 1); continue;
     }
@@ -586,7 +656,7 @@ function updatePowerHud() {
   } else box.classList.add('hide');
 }
 function moveScenery(dt) {
-  const v = (state === 'playing' ? speed : 5) * dt;
+  const v = (state === 'playing' ? speed * worldScale : 5) * dt;
   for (let i = scenery.length - 1; i >= 0; i--) {
     const o = scenery[i]; o.position.z += v;
     const off = trackOffset(o.position.z, distance); o.position.x = o.userData.lx + off.x; o.position.y = off.y;
@@ -597,12 +667,14 @@ function moveScenery(dt) {
 function updatePlayer(dt, t) {
   player.position.x += (targetX - player.position.x) * Math.min(1, dt * 13);
   banked += (((targetX - player.position.x) * 0.5) - banked) * Math.min(1, dt * 11); player.rotation.z = banked;
+  jumpBufferT = Math.max(0, jumpBufferT - dt);
   if (!grounded) {
     // Asymmetric gravity: float up gently, fall back snappily — hops feel weighty
     // and responsive without changing how high you reach.
     vy -= (vy > 0 ? 23 * mods.floatMult : 34) * dt; groundY += vy * dt; if (groundY <= 0) {
       groundY = 0; vy = 0; grounded = true; jumpsLeft = 2 + extraJumps + mods.extraJumpsBonus; squash = 0.42;
       particles.emit(new THREE.Vector3(player.position.x, 0.05, player.position.z + 0.2), { count: 4, color: 0xe7d8be, speed: 1.6, up: 0.8, life: .35, grav: 6, size: 0.45 });
+      if (jumpBufferT > 0) doJump();   // a jump pressed just before touchdown fires now
     }
   }
   duckTimer = Math.max(0, duckTimer - dt); duckAmt += ((duckTimer > 0 ? 1 : 0) - duckAmt) * Math.min(1, dt * 16);
@@ -662,13 +734,13 @@ function updateCamera(dt, t) {
   camera.lookAt(player.position.x * 0.25 + look.x * 0.7, 1.2 + look.y * 0.6, -8);
 }
 function scrollStripes(dt) {
-  const v = (state === 'playing' ? speed : 6) * dt;
+  const v = (state === 'playing' ? speed * worldScale : 6) * dt;
   stripes.forEach(d => {
     d.position.z += v; if (d.position.z > DESPAWN_Z) d.position.z -= 78;
     const off = trackOffset(d.position.z, distance); d.position.x = d.userData.bx + off.x; d.position.y = 0.02 + off.y;
   });
 }
-function driftClouds(dt) { clouds.forEach(c => { c.position.z += (state === 'playing' ? speed * 0.25 : 1.5) * dt; if (c.position.z > 16) { c.position.z = -60; c.position.x = (Math.random() - 0.5) * 30; } }); }
+function driftClouds(dt) { clouds.forEach(c => { c.position.z += (state === 'playing' ? speed * 0.25 * worldScale : 1.5) * dt; if (c.position.z > 16) { c.position.z = -60; c.position.x = (Math.random() - 0.5) * 30; } }); }
 function onResize() { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); }
 
 /* ---------------- levels / biomes ---------------- */
@@ -862,6 +934,8 @@ function buildDebugApi() {
       biomeObstacles: [...obstacleSet(level).jump, obstacleSet(level).duck],
       rollCount, rollPoints, combo, comboMult: cmult(combo), comboMax, comboTimer: +comboTimer.toFixed(2),
       shields, invuln: +invuln.toFixed(2), magnetR, rollValue, extraJumps, jumpsLeft,
+      jumpBufferT: +jumpBufferT.toFixed(3), hitStopT: +hitStopT.toFixed(3), slowmoT: +slowmoT.toFixed(3),
+      safeHazards: safeHazardCount, musicIntensity: +getIntensity().toFixed(3),
       perks: perks.map(p => ({ id: p.id, stacks: p.stacks })), mods, levelUps,
       draft: draftCards.map(p => p.id), draftArm: +draftArm.toFixed(2),
       meta: { rerolls: getRerolls(), banishes: getBanishes(), boon: getBoon(), eligible: eligiblePool() },

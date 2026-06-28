@@ -786,6 +786,118 @@ const SCENARIOS = [
       assert(!!document.querySelector('#gameover .achievements .wallet.pop'), 'card flags the new-unlock count');
     },
   },
+  {
+    // Game feel: a jump pressed with no jumps left (just before touchdown) is
+    // buffered and fires the instant you land, so chained hops aren't dropped.
+    name: 'jump-buffer',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.clearField();
+      c.jump(); c.jump();                              // both jumps spent, airborne
+      let s = c.state();
+      assert(s.jumpsLeft === 0 && !s.player.grounded, 'both jumps spent and airborne');
+      // Let the hop peak, then fall until descending and just above the ground
+      // (loop capped so it can't hang).
+      let peaked = false;
+      for (let i = 0; i < 120; i++) { s = c.step(1); const g = s.player.groundY; if (g > 0.6) peaked = true; if (peaked && !s.player.grounded && g < 0.4) break; }
+      assert(!s.player.grounded, 'still airborne just before touchdown');
+      c.jump();                                        // pressed within the buffer window
+      assert(c.state().jumpBufferT > 0, 'a jump with none left is buffered, not dropped');
+      s = c.step(6);                                   // land — the buffered hop should fire
+      assert(!s.player.grounded, 'the buffered jump auto-fires on landing (airborne again)');
+      assert(s.jumpsLeft === 1, 'touchdown refilled two jumps; the buffered hop spent one');
+    },
+  },
+  {
+    // Lateral near-miss ("skim"): dodging an in-lane obstacle by lane-changing
+    // past it at the last moment pays a bonus and feeds the combo — rewarding the
+    // skill expression that side-stepping used to earn nothing for.
+    name: 'near-miss-skim',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.clearField();
+      c.spawn('cactus', 1, -6);                        // dead ahead in the player's lane
+      c.left();                                        // dodge left — registers the lane change
+      const s = c.step(70);
+      assert(s.state === 'playing', 'the lateral dodge avoids the crash');
+      assert(s.laneIdx === 0, 'now in the left lane');
+      assert(s.rollPoints > 0, 'skimming past the obstacle pays a lateral near-miss bonus');
+      assert(s.combo >= 1, 'a skim feeds the combo');
+      // Parking in a lane with no recent dodge earns nothing.
+      c.start({ magnetR: 0 }); c.clearField();
+      c.left();                                        // move first...
+      c.step(40);                                      // ...let the dodge window lapse
+      c.spawn('cactus', 1, -6);                        // obstacle one lane over, no fresh dodge
+      const t = c.step(70);
+      assert(t.rollPoints === 0, 'idling one lane over (no recent dodge) earns no skim');
+    },
+  },
+  {
+    // Flow scoring: a hot combo drips bonus score as you run, so greedy chained
+    // play out-scores cautious play — without changing distance/leveling.
+    name: 'combo-flow-scoring',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.clearField();
+      const cold = c.step(120);
+      c.start({ magnetR: 0 }); c.clearField(); c.set({ combo: 20 });
+      const hot = c.step(120);
+      assert(hot.comboMult > 1, 'the multiplier is above 1 while hot');
+      assert(hot.rollPoints > cold.rollPoints, 'a hot combo accrues bonus flow score over the same run');
+      assert(Math.abs(hot.distance - cold.distance) < 1, 'distance/leveling is untouched — only score flows faster');
+    },
+  },
+  {
+    // Compound rows: once the run heats up, the guaranteed-open lane sometimes
+    // also carries a clearable hazard, demanding a lane-change AND a jump/duck.
+    name: 'compound-rows',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.seed(5); c.set({ difficulty: 0.1 }); c.clearField();
+      for (let k = 0; k < 40; k++) c.spawnRow();
+      assert(c.state().safeHazards === 0, 'no compound hazards before the run heats up');
+      c.start({ magnetR: 0 }); c.seed(5); c.set({ difficulty: 0.9 }); c.clearField();
+      for (let k = 0; k < 40; k++) c.spawnRow();
+      assert(c.state().safeHazards > 0, 'compound rows seed a safe-lane hazard at high difficulty');
+    },
+  },
+  {
+    // Hit-stop: a shield save briefly freezes the world so the impact reads.
+    name: 'hit-stop-on-shield',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.set({ shields: 1 }); c.clearField();
+      c.spawn('cactus', 1, -3);
+      let s; for (let i = 0; i < 40; i++) { s = c.step(1); if (s.shields === 0) break; }
+      assert(s.shields === 0, 'the shield absorbed the hit');
+      assert(s.hitStopT > 0, 'the save triggers a hit-stop freeze');
+      const d0 = s.distance;
+      s = c.step(1);
+      assert(Math.abs(s.distance - d0) < 0.01, 'the world holds still during the freeze');
+    },
+  },
+  {
+    // New personal best is celebrated, not silent — the strongest "one more run" hook.
+    name: 'new-best-celebrated',
+    fn: (c, assert) => {
+      c.fresh();
+      c.start(); c.set({ distance: 600, rollPoints: 0 }); c.over();
+      assert(c.state().state === 'over', 'the run ended');
+      assert(document.getElementById('goTitle').textContent === 'New Best!', 'beating the record flips the title');
+      assert(document.getElementById('gameover').classList.contains('newbest'), 'the card gets the new-best treatment');
+      assert(/old best|first record/.test(document.getElementById('bestLine').textContent), 'the best line celebrates the record');
+      c.start(); c.set({ distance: 100, rollPoints: 0 }); c.over();
+      assert(document.getElementById('goTitle').textContent === 'Wiped out!', 'a sub-best run shows the normal title');
+      assert(!document.getElementById('gameover').classList.contains('newbest'), 'no new-best treatment on a sub-best run');
+    },
+  },
+  {
+    // Adaptive music: the soundtrack intensity rises with pace and combo heat.
+    name: 'music-intensity-adapts',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.clearField();
+      const slow = c.step(2).musicIntensity;
+      c.set({ combo: 20 }); const hot = c.step(2).musicIntensity;
+      assert(hot > slow, 'a hot combo lifts the music intensity');
+      c.start({ magnetR: 0 }); c.set({ elapsed: 100 }); const fast = c.step(2).musicIntensity;
+      assert(fast > slow, 'a faster run lifts the music intensity');
+    },
+  },
 ];
 
 /* ------------------------------- runner ------------------------------- */
