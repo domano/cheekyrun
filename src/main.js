@@ -359,8 +359,9 @@ function gameOver() {
   const unlocked = checkAchievements({ run: { level, score: score(), comboMax, rollCount, gotPower }, stats: getStats() });
   addRolls(rollCount);             // bank this run's rolls into the shop wallet
   $('finalScore').textContent = score(); $('bestLine').textContent = 'Best: ' + getBest();
-  $('earned').textContent = rollCount; renderShop(); renderStats(); renderAchievements(); renderCosmetics();
-  if (unlocked.length) queueAchToasts(unlocked);
+  $('earned').textContent = rollCount; renderShop(); renderStats(); renderCosmetics();
+  renderAchievements(unlocked.map(a => a.id));   // glow any earned this run, right on the card
+  if (unlocked.length) { sfxLevel(); buzz([10, 30, 10]); }
   $('perktray').classList.add('hide');
   setTimeout(() => { $('hud').classList.add('hide'); $('gameover').classList.remove('hide'); }, 420);
 }
@@ -750,10 +751,20 @@ function renderShop() {
   const chips = [`<button class="boonchip${boon ? '' : ' on'}" data-boon="">🚫 none</button>`]
     .concat(unlockedPerkIds().map(id => { const p = perkById(id);
       return `<button class="boonchip${boon === id ? ' on' : ''}" data-boon="${id}">${p.icon} ${p.name}</button>`; })).join('');
+  // First-timers have an empty wallet — tell them where rolls come from instead
+  // of leaving a wall of greyed-out, unaffordable buttons unexplained.
+  const note = wallet === 0
+    ? `Grab 🧻 rolls while you run — you'll bank them here to spend.`
+    : `Spend your banked 🧻 rolls on permanent boosts and new perks.`;
   document.querySelectorAll('.shop').forEach(root => {
     root.innerHTML = `<div class="shophead"><span>🧪 Roguelite Lab</span><span class="wallet">🧻 ${wallet}</span></div>
-      <div class="shopgrid">${floor}${metaGrid}</div>
-      <div class="boonhead">🎁 Starting boon</div><div class="boongrid">${chips}</div>`;
+      <p class="shopnote">${note}</p>
+      <h4 class="shopsub">🛡️ Permanent boosts</h4>
+      <div class="shopgrid">${floor}</div>
+      <h4 class="shopsub">🔓 Perk unlocks <small>add new cards to your level-up draft</small></h4>
+      <div class="shopgrid">${metaGrid}</div>
+      <h4 class="shopsub">🎁 Starting boon <small>begin every run with one perk</small></h4>
+      <div class="boongrid">${chips}</div>`;
   });
   document.querySelectorAll('.shop .up[data-id]').forEach(b => {
     b.onclick = (e) => { e.stopPropagation(); ensureAudio(); if (buy(b.dataset.id)) { sfxCoin(); buzz(18); renderShop(); renderCosmetics(); } else buzz(25); };
@@ -780,14 +791,22 @@ function renderDaily() {
 }
 
 // Achievement badge grid (locked badges show a padlock), shown on both cards.
-function renderAchievements() {
+// `newIds` are achievements just earned this run — they get a celebratory glow
+// and a "new" ribbon right on the game-over card, so the win is felt in place
+// instead of via a floating toast that would cover the card.
+function renderAchievements(newIds = []) {
+  const fresh = new Set(newIds);
   const got = ACHIEVEMENTS.filter(a => hasAch(a.id)).length;
   const grid = ACHIEVEMENTS.map(a => {
-    const on = hasAch(a.id);
-    return `<div class="ach${on ? ' on' : ''}" title="${a.desc}"><span class="achi">${on ? a.icon : '🔒'}</span><span class="achn">${a.name}</span></div>`;
+    const on = hasAch(a.id), isNew = fresh.has(a.id);
+    const ribbon = isNew ? '<span class="newrib">✨</span>' : '';
+    return `<div class="ach${on ? ' on' : ''}${isNew ? ' justnew' : ''}" title="${a.desc}">${ribbon}<span class="achi">${on ? a.icon : '🔒'}</span><span class="achn">${a.name}</span></div>`;
   }).join('');
+  const count = fresh.size
+    ? `<span class="wallet pop">✨ ${fresh.size} new!</span>`
+    : `<span class="wallet">${got}/${ACHIEVEMENTS.length}</span>`;
   document.querySelectorAll('.achievements').forEach(root => {
-    root.innerHTML = `<div class="shophead"><span>🏅 Achievements</span><span class="wallet">${got}/${ACHIEVEMENTS.length}</span></div><div class="achgrid">${grid}</div>`;
+    root.innerHTML = `<div class="shophead"><span>🏅 Achievements</span>${count}</div><div class="achgrid">${grid}</div>`;
   });
 }
 
@@ -817,17 +836,6 @@ function renderCosmetics() {
       renderCosmetics();
     };
   });
-}
-
-// Pop newly-earned achievements one at a time as a top toast.
-let achQueue = [];
-function queueAchToasts(list) { const empty = achQueue.length === 0; achQueue.push(...list); if (empty) nextAchToast(); }
-function nextAchToast() {
-  const a = achQueue.shift(), t = $('achToast');
-  if (!a) { t.classList.remove('show'); return; }
-  t.innerHTML = `<span class="achi">${a.icon}</span><span class="acht"><b>Achievement!</b><br>${a.name}</span>`;
-  t.classList.remove('show'); void t.offsetWidth; t.classList.add('show'); sfxLevel(); buzz([10, 30, 10]);
-  clearTimeout(nextAchToast._t); nextAchToast._t = setTimeout(nextAchToast, 2200);
 }
 
 /* ---------------- debug / test bridge ---------------- */

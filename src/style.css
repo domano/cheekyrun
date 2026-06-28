@@ -85,8 +85,8 @@ canvas{display:block}
 
 .scrim{position:fixed;inset:0;z-index:30;display:flex;align-items:center;justify-content:center;padding:24px;
   background:radial-gradient(120% 120% at 50% 28%,rgba(0,0,0,0),rgba(30,12,28,.42))}
-.card{background:#fff7f1;border:4px solid var(--ink);border-radius:26px;padding:30px 28px;max-width:360px;width:100%;
-  text-align:center;box-shadow:10px 10px 0 var(--ink);max-height:90vh;overflow-y:auto}
+.card{background:#fff7f1;border:4px solid var(--ink);border-radius:26px;padding:30px 26px;max-width:400px;width:100%;
+  text-align:center;box-shadow:10px 10px 0 var(--ink);max-height:92vh;overflow-y:auto}
 .title{font-size:44px;line-height:1;font-weight:900;letter-spacing:-1.5px;color:var(--pink);-webkit-text-stroke:2.5px var(--ink)}
 .tag{margin-top:8px;font-size:14px;opacity:.75;font-weight:700}
 /* ---------- full-screen main menu ---------- */
@@ -106,6 +106,12 @@ canvas{display:block}
 .menu-cta{display:flex;flex-direction:column;align-items:center;gap:11px;width:100%;max-width:330px}
 .menu-cta .btn{width:100%}
 .menu-cta .btn#startBtn{font-size:20px;padding:15px 32px}
+
+/* labelled sections give the long menu a clear top-to-bottom rhythm instead of
+   one undifferentiated scroll */
+.menu-sec{display:flex;flex-direction:column;align-items:center;gap:11px;width:100%}
+.sechead{font-size:13px;font-weight:900;letter-spacing:2px;text-transform:uppercase;color:#fff;
+  opacity:.92;text-shadow:0 2px 0 rgba(20,8,18,.5)}
 
 /* control-hint chips replace the old plain text "how to play" */
 .hints{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;width:100%;max-width:500px}
@@ -127,14 +133,14 @@ canvas{display:block}
   padding:5px 12px;box-shadow:2px 2px 0 var(--ink)}
 
 /* gentle staggered entrance when the menu first appears */
-.menu .menu-hero,.menu .menu-cta,.menu .stats,.menu .hints,.menu .menu-panels{animation:menurise .5s ease-out both}
+.menu .menu-hero,.menu .menu-cta,.menu .menu-sec,.menu .menu-panels{animation:menurise .5s ease-out both}
 .menu .menu-cta{animation-delay:.05s}
-.menu .stats{animation-delay:.1s}
-.menu .hints{animation-delay:.15s}
+.menu .menu-sec:nth-of-type(1){animation-delay:.1s}
+.menu .menu-sec:nth-of-type(2){animation-delay:.15s}
 .menu .menu-panels{animation-delay:.2s}
 @keyframes menurise{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){
-  .menu .menu-hero,.menu .menu-cta,.menu .stats,.menu .hints,.menu .menu-panels{animation:none}
+  .menu .menu-hero,.menu .menu-cta,.menu .menu-sec,.menu .menu-panels{animation:none}
 }
 .btn{appearance:none;cursor:pointer;font:inherit;font-weight:900;font-size:18px;color:#fff;background:var(--pink);
   border:3px solid var(--ink);padding:13px 32px;border-radius:999px;box-shadow:5px 5px 0 var(--ink);transition:transform .07s,box-shadow .07s}
@@ -147,8 +153,15 @@ canvas{display:block}
 
 /* upgrade shop */
 .shop{margin-top:22px;border-top:3px dashed rgba(36,16,25,.25);padding-top:16px;text-align:left}
-.shophead{display:flex;justify-content:space-between;align-items:center;font-weight:900;font-size:16px;margin-bottom:12px}
+.shophead{display:flex;justify-content:space-between;align-items:center;font-weight:900;font-size:16px;margin-bottom:6px}
 .shophead .wallet{background:#fff;border:3px solid var(--ink);border-radius:999px;padding:4px 12px;box-shadow:3px 3px 0 var(--ink);font-size:14px}
+/* one-line explainer so the wall of buy-buttons makes sense to a newcomer */
+.shopnote{font-size:12px;font-weight:700;opacity:.7;line-height:1.3;margin:0 0 14px}
+/* group label that splits the shop into scannable, purposeful sections */
+.shopsub{font-size:12.5px;font-weight:900;text-transform:uppercase;letter-spacing:.6px;opacity:.85;
+  margin:16px 0 9px;display:flex;align-items:baseline;gap:7px;flex-wrap:wrap}
+.shopsub:first-of-type{margin-top:2px}
+.shopsub small{font-size:10.5px;font-weight:700;text-transform:none;letter-spacing:0;opacity:.7}
 .shopgrid{display:flex;flex-direction:column;gap:10px}
 .up{display:grid;grid-template-columns:auto 1fr;grid-template-rows:auto auto auto;column-gap:12px;align-items:center;
   appearance:none;cursor:pointer;font:inherit;text-align:left;width:100%;
@@ -249,8 +262,7 @@ canvas{display:block}
 .up .updots.have{font-weight:900;font-size:13px;color:var(--ink);
   background:#fff;border:2px solid var(--ink);border-radius:999px;padding:1px 8px}
 /* meta shop: starting-boon picker */
-.boonhead{margin-top:16px;font-size:13px;font-weight:900;text-align:left;opacity:.8}
-.boongrid{margin-top:8px;display:flex;flex-wrap:wrap;gap:8px}
+.boongrid{margin-top:2px;display:flex;flex-wrap:wrap;gap:8px}
 .boonchip{appearance:none;cursor:pointer;font:inherit;font-weight:800;font-size:12px;color:var(--plum);
   background:#fff;border:2px solid var(--ink);border-radius:999px;padding:5px 11px;box-shadow:1px 1px 0 var(--ink);
   transition:transform .07s,box-shadow .07s}
@@ -283,16 +295,15 @@ canvas{display:block}
 .ach.on{opacity:1;filter:none;background:#fff7df}
 .ach .achi{font-size:24px;line-height:1}
 .ach .achn{font-size:10px;font-weight:800;line-height:1.15}
-
-/* achievement unlock toast */
-#achToast{position:fixed;left:50%;top:16%;transform:translate(-50%,-50%) scale(.7);z-index:40;pointer-events:none;
-  display:flex;align-items:center;gap:10px;background:#fff7df;border:3.5px solid var(--ink);border-radius:18px;
-  padding:10px 18px;box-shadow:6px 6px 0 var(--ink);opacity:0;white-space:nowrap}
-#achToast .achi{font-size:30px}
-#achToast .acht{font-size:13px;font-weight:800;text-align:left}
-#achToast .acht b{color:var(--pink);font-size:12px;text-transform:uppercase;letter-spacing:1px}
-#achToast.show{animation:banner 2.2s ease-out}
-@media (prefers-reduced-motion:reduce){#achToast.show{animation:bannerfade 2.2s ease-out}}
+/* freshly-earned badge: a gold glow + a sparkle ribbon, celebrated in place */
+.ach.justnew{position:relative;background:#fff2c2;border-color:var(--pink);box-shadow:3px 3px 0 var(--pink);
+  animation:achpop .5s ease-out both}
+.ach .newrib{position:absolute;top:-9px;right:-7px;font-size:15px;
+  filter:drop-shadow(1px 1px 0 var(--ink));animation:achspark 1.1s ease-in-out infinite}
+.wallet.pop{background:var(--pink);color:#fff}
+@keyframes achpop{0%{transform:scale(.7) rotate(-6deg)}55%{transform:scale(1.12) rotate(2deg)}100%{transform:none}}
+@keyframes achspark{0%,100%{transform:scale(1) rotate(0)}50%{transform:scale(1.25) rotate(12deg)}}
+@media (prefers-reduced-motion:reduce){.ach.justnew{animation:none}.ach .newrib{animation:none}}
 
 .hide{display:none!important}
 .float{animation:bob 2.2s ease-in-out infinite;font-size:54px}
