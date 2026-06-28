@@ -7,7 +7,7 @@ import { buildPlayer, applyGear } from './player.js';
 import { LEVEL_DIST, biomeOf, obstacleSet, levelFromDistance, levelProgress } from './levels.js';
 import { UPGRADES, effects, tierOf, nextCost, buy, getWallet, addRolls } from './upgrades.js';
 import { getBest, setBest, getStats, bumpStats, resetSave } from './save.js';
-import { hasAch } from './save.js';
+import { hasAch, unlock } from './save.js';
 import { ACHIEVEMENTS, checkAchievements } from './achievements.js';
 import { selectedSkin, selectSkin, getDailyBest, setDailyBest } from './save.js';
 import { SKINS, skinById, skinUnlocked, buySkin, applySkin } from './cosmetics.js';
@@ -637,6 +637,7 @@ function buildDebugApi() {
       world: ['spawn(kind, lane?, z?)', 'clearField()', `kinds: ${OBSTACLE_KINDS.join('|')}|gate|hurdle|roll|powerup[:magnet|x2|ghost]`],
       input: ['left()', 'right()', 'lane(i)', 'jump()', 'duck()'],
       shop: ['wallet()', 'fund(n)', 'buy(id)', 'effects()'],
+      cosmetics: ['skin()', 'pickSkin(id)', 'unlockAch(id)'],
     }),
     // ---- lifecycle ----
     start: (overrides) => { startGame(false); if (overrides) set(overrides); return snapshot(); },
@@ -668,6 +669,15 @@ function buildDebugApi() {
     // ---- shop / meta ----
     wallet: getWallet, fund: (n) => { addRolls(n); renderShop(); return getWallet(); },
     buy: (id) => { const ok = buy(id); renderShop(); return ok; }, effects,
+    // ---- cosmetics (skins) ----
+    // skin() reads the saved selection + the colours actually on the live mats.
+    // pickSkin() mirrors the menu click (gate on unlock, persist, recolour);
+    // unlockAch() grants an achievement so achievement-only skins can be tested.
+    skin: () => ({ selected: selectedSkin(), applied: {
+      skin: playerMats.skin.color.getHex(), inner: playerMats.inner.color.getHex(), tail: playerMats.tail.color.getHex(),
+    } }),
+    pickSkin: (id) => { const s = skinById(id); if (skinUnlocked(s)) { selectSkin(id); applySkin(playerMats, id); } renderCosmetics(); return selectedSkin(); },
+    unlockAch: (id) => { unlock(id); renderCosmetics(); return hasAch(id); },
   };
   return api;
 }
