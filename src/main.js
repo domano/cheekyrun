@@ -6,8 +6,9 @@ import { createParticles } from './particles.js';
 import { buildPlayer, applyGear } from './player.js';
 import { LEVEL_DIST, biomeOf, obstacleSet, levelFromDistance, levelProgress } from './levels.js';
 import { trackOffset, deformRoad } from './track.js';
-import { UPGRADES, effects, tierOf, nextCost, buy, getWallet, addRolls } from './upgrades.js';
+import { UPGRADES, effects, tierOf, nextCost, buy, getWallet, addRolls, DEFAULT_POOL, unlockedPerkIds, META, buyMeta } from './upgrades.js';
 import { PERKS, freshMods, applyPerks, perkById, draftChoices } from './perks.js';
+import { getRerolls, useReroll, getBanishes, useBanish, getBoon, setBoon, banishPerk, poolHas } from './save.js';
 import { getBest, setBest, getStats, bumpStats, resetSave } from './save.js';
 import { hasAch, unlock } from './save.js';
 import { ACHIEVEMENTS, checkAchievements } from './achievements.js';
@@ -209,14 +210,14 @@ function applyPerk(id) {
   recomputeRunMods();
   return true;
 }
-// Which perks a draft can offer. Phase 2: the whole catalog is draftable; the
-// meta layer (Phase 3) narrows this to what's unlocked.
-function eligiblePool() { return PERKS.map(p => p.id); }
-function banishedIds() { return []; }
+// Which perks a draft can offer. A daily run uses the fixed DEFAULT_POOL (so
+// everyone sees the same seeded choices); a normal run uses the meta-unlocked
+// pool. unlockedPerkIds() already drops permanently-banished perks.
+function eligiblePool() { return daily ? DEFAULT_POOL : unlockedPerkIds(); }
 // Freeze the world and offer a choice of perks. Uses the run's seeded `rng` so a
 // draft is deterministic in tests. Skips itself if there's nothing left to offer.
 function openDraft() {
-  draftCards = draftChoices(eligiblePool(), perks, banishedIds(), rng, DRAFT_CHOICES);
+  draftCards = draftChoices(eligiblePool(), perks, [], rng, DRAFT_CHOICES);
   if (!draftCards.length) return;
   state = 'draft'; renderDraft(); $('draft').classList.remove('hide'); sfxLevel();
 }
@@ -226,6 +227,20 @@ function pickDraft(i) {
   draftCards = []; $('draft').classList.add('hide');
   state = 'playing'; clock.getDelta();   // drop the wall-clock gap so dt doesn't spike on resume
 }
+// Reroll the offered cards (spends a banked reroll charge).
+function rerollDraft() {
+  if (state !== 'draft' || !useReroll()) { buzz(25); return; }
+  draftCards = draftChoices(eligiblePool(), perks, [], rng, DRAFT_CHOICES);
+  renderDraft(); sfxLane(); buzz(12);
+}
+// Banish a card's perk from the pool for good (spends a banish token), then refill.
+function banishCard(i) {
+  const card = draftCards[i]; if (!card || state !== 'draft') return;
+  if (!useBanish()) { buzz(25); return; }
+  banishPerk(card.id); sfxComboBreak();
+  draftCards = draftChoices(eligiblePool(), perks, [], rng, DRAFT_CHOICES);
+  renderDraft();
+}
 // A curse's blurb reads "<upside>, but <downside>" / "<upside> — <downside>";
 // split it so the draft can paint the promise green and the price red.
 function splitCurse(desc) {
@@ -233,14 +248,16 @@ function splitCurse(desc) {
   return m ? { up: m[1], down: m[2] } : null;
 }
 function renderDraft() {
+  const canBanish = getBanishes() > 0;
   $('draftgrid').innerHTML = draftCards.map((p, i) => {
     const sc = p.rarity === 'curse' ? splitCurse(p.desc) : null;
     const desc = sc ? `<span class="pk-up">${sc.up}</span><span class="pk-down">${sc.down}</span>`
                     : `<span class="pk-desc">${p.desc}</span>`;
     const warn = p.rarity === 'curse' ? '<span class="pk-warn">💀</span>' : '';
+    const ban = canBanish ? `<span class="pk-banish" data-ban="${i}" title="Banish from pool">🚫</span>` : '';
     return `
     <button class="perkcard ${p.rarity}" data-i="${i}">
-      <span class="pk-key">${i + 1}</span>${warn}
+      <span class="pk-key">${i + 1}</span>${warn}${ban}
       <span class="pk-disc"><span class="pk-icon">${p.icon}</span></span>
       <span class="pk-name">${p.name}</span>${desc}
       <span class="pk-rar">${p.rarity}</span>
@@ -249,6 +266,13 @@ function renderDraft() {
   document.querySelectorAll('#draft .perkcard').forEach(b => {
     b.onclick = (e) => { e.stopPropagation(); ensureAudio(); pickDraft(+b.dataset.i); };
   });
+  document.querySelectorAll('#draft .pk-banish').forEach(b => {
+    b.onclick = (e) => { e.stopPropagation(); ensureAudio(); banishCard(+b.dataset.ban); };
+  });
+  const rr = getRerolls();
+  $('draftfoot').innerHTML = (rr > 0 ? `<button class="rerollbtn" id="rerollBtn">🎲 Reroll (${rr})</button>` : '')
+    + `<span class="drafthint">Tap a card · 1 / 2 / 3</span>`;
+  if (rr > 0) $('rerollBtn').onclick = (e) => { e.stopPropagation(); ensureAudio(); rerollDraft(); };
 }
 
 /* ---------------- flow ---------------- */
@@ -261,6 +285,8 @@ function resetGame() {
   shields = eff.shields; invuln = 0; magnetR = eff.magnet; rollValue = eff.rollValue; extraJumps = eff.extraJumps;
   level = 1 + eff.headstart;
   perks = []; levelUps = 0; recomputeRunMods();   // fresh run: no perks drafted yet
+  const boon = !daily && getBoon();               // a chosen starting boon begins drafted (daily is boon-free)
+  if (boon && perkById(boon)) applyPerk(boon);
   speed = 12.5; distance = (level - 1) * LEVEL_DIST; rollCount = 0; rollPoints = 0; rowTimer = 1.8; sceneAcc = 0; dustAcc = 0;
   elapsed = Math.min(70, (level - 1) * 9); difficulty = 0; safeLane = 1; forcedGap = 0;
   laneIdx = 1; targetX = 0; vy = 0; grounded = true; jumpsLeft = 2 + extraJumps + mods.extraJumpsBonus; banked = 0; groundY = 0; duckTimer = 0; duckAmt = 0; shakeT = 0;
@@ -350,6 +376,7 @@ function bindControls() {
       if (e.code === 'Digit1' || e.code === 'ArrowLeft') pickDraft(0);
       else if (e.code === 'Digit2' || e.code === 'ArrowUp' || e.code === 'Space' || e.code === 'Enter') pickDraft(1);
       else if (e.code === 'Digit3' || e.code === 'ArrowRight') pickDraft(2);
+      else if (e.code === 'KeyR') rerollDraft();
       return;
     }
     if (state !== 'playing') { if (e.code === 'Space' || e.code === 'Enter') startGame(); return; }
@@ -634,25 +661,52 @@ function showBanner(text) {
   clearTimeout(showBanner._t); showBanner._t = setTimeout(() => b.classList.remove('show'), 1600);
 }
 
-/* ---------------- upgrade shop ---------------- */
+/* ---------------- meta shop (roguelite lab) ---------------- */
+// The wallet now buys roguelite meta: the permanent floor (Cushion, Head Start),
+// perk-pool unlocks, reroll/banish charges, and a starting boon.
 function renderShop() {
   const wallet = getWallet();
-  const grid = UPGRADES.map(u => {
+  // permanent floor upgrades (tiered)
+  const floor = UPGRADES.map(u => {
     const l = tierOf(u.id), c = nextCost(u.id), maxed = c === null, afford = !maxed && wallet >= c;
     const dots = Array.from({ length: u.max }, (_, i) => `<i class="${i < l ? 'on' : ''}"></i>`).join('');
     const cls = `up${maxed ? ' maxed' : (afford ? '' : ' poor')}`;
     return `<button class="${cls}" data-id="${u.id}"${maxed ? ' disabled' : ''}>
-      <span class="upi">${u.icon}</span>
-      <span class="upn">${u.name}</span>
-      <span class="upd">${u.desc}</span>
+      <span class="upi">${u.icon}</span><span class="upn">${u.name}</span><span class="upd">${u.desc}</span>
       <span class="upmeta"><span class="updots">${dots}</span><span class="upc">${maxed ? 'MAX' : c + ' 🧻'}</span></span>
     </button>`;
   }).join('');
+  // meta items: perk-pool unlocks + reroll/banish charge packs
+  const metaGrid = META.map(m => {
+    const owned = m.kind === 'unlock' && poolHas(m.perk), afford = wallet >= m.cost;
+    const have = m.kind === 'reroll' ? getRerolls() : m.kind === 'banish' ? getBanishes() : 0;
+    const curse = m.kind === 'unlock' && perkById(m.perk)?.rarity === 'curse';
+    const cls = `up${owned ? ' owned' : (afford ? '' : ' poor')}${curse ? ' curse' : ''}`;
+    const left = have ? `<span class="updots have">×${have}</span>` : '<span class="updots"></span>';
+    const right = owned ? '<span class="upc inpool">IN POOL</span>' : `<span class="upc">${m.cost} 🧻</span>`;
+    return `<button class="${cls}" data-meta="${m.id}"${owned ? ' disabled' : ''}>
+      <span class="upi">${m.icon}</span><span class="upn">${m.name}</span><span class="upd">${m.desc}</span>
+      <span class="upmeta">${left}${right}</span>
+    </button>`;
+  }).join('');
+  // starting boon picker — any unlocked perk, or none
+  const boon = getBoon();
+  const chips = [`<button class="boonchip${boon ? '' : ' on'}" data-boon="">🚫 none</button>`]
+    .concat(unlockedPerkIds().map(id => { const p = perkById(id);
+      return `<button class="boonchip${boon === id ? ' on' : ''}" data-boon="${id}">${p.icon} ${p.name}</button>`; })).join('');
   document.querySelectorAll('.shop').forEach(root => {
-    root.innerHTML = `<div class="shophead"><span>🛒 Upgrades</span><span class="wallet">🧻 ${wallet}</span></div><div class="shopgrid">${grid}</div>`;
+    root.innerHTML = `<div class="shophead"><span>🧪 Roguelite Lab</span><span class="wallet">🧻 ${wallet}</span></div>
+      <div class="shopgrid">${floor}${metaGrid}</div>
+      <div class="boonhead">🎁 Starting boon</div><div class="boongrid">${chips}</div>`;
   });
-  document.querySelectorAll('.shop .up').forEach(b => {
+  document.querySelectorAll('.shop .up[data-id]').forEach(b => {
     b.onclick = (e) => { e.stopPropagation(); ensureAudio(); if (buy(b.dataset.id)) { sfxCoin(); buzz(18); renderShop(); renderCosmetics(); } else buzz(25); };
+  });
+  document.querySelectorAll('.shop .up[data-meta]').forEach(b => {
+    b.onclick = (e) => { e.stopPropagation(); ensureAudio(); if (buyMeta(b.dataset.meta)) { sfxCoin(); buzz(18); renderShop(); } else buzz(25); };
+  });
+  document.querySelectorAll('.shop .boonchip').forEach(b => {
+    b.onclick = (e) => { e.stopPropagation(); ensureAudio(); setBoon(b.dataset.boon || null); sfxLane(); buzz(12); renderShop(); };
   });
 }
 
@@ -746,6 +800,7 @@ function buildDebugApi() {
       shields, invuln: +invuln.toFixed(2), magnetR, rollValue, extraJumps, jumpsLeft,
       perks: perks.map(p => ({ id: p.id, stacks: p.stacks })), mods, levelUps,
       draft: draftCards.map(p => p.id),
+      meta: { rerolls: getRerolls(), banishes: getBanishes(), boon: getBoon(), eligible: eligiblePool() },
       power, powerT: +powerT.toFixed(2),
       emote: +emoteT.toFixed(2), spin: +spin.toFixed(2),
       laneIdx, targetX,
@@ -804,7 +859,8 @@ function buildDebugApi() {
       world: ['spawn(kind, lane?, z?)', 'clearField()', `kinds: ${OBSTACLE_KINDS.join('|')}|gate|hurdle|roll|powerup[:magnet|x2|ghost]`],
       input: ['left()', 'right()', 'lane(i)', 'jump()', 'duck()'],
       shop: ['wallet()', 'fund(n)', 'buy(id)', 'effects()'],
-      perks: ['perk(id)', 'draft()', 'openDraft()', 'pick(i)', `ids: ${PERKS.map(p => p.id).join('|')}`],
+      perks: ['perk(id)', 'draft()', 'openDraft()', 'pick(i)', 'reroll()', 'banish(i)', `ids: ${PERKS.map(p => p.id).join('|')}`],
+      meta: ['buyMeta(id)', 'boon(id)', 'startDaily()', `items: ${META.map(m => m.id).join('|')}`],
       cosmetics: ['skin()', 'pickSkin(id)', 'unlockAch(id)'],
     }),
     // ---- lifecycle ----
@@ -842,6 +898,12 @@ function buildDebugApi() {
     draft: () => ({ state, choices: draftCards.map(p => p.id) }),
     openDraft: () => { openDraft(); return snapshot(); },
     pick: (i) => { pickDraft(i); return snapshot(); },
+    reroll: () => { rerollDraft(); return snapshot(); },
+    banish: (i) => { banishCard(i); return snapshot(); },
+    // ---- meta (roguelite lab) ----
+    buyMeta: (id) => { const ok = buyMeta(id); renderShop(); return ok; },
+    boon: (id) => { setBoon(id || null); renderShop(); return getBoon(); },
+    startDaily: () => { startGame(true); return snapshot(); },
     // ---- cosmetics (skins) ----
     // skin() reads the saved selection + the colours actually on the live mats.
     // pickSkin() mirrors the menu click (gate on unlock, persist, recolour);

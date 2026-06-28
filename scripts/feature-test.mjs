@@ -194,16 +194,15 @@ const SCENARIOS = [
   {
     name: 'upgrade-visuals',
     fn: (c, assert) => {
-      c.fund(2000); c.buy('shield'); c.buy('shield'); c.buy('spring');   // shield t2, spring t1
+      c.fund(2000); c.buy('shield'); c.buy('shield'); c.buy('headstart');   // shield t2, headstart t1 (the surviving floor)
       const s = c.start();
       assert(s.gearTiers.shield === 2, 'owning Cushion shows its gear at tier 2');
-      assert(s.gearTiers.spring === 1, 'a Springy tier is owned');
-      assert(s.gearTiers.magnet === 0, 'un-owned upgrades wear no gear');
+      assert(s.gearTiers.headstart === 1, 'a Head Start tier is owned');
       // the worn props actually toggle with ownership...
       assert(s.gearVisible.shield === true, 'the shield bubble is worn');
-      assert(s.gearVisible.spring === true, 'the spring coils are worn');
-      assert(s.gearVisible.magnet === false, 'no magnet prop when un-owned');
-      assert(s.gearVisible.fortune === false && s.gearVisible.headstart === false, 'no clover/rocket when un-owned');
+      assert(s.gearVisible.headstart === true, 'the rocket is worn');
+      // the reframed upgrades (now perks) wear no permanent gear
+      assert(s.gearVisible.magnet === false && s.gearVisible.spring === false && s.gearVisible.fortune === false, 'reframed upgrades wear no gear');
       // ...and the shield's tier shows as orbiting pips, one per tier, not bulk.
       assert(s.gearVisible.shieldPips === 2, 'a tier-2 Cushion shows two tier pips');
     },
@@ -397,6 +396,62 @@ const SCENARIOS = [
       c.start(); c.seed(7); c.openDraft(); const b = c.draft().choices;
       assert(a.length === 3 && b.length === 3, 'both drafts offer three perks');
       assert(a.join(',') === b.join(','), 'the same seed yields the same draft');
+    },
+  },
+  {
+    name: 'meta-unlock-into-pool',
+    fn: (c, assert) => {
+      c.start();
+      assert(!c.state().meta.eligible.includes('doubledown'), 'epics start locked out of the pool');
+      c.fund(9999);
+      assert(c.buyMeta('unlock:doubledown') === true, 'an affordable unlock is bought');
+      assert(c.state().meta.eligible.includes('doubledown'), 'the unlocked perk becomes draftable');
+    },
+  },
+  {
+    name: 'meta-reroll-charge',
+    fn: (c, assert) => {
+      c.fund(9999);
+      assert(c.buyMeta('reroll') === true, 'a reroll pack is bought');
+      const before = c.state().meta.rerolls;
+      assert(before >= 1, 'reroll charges are banked');
+      c.start(); c.seed(3); c.openDraft();
+      const s = c.reroll();
+      assert(s.meta.rerolls === before - 1, 'a reroll spends exactly one charge');
+      assert(c.draft().choices.length === 3, 'three cards remain after a reroll');
+    },
+  },
+  {
+    name: 'meta-banish',
+    fn: (c, assert) => {
+      c.fund(9999); c.buyMeta('banish');
+      c.start(); c.seed(7); c.openDraft();
+      const banned = c.draft().choices[0];
+      const s = c.banish(0);
+      assert(s.meta.banishes === 0, 'banishing spends the token');
+      assert(!c.draft().choices.includes(banned), 'the banished perk is no longer offered');
+      assert(!s.meta.eligible.includes(banned), 'the banished perk leaves the pool for good');
+    },
+  },
+  {
+    name: 'starting-boon',
+    fn: (c, assert) => {
+      c.boon('lucky');
+      const s = c.start();
+      assert(s.perks.length === 1 && s.perks[0].id === 'lucky', 'the run begins with the boon perk');
+      assert(s.mods.rollMult === 1.18, 'the boon effect is live from the first frame');
+    },
+  },
+  {
+    name: 'daily-ignores-perks-and-boon',
+    fn: (c, assert) => {
+      c.boon('lucky'); c.fund(9999); c.buyMeta('unlock:doubledown');
+      const s = c.startDaily();
+      assert(s.daily === true, 'a daily run is flagged');
+      assert(s.perks.length === 0, 'daily ignores the starting boon');
+      assert(s.mods.rollMult === 1, 'no perk mods at a daily start');
+      assert(!s.meta.eligible.includes('doubledown'), 'daily drafts the default pool, not meta unlocks');
+      assert(s.meta.eligible.length === 7, 'daily pool is the seven-perk default');
     },
   },
 ];

@@ -4,7 +4,9 @@
 // runs the wallet is spent on permanent upgrades, each with a few tiers. The
 // wallet and owned tiers live in the shared save (see save.js).
 
-import { save, persist, getWallet, addRolls } from './save.js';
+import { save, persist, getWallet, addRolls,
+  spend, poolHas, unlockPerk, isBanished, addRerolls, addBanishes } from './save.js';
+import { PERKS } from './perks.js';
 export { getWallet, addRolls };
 
 // Each upgrade declares: a max tier, the cost to reach the *next* tier from a
@@ -12,36 +14,12 @@ export { getWallet, addRolls };
 // gameplay value at a tier, and a short human label for the current tier.
 export const UPGRADES = [
   {
-    id: 'magnet', icon: '🧲', name: 'Roll Magnet',
-    desc: 'Pulls nearby rolls toward you.',
-    max: 4,
-    cost: (l) => [40, 90, 180, 320][l],
-    value: (l) => [0, 3.4, 5, 7, 9][l],          // attraction radius (world units)
-    label: (l) => (l ? `range ${['', 'S', 'M', 'L', 'XL'][l]}` : 'off'),
-  },
-  {
     id: 'shield', icon: '🛡️', name: 'Cushion',
     desc: 'Soaks up a crash. Refills each run.',
     max: 3,
     cost: (l) => [60, 140, 280][l],
     value: (l) => l,                              // crashes survived per run
     label: (l) => `${l} hit${l === 1 ? '' : 's'}`,
-  },
-  {
-    id: 'fortune', icon: '🍀', name: 'Lucky Rolls',
-    desc: 'Earn more points per roll.',
-    max: 3,
-    cost: (l) => [50, 110, 220][l],
-    value: (l) => 15 + l * 10,                    // score points per roll
-    label: (l) => `+${l * 10} pts`,
-  },
-  {
-    id: 'spring', icon: '🦿', name: 'Springy Cheeks',
-    desc: 'Jump higher, and one more time.',
-    max: 2,
-    cost: (l) => [70, 160][l],
-    value: (l) => l,                             // extra mid-air jumps
-    label: (l) => `${2 + l} jumps`,
   },
   {
     id: 'headstart', icon: '🚀', name: 'Head Start',
@@ -75,13 +53,61 @@ export function buy(id) {
   return true;
 }
 
-// Resolved gameplay effects for the current save, read once at run start.
+// Resolved gameplay effects for the current save, read once at run start. The
+// magnet/rollValue/extraJumps floors are now perk territory; perks build on these.
 export function effects() {
   return {
-    magnet: byId('magnet').value(tierOf('magnet')),
+    magnet: 0,
     shields: byId('shield').value(tierOf('shield')),
-    rollValue: byId('fortune').value(tierOf('fortune')),
-    extraJumps: byId('spring').value(tierOf('spring')),
+    rollValue: 15,
+    extraJumps: 0,
     headstart: byId('headstart').value(tierOf('headstart')),
   };
+}
+
+/* ----- roguelite META layer: perk-pool unlocks, charges, boon ----- */
+
+// Perks draftable for free, without buying an unlock.
+export const DEFAULT_POOL = ['tailwind', 'vacuum', 'lucky', 'hops', 'pillow', 'daredevil', 'memory'];
+
+// Perk ids currently draftable: in the default pool or unlocked, minus banished.
+export function unlockedPerkIds() {
+  return PERKS
+    .filter((p) => (DEFAULT_POOL.includes(p.id) || poolHas(p.id)) && !isBanished(p.id))
+    .map((p) => p.id);
+}
+
+// Meta shop: one unlock per non-default perk, plus reroll/banish charge packs.
+export const META = [
+  ...PERKS.filter((p) => !DEFAULT_POOL.includes(p.id)).map((p) => ({
+    id: 'unlock:' + p.id, kind: 'unlock', perk: p.id, icon: p.icon,
+    name: 'Unlock ' + p.name, desc: p.desc, cost: p.rarity === 'curse' ? 130 : 150,
+  })),
+  { id: 'reroll', kind: 'reroll', grant: 2, icon: '🎲', name: 'Reroll pack', desc: '+2 draft rerolls.', cost: 80 },
+  { id: 'banish', kind: 'banish', grant: 1, icon: '🚫', name: 'Banish token', desc: 'Remove a perk from your pool.', cost: 90 },
+];
+
+const metaById = (id) => META.find((m) => m.id === id);
+
+// Attempt a meta purchase; returns true on success.
+export function buyMeta(id) {
+  const item = metaById(id);
+  if (!item) return false;
+  if (item.kind === 'unlock') {
+    if (poolHas(item.perk)) return false;
+    if (!spend(item.cost)) return false;
+    unlockPerk(item.perk);
+    return true;
+  }
+  if (item.kind === 'reroll') return spend(item.cost) && (addRerolls(item.grant), true);
+  if (item.kind === 'banish') return spend(item.cost) && (addBanishes(item.grant), true);
+  return false;
+}
+
+// Cost of a meta item for the UI, or null if it's an already-owned unlock.
+export function metaCost(id) {
+  const item = metaById(id);
+  if (!item) return null;
+  if (item.kind === 'unlock' && poolHas(item.perk)) return null;
+  return item.cost;
 }

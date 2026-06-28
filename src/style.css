@@ -210,7 +210,32 @@ canvas{display:block}
   font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center}
 .perkcard .pk-up{font-size:13px;font-weight:800;color:#1a8a3c;line-height:1.25}
 .perkcard .pk-down{font-size:12px;font-weight:700;color:#9c2b2b;line-height:1.25}
-.drafthint{margin-top:16px;font-size:12px;font-weight:800;opacity:.55}
+.perkcard .pk-banish{position:absolute;bottom:-9px;right:-8px;width:22px;height:22px;border-radius:50%;cursor:pointer;
+  background:#fff;border:2px solid var(--ink);box-shadow:1.5px 1.5px 0 var(--ink);
+  font-size:11px;line-height:1;display:flex;align-items:center;justify-content:center;z-index:2}
+.perkcard .pk-banish:active{transform:translate(1px,1px);box-shadow:.5px .5px 0 var(--ink)}
+.draftfoot{margin-top:16px;display:flex;flex-direction:column;align-items:center;gap:8px}
+.rerollbtn{appearance:none;cursor:pointer;font:inherit;font-weight:800;font-size:14px;color:var(--plum);
+  background:#fff;border:2.5px solid var(--ink);border-radius:999px;padding:7px 18px;box-shadow:3px 3px 0 var(--ink);
+  transition:transform .07s,box-shadow .07s}
+.rerollbtn:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--ink)}
+.drafthint{font-size:12px;font-weight:800;opacity:.55}
+/* meta shop: owned unlocks stay solid (only the content fades), curse unlocks
+   carry a restrained red title, and charge counts read as their own chip */
+.up.owned{cursor:default;opacity:1}
+.up.owned .upi,.up.owned .upn,.up.owned .upd{opacity:.5}
+.up .upc.inpool{background:#bdf0c4}
+.up.curse .upn{color:#9c2b2b}
+.up .updots.have{font-weight:900;font-size:13px;color:var(--ink);
+  background:#fff;border:2px solid var(--ink);border-radius:999px;padding:1px 8px}
+/* meta shop: starting-boon picker */
+.boonhead{margin-top:16px;font-size:13px;font-weight:900;text-align:left;opacity:.8}
+.boongrid{margin-top:8px;display:flex;flex-wrap:wrap;gap:8px}
+.boonchip{appearance:none;cursor:pointer;font:inherit;font-weight:800;font-size:12px;color:var(--plum);
+  background:#fff;border:2px solid var(--ink);border-radius:999px;padding:5px 11px;box-shadow:1px 1px 0 var(--ink);
+  transition:transform .07s,box-shadow .07s}
+.boonchip:active{transform:translate(1px,1px);box-shadow:0 0 0 var(--ink)}
+.boonchip.on{background:var(--pink);color:#fff;border-width:2.5px;box-shadow:2px 2px 0 var(--ink)}
 #draft .card{animation:draftin .26s ease-out}
 @keyframes draftin{from{opacity:0;transform:scale(.9) translateY(10px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){#draft,#draft .card{animation:none}}
