@@ -715,6 +715,21 @@ const SCENARIOS = [
       assert(s.meta.eligible.length === 7, 'daily pool is the seven-perk default');
     },
   },
+  {
+    // UX: achievements earned in a run are celebrated *in place* on the
+    // game-over card (a glowing badge + a "new" count) rather than via a
+    // floating toast that used to cover the "Wiped out!" title.
+    name: 'achievement-celebrated-on-card',
+    fn: (c, assert) => {
+      c.fresh();                              // clean save, back on the menu
+      c.start(); c.step(60); c.over();        // finishing run unlocks "Off and Running"
+      assert(c.state().state === 'over', 'lands on the game-over screen');
+      assert(!document.getElementById('achToast'), 'the old floating toast element is gone');
+      const glow = document.querySelector('#gameover .achievements .ach.justnew');
+      assert(!!glow, 'newly-earned badge is highlighted on the card');
+      assert(!!document.querySelector('#gameover .achievements .wallet.pop'), 'card flags the new-unlock count');
+    },
+  },
 ];
 
 /* ------------------------------- runner ------------------------------- */
