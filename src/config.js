@@ -48,6 +48,12 @@ export const POWERUP_KINDS = Object.keys(POWERUPS);
 // showing DRAFT_CHOICES cards to pick one from.
 export const DRAFT_EVERY = 2;
 export const DRAFT_CHOICES = 3;
+// A draft interrupts live play, so the player is usually mid-input when it opens.
+// DRAFT_ARM locks the cards for a beat to swallow the stray jump/lane tap that was
+// meant for the character; DRAFT_GRACE is the invuln window granted on resume so a
+// frozen obstacle sitting on top of you doesn't kill before you can react.
+export const DRAFT_ARM = 0.45;     // seconds cards ignore input after a draft opens
+export const DRAFT_GRACE = 1.3;    // invuln seconds granted when the run resumes
 
 // DOM lookup shorthand.
 export const $ = (id) => document.getElementById(id);

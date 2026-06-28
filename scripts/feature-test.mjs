@@ -397,6 +397,7 @@ const SCENARIOS = [
       assert(s.level === 2 && s.levelUps === 1, 'reached level 2 on the first level-up');
       assert(s.state === 'draft', 'the first level-up front-loads a draft');
       assert(s.draft.length === 3, 'three perks are offered');
+      c.set({ draftArm: 0 });                            // skip the input-lock for the test
       c.pick(0);                                         // take one, resume
       c.set({ distance: 498 }); s = c.step(30);          // cross into level 3 (2nd level-up)
       assert(s.level === 3 && s.levelUps === 2, 'reached level 3');
@@ -413,11 +414,29 @@ const SCENARIOS = [
       const d = c.draft();
       assert(d.state === 'draft' && d.choices.length === 3, 'a draft of three is open');
       const first = d.choices[0];
+      c.set({ draftArm: 0 });                            // skip the input-lock for the test
       let s = c.pick(0);
       assert(s.state === 'playing', 'picking a perk resumes the run');
       assert(s.perks.length === 1 && s.perks[0].id === first, 'the chosen card becomes the run perk');
       const d0 = s.distance; s = c.step(30);
       assert(s.distance > d0, 'the simulation advances again after the pick');
+    },
+  },
+  {
+    name: 'draft-input-guard',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.seed(2);
+      let s = c.openDraft();
+      assert(s.state === 'draft' && s.draftArm > 0, 'a fresh draft opens with its cards locked');
+      s = c.pick(0);
+      assert(s.state === 'draft' && s.perks.length === 0, 'a pick during the lock is ignored — no stray select');
+      s = c.reroll();
+      assert(s.state === 'draft', 'a reroll during the lock is ignored too');
+      s = c.step(30);                                    // 0.5s — past the 0.45s lock
+      assert(s.draftArm === 0, 'the lock clears after a beat');
+      s = c.pick(0);
+      assert(s.state === 'playing' && s.perks.length === 1, 'a pick after the lock applies and resumes');
+      assert(s.invuln > 0, 'resuming grants a grace window to react to the frozen road');
     },
   },
   {
@@ -446,7 +465,7 @@ const SCENARIOS = [
       assert(c.buyMeta('reroll') === true, 'a reroll pack is bought');
       const before = c.state().meta.rerolls;
       assert(before >= 1, 'reroll charges are banked');
-      c.start(); c.seed(3); c.openDraft();
+      c.start(); c.seed(3); c.openDraft(); c.set({ draftArm: 0 });
       const s = c.reroll();
       assert(s.meta.rerolls === before - 1, 'a reroll spends exactly one charge');
       assert(c.draft().choices.length === 3, 'three cards remain after a reroll');
@@ -456,7 +475,7 @@ const SCENARIOS = [
     name: 'meta-banish',
     fn: (c, assert) => {
       c.fund(9999); c.buyMeta('banish');
-      c.start(); c.seed(7); c.openDraft();
+      c.start(); c.seed(7); c.openDraft(); c.set({ draftArm: 0 });
       const banned = c.draft().choices[0];
       const s = c.banish(0);
       assert(s.meta.banishes === 0, 'banishing spends the token');
