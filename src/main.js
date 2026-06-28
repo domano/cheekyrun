@@ -3,10 +3,10 @@ import { LANES, SPAWN_Z, DESPAWN_Z, INK, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE
 import { makeGradient, toon } from './materials.js';
 import { makeObstacle, makeHurdle, makeGate, makeRoll, makePowerup, makeTree, makeBush, makeFlower, makeCloud, OBSTACLE_KINDS } from './props.js';
 import { createParticles } from './particles.js';
-import { buildPlayer } from './player.js';
+import { buildPlayer, applyGear } from './player.js';
 import { LEVEL_DIST, biomeOf, obstacleSet, levelFromDistance, levelProgress } from './levels.js';
 import { UPGRADES, effects, tierOf, nextCost, buy, getWallet, addRolls } from './upgrades.js';
-import { getBest, setBest, getStats, bumpStats } from './save.js';
+import { getBest, setBest, getStats, bumpStats, resetSave } from './save.js';
 import { hasAch } from './save.js';
 import { ACHIEVEMENTS, checkAchievements } from './achievements.js';
 import { selectedSkin, selectSkin, getDailyBest, setDailyBest } from './save.js';
@@ -18,7 +18,8 @@ import {
 } from './audio.js';
 
 let scene, camera, renderer, clock;
-let player, shadowBlob, ears = [], feet = [], tail, particles, playerMats;
+let player, shadowBlob, ears = [], feet = [], tail, particles, playerMats, gear, aura;
+let gearTiers = {}, fartCount = 0;   // worn upgrade tiers (for visuals/tests) + fart-puff counter
 let obstacles = [], rolls = [], pickups = [], scenery = [], stripes = [], clouds = [];
 let groundMat, pathMat, discMat, hillMats = [];
 let state = 'menu';
@@ -98,7 +99,7 @@ function init() {
   for (let i = 0; i < 8; i++) { const c = makeCloud(); scene.add(c); clouds.push(c); }
 
   particles = createParticles(scene);
-  ({ player, ears, feet, tail, mats: playerMats } = buildPlayer(scene));
+  ({ player, ears, feet, tail, gear, aura, mats: playerMats } = buildPlayer(scene));
   applySkin(playerMats, selectedSkin());
 
   shadowBlob = new THREE.Mesh(new THREE.CircleGeometry(0.72, 28),
@@ -195,6 +196,9 @@ function resetGame() {
   combo = 0; comboTimer = 0; comboMax = 0; squash = 0; power = null; powerT = 0; powerCD = 6; gotPower = false;
   player.position.set(0, 0, 0); player.rotation.set(0, 0, 0); player.scale.set(1, 1, 1);
   applySkin(playerMats, selectedSkin());
+  // Show the upgrades you own on the character (none in a daily — it's gear-free).
+  gearTiers = daily ? {} : { magnet: tierOf('magnet'), shield: tierOf('shield'), fortune: tierOf('fortune'), spring: tierOf('spring'), headstart: tierOf('headstart') };
+  applyGear(gear, gearTiers); fartCount = 0; updatePowerVisual();
   applyBiome(level, true);
 }
 function startGame(isDaily = false) {
@@ -245,9 +249,17 @@ function jump() {
   if (jumpsLeft > 0) {
     const dbl = !grounded; vy = (grounded ? 9.4 : 8.4) + extraJumps * 0.5; grounded = false; jumpsLeft--; squash = -0.32; buzz(15); sfxJump(dbl);
     particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.05, 0.2)), { count: 5, color: 0xeaddc6, speed: 1.6, up: 1.2, life: .4, grav: 6, size: 0.5 });
+    fart();
   }
 }
-function duck() { duckTimer = 0.5; buzz(12); sfxDuck(); if (!grounded) vy = Math.min(vy, -3) - 6; }
+function duck() { duckTimer = 0.5; buzz(12); sfxDuck(); if (!grounded) vy = Math.min(vy, -3) - 6; fart(); }
+// A cheeky little parp — a soft green puff that lingers behind the character on
+// every jump and slide. `fartCount` is a deterministic hook for the tests.
+function fart() {
+  fartCount++;
+  particles.emit(new THREE.Vector3(player.position.x, player.position.y + 0.35, player.position.z + 0.55),
+    { count: 7, color: 0xc6e26a, speed: 1.3, up: 0.5, life: .75, grav: 1.4, size: 0.7 });
+}
 function bindControls() {
   addEventListener('keydown', e => {
     if (state !== 'playing') { if (e.code === 'Space' || e.code === 'Enter') startGame(); return; }
@@ -286,7 +298,7 @@ function tick(dt) {
     const T = (1.35 - 0.6 * difficulty) / (1 + 0.04 * (level - 1));  // seconds between rows
     rowTimer -= dt; if (rowTimer <= 0) { spawnRow(); rowTimer = T; }
     sceneAcc += speed * dt; if (sceneAcc >= 5) { sceneAcc = 0; spawnScenery(); }
-    if (power) { powerT -= dt; if (powerT <= 0) { power = null; } updatePowerHud(); }
+    if (power) { powerT -= dt; if (powerT <= 0) { power = null; updatePowerVisual(); } updatePowerHud(); }
     moveObstacles(dt); moveRolls(dt); movePickups(dt);
     if (grounded) {
       dustAcc += dt; if (dustAcc > 0.11) {
@@ -368,7 +380,16 @@ function activatePower(kind, pos) {
   const p = POWERUPS[kind];
   flash('#fff7c0'); buzz([12, 20, 12]); sfxLevel(); showBanner(`${p.icon} ${p.label}!`);
   particles.emit(pos.add(new THREE.Vector3(0, 0.3, 0)), { count: 18, color: p.color, speed: 4, up: 4, life: .6, grav: 6 });
-  updatePowerHud();
+  updatePowerHud(); updatePowerVisual();
+}
+// Mirror the active power-up onto the character: a halo ring in the power's
+// colour, plus a translucent body while Ghost is up.
+function updatePowerVisual() {
+  if (aura) { aura.visible = !!power; if (power) aura.material.color.setHex(POWERUPS[power].color); }
+  const ghost = power === 'ghost';
+  [playerMats.skin, playerMats.inner, playerMats.blush, playerMats.tail].forEach(m => {
+    m.transparent = ghost; m.opacity = ghost ? 0.45 : 1; m.depthWrite = !ghost;
+  });
 }
 function updatePowerHud() {
   const box = $('powerHud');
@@ -398,6 +419,8 @@ function updatePlayer(dt, t) {
   ears.forEach((ear, i) => { const s = i ? -1 : 1; ear.rotation.z = s * 0.22 + Math.sin(t * 9 + i) * 0.16; ear.rotation.x = Math.sin(t * 7) * 0.08 + (grounded ? 0 : -0.25) + duckAmt * 0.5; });
   feet.forEach((f, i) => { const ph = i ? Math.PI : 0; f.position.y = 0.1 + ((running && grounded && duckTimer <= 0) ? Math.max(0, Math.sin(t * freq + ph)) * 0.16 : 0); });
   if (tail) tail.position.x = Math.sin(t * 10) * 0.05;
+  if (aura && aura.visible) { aura.rotation.z += dt * 3.2; aura.position.y = 0.6 + Math.sin(t * 6) * 0.05; }
+  if (gear && gear.headstart.visible) gear.flame.scale.y = 0.8 + Math.abs(Math.sin(t * 22)) * 0.5;
   squash -= squash * Math.min(1, dt * 12);   // ease the squash/stretch impulse back to 0
   const baseSq = (grounded && duckTimer <= 0) ? 1 - bob * 0.4 : 1;
   const sy = baseSq * (1 - duckAmt * 0.55) * (1 - squash), sxz = (1 / Math.sqrt(baseSq)) * (1 + duckAmt * 0.32) * (1 + squash * 0.5);
@@ -564,6 +587,7 @@ function buildDebugApi() {
       power, powerT: +powerT.toFixed(2),
       laneIdx, targetX,
       player: { x: +player.position.x.toFixed(3), groundY: +groundY.toFixed(3), grounded, ducking: duckTimer > 0 },
+      gearTiers, auraVisible: !!(aura && aura.visible), fartCount,
       counts: { obstacles: obstacles.length, rolls: rolls.length, pickups: pickups.length, scenery: scenery.length },
       wallet: getWallet(), daily,
     };
@@ -599,7 +623,7 @@ function buildDebugApi() {
   };
   function set(o = {}) {
     for (const k in o) { if (SETTERS[k]) SETTERS[k](o[k]); }
-    refreshHud(); return snapshot();
+    refreshHud(); updatePowerVisual(); return snapshot();
   }
 
   const api = {
@@ -607,7 +631,7 @@ function buildDebugApi() {
     state: snapshot,
     help: () => ({
       inspect: ['state()'],
-      lifecycle: ['start(overrides?)', 'reset()', 'over()'],
+      lifecycle: ['start(overrides?)', 'reset()', 'fresh()', 'over()'],
       time: ['pause()', 'resume()', 'step(frames=1, dt=1/60)', 'seed(n)'],
       teleport: ['set({level,speed,shields,power,...})', `keys: ${Object.keys(SETTERS).join(', ')}`],
       world: ['spawn(kind, lane?, z?)', 'clearField()', `kinds: ${OBSTACLE_KINDS.join('|')}|gate|hurdle|roll|powerup[:magnet|x2|ghost]`],
@@ -617,6 +641,12 @@ function buildDebugApi() {
     // ---- lifecycle ----
     start: (overrides) => { startGame(false); if (overrides) set(overrides); return snapshot(); },
     reset: () => { resetGame(); refreshHud(); return snapshot(); },
+    // Wipe save + return to a clean menu — isolates a feature scenario without
+    // a full page reload (which would re-init Three.js/WebGL every time). Stays
+    // paused: the harness drives time via step(), so the rAF loop never renders
+    // (continuous software-WebGL rendering otherwise pegs the CPU and starves
+    // the test driver, making every CLI round-trip crawl).
+    fresh: () => { resetSave(); resetGame(); state = 'menu'; paused = true; refreshHud(); renderShop(); return snapshot(); },
     over: () => { if (state === 'playing') gameOver(); return snapshot(); },
     // ---- deterministic time ----
     pause: () => { paused = true; return snapshot(); },

@@ -191,11 +191,45 @@ const SCENARIOS = [
       assert(s.level === 2, 'Head Start begins the run a level in');
     },
   },
+  {
+    name: 'upgrade-visuals',
+    fn: (c, assert) => {
+      c.fund(2000); c.buy('shield'); c.buy('spring'); c.buy('spring');   // shield t1, spring t2
+      const s = c.start();
+      assert(s.gearTiers.shield === 1, 'owning Cushion shows its gear at tier 1');
+      assert(s.gearTiers.spring === 2, 'a second Springy tier is more pronounced');
+      assert(s.gearTiers.magnet === 0, 'un-owned upgrades wear no gear');
+    },
+  },
+  {
+    name: 'powerup-visual',
+    fn: (c, assert) => {
+      c.start();
+      assert(c.state().auraVisible === false, 'no halo before any power-up');
+      const on = c.set({ power: 'ghost' });
+      assert(on.auraVisible === true, 'an active power-up lights the halo aura');
+      const off = c.set({ power: null });
+      assert(off.auraVisible === false, 'the halo clears when the power-up ends');
+    },
+  },
+  {
+    name: 'fart-on-jump-and-slide',
+    fn: (c, assert) => {
+      c.start(); c.clearField();
+      assert(c.state().fartCount === 0, 'no puffs at the start of a run');
+      c.jump();
+      assert(c.state().fartCount === 1, 'jumping puffs a fart cloud');
+      c.duck();
+      assert(c.state().fartCount === 2, 'sliding puffs a fart cloud');
+    },
+  },
 ];
 
 /* ------------------------------- runner ------------------------------- */
 
-const ab = (...args) => execFileSync(BIN, [...PRE, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+// `timeout` is a safety net: a wedged agent-browser/CDP call throws here instead
+// of hanging the whole suite. Per-scenario calls are caught in main()'s loop.
+const ab = (...args) => execFileSync(BIN, [...PRE, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 30000 });
 
 function waitForServer(timeoutMs = 12000) {
   const deadline = Date.now() + timeoutMs;
@@ -209,8 +243,14 @@ function waitForServer(timeoutMs = 12000) {
 }
 
 // Run a scenario's function in the page; returns { checks: [{ok,msg}], error? }.
+//
+// Each scenario is isolated by `c.fresh()` (wipes the save + returns to a clean
+// menu) rather than a full page reload — reloading would re-init Three.js/WebGL
+// every time and dominates the run. fresh() runs IN this same eval, so a whole
+// scenario costs a single CLI round-trip instead of reload-plus-poll-plus-run.
 function runScenario(fn) {
   const expr = `(()=>{const c=window.cheeky;if(!c)return{error:'debug API not ready (is ?debug set?)'};`
+    + `c.fresh();`
     + `const checks=[];const assert=(cond,msg)=>checks.push({ok:!!cond,msg});`
     + `try{(${fn.toString()})(c,assert);}catch(e){return{error:String((e&&e.stack)||e),checks};}return{checks};})()`;
   const out = ab('eval', expr);
@@ -218,15 +258,13 @@ function runScenario(fn) {
   return JSON.parse(json);
 }
 
-// Reload with a clean save so every scenario is isolated (fresh wallet/upgrades).
-function freshPage() {
-  ab('eval', 'localStorage.clear()');
-  ab('reload');
+// Poll once, after the initial open, until the debug bridge is attached.
+function waitForBridge() {
   for (let i = 0; i < 40; i++) {
     try { if (ab('eval', 'typeof window.cheeky').includes('object')) return; } catch { /* retry */ }
     execFileSync('sleep', ['0.1']);
   }
-  throw new Error('window.cheeky never appeared after reload');
+  throw new Error('window.cheeky never appeared');
 }
 
 let preview;
@@ -240,13 +278,12 @@ async function main() {
 
   console.log('→ opening game with debug bridge');
   ab('open', URL);
-  ab('wait', '600');
+  waitForBridge();
 
   const scenarios = SCENARIOS.filter(s => !filter || s.name.includes(filter));
   let passed = 0, failed = 0;
 
   for (const sc of scenarios) {
-    freshPage();
     let res;
     try { res = runScenario(sc.fn); } catch (e) { res = { error: String(e.message || e) }; }
 
@@ -267,7 +304,10 @@ async function main() {
   }
 
   console.log(`\n${failed === 0 ? '✓' : '✗'} ${passed}/${passed + failed} feature scenarios passed`);
-  process.exitCode = failed === 0 ? 0 : 1;
+  // Exit explicitly: the spawned preview child keeps the event loop alive, so
+  // without this the process would hang after printing results instead of
+  // exiting. process.exit() fires the 'exit' handler below, which runs cleanup.
+  process.exit(failed === 0 ? 0 : 1);
 }
 
 function cleanup() {

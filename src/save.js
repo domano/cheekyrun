@@ -46,6 +46,14 @@ export function persist() {
   try { localStorage.setItem(KEY, JSON.stringify(save)); } catch { /* ignore */ }
 }
 
+// Wipe persistent state back to defaults — both the stored blob and the live
+// in-memory singleton (mutated in place so every importer's reference stays
+// valid). Lets the feature harness isolate scenarios without reloading the page.
+export function resetSave() {
+  try { localStorage.removeItem(KEY); } catch { /* ignore */ }
+  Object.assign(save, defaults());
+}
+
 /* ----- wallet (rolls currency) ----- */
 export const getWallet = () => save.wallet | 0;
 export const addRolls = (n) => { save.wallet = (save.wallet | 0) + (n | 0); persist(); };
