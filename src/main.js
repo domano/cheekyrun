@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { LANES, SPAWN_Z, DESPAWN_Z, INK, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE_RAMP, GATE_COOLDOWN, COMBO_WINDOW, comboMult, NEARMISS_MARGIN, NEARMISS_BONUS, POWERUP_DURATION, POWERUP_CHANCE, POWERUP_MIN_DIFF, POWERUP_COOLDOWN, POWERUPS, POWERUP_KINDS, $, buzz, shuffle } from './config.js';
+import { LANES, SPAWN_Z, DESPAWN_Z, INK, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE_RAMP, GATE_COOLDOWN, COMBO_WINDOW, comboMult, NEARMISS_MARGIN, NEARMISS_BONUS, POWERUP_DURATION, POWERUP_CHANCE, POWERUP_MIN_DIFF, POWERUP_COOLDOWN, POWERUPS, POWERUP_KINDS, mulberry32, dailyKey, dailySeed, $, buzz, shuffle } from './config.js';
 import { makeGradient, toon } from './materials.js';
 import { makeObstacle, makeHurdle, makeGate, makeRoll, makePowerup, makeTree, makeBush, makeFlower, makeCloud } from './props.js';
 import { createParticles } from './particles.js';
@@ -9,7 +9,7 @@ import { UPGRADES, effects, tierOf, nextCost, buy, getWallet, addRolls } from '.
 import { getBest, setBest, getStats, bumpStats } from './save.js';
 import { hasAch } from './save.js';
 import { ACHIEVEMENTS, checkAchievements } from './achievements.js';
-import { selectedSkin, selectSkin } from './save.js';
+import { selectedSkin, selectSkin, getDailyBest, setDailyBest } from './save.js';
 import { SKINS, skinById, skinUnlocked, buySkin, applySkin } from './cosmetics.js';
 import {
   initAudio, ensureAudio, toggleSound,
@@ -26,6 +26,7 @@ let laneIdx, targetX, vy, grounded, jumpsLeft, banked, groundY, duckTimer, duckA
 let combo, comboTimer, comboMax;
 let squash;   // signed squash-&-stretch impulse: + on landing, - on launch, decays to 0
 let power, powerT, powerCD, gotPower;   // active power-up kind, remaining time, spawn cooldown (rows), grabbed-any flag
+let rng = Math.random, daily = false, dailyDay = '';   // daily challenge: seeded RNG + today's key
 const speedLines = $('speedlines');
 // Level + upgrade run state (set from the save at each run start).
 let level, shields, invuln, magnetR, rollValue, extraJumps;
@@ -99,8 +100,11 @@ function init() {
 
   clock = new THREE.Clock(); resetGame();
   addEventListener('resize', onResize); bindControls();
-  $('startBtn').onclick = startGame; $('againBtn').onclick = startGame; $('muteBtn').onclick = toggleSound;
-  renderShop(); renderStats(); renderAchievements(); renderCosmetics();
+  $('startBtn').onclick = () => startGame(false);
+  $('againBtn').onclick = () => startGame(daily);     // "Again!" replays the same mode
+  $('dailyBtn').onclick = () => startGame(true);
+  $('muteBtn').onclick = toggleSound;
+  renderShop(); renderStats(); renderAchievements(); renderCosmetics(); renderDaily();
 }
 
 /* ---------------- spawning ---------------- */
@@ -112,26 +116,26 @@ function spawnRow() {
   // out by forcedGap so two gates never stack into something unfair.
   if (forcedGap > 0) {
     forcedGap--;
-  } else if (d > GATE_MIN_DIFF && Math.random() < GATE_CHANCE + GATE_CHANCE_RAMP * d) {
+  } else if (d > GATE_MIN_DIFF && rng() < GATE_CHANCE + GATE_CHANCE_RAMP * d) {
     spawnGate(); forcedGap = GATE_COOLDOWN; return;
   }
 
   // CORRIDOR: one lane is always guaranteed open, and it only shifts by <=1
   // lane per row, so a single lane-change always keeps you safe. Calmer early.
   let nextSafe;
-  if (Math.random() < (0.6 - 0.35 * d)) { nextSafe = safeLane; }
-  else { const nb = [safeLane - 1, safeLane + 1].filter(l => l >= 0 && l <= 2); nextSafe = nb[(Math.random() * nb.length) | 0]; }
+  if (rng() < (0.6 - 0.35 * d)) { nextSafe = safeLane; }
+  else { const nb = [safeLane - 1, safeLane + 1].filter(l => l >= 0 && l <= 2); nextSafe = nb[(rng() * nb.length) | 0]; }
 
   // block 1 lane (easy) or sometimes 2 (later) — never the safe lane, never all 3
   const p2 = Math.max(0, (d - 0.2)) * 0.7;
-  const blockCount = (Math.random() < p2) ? 2 : 1;
-  const others = [0, 1, 2].filter(l => l !== nextSafe); shuffle(others);
+  const blockCount = (rng() < p2) ? 2 : 1;
+  const others = [0, 1, 2].filter(l => l !== nextSafe); shuffle(others, rng);
   const blocked = others.slice(0, blockCount);
 
   // bars phase in only after the warm-up
   const kinds = d < 0.28 ? ['cactus', 'rock'] : ['cactus', 'rock', 'bar'];
   blocked.forEach(li => {
-    const o = makeObstacle(kinds[(Math.random() * kinds.length) | 0]);
+    const o = makeObstacle(kinds[(rng() * kinds.length) | 0]);
     o.position.set(LANES[li], 0, SPAWN_Z); o.userData.lane = li; scene.add(o); obstacles.push(o);
   });
 
@@ -139,14 +143,14 @@ function spawnRow() {
   const open = [nextSafe, ...others.slice(blockCount)];
   open.forEach(li => {
     const chance = li === nextSafe ? 0.4 : 0.5;
-    if (Math.random() < chance) { const r = makeRoll(); r.position.set(LANES[li], 0.95, SPAWN_Z); scene.add(r); rolls.push(r); }
+    if (rng() < chance) { const r = makeRoll(); r.position.set(LANES[li], 0.95, SPAWN_Z); scene.add(r); rolls.push(r); }
   });
 
   // a rare power-up gem, spaced out by a cooldown so it feels like a treat
   if (powerCD > 0) powerCD--;
-  else if (difficulty > POWERUP_MIN_DIFF && Math.random() < POWERUP_CHANCE) {
-    const li = open[(Math.random() * open.length) | 0];
-    const kind = POWERUP_KINDS[(Math.random() * POWERUP_KINDS.length) | 0];
+  else if (difficulty > POWERUP_MIN_DIFF && rng() < POWERUP_CHANCE) {
+    const li = open[(rng() * open.length) | 0];
+    const kind = POWERUP_KINDS[(rng() * POWERUP_KINDS.length) | 0];
     const p = makePowerup(POWERUPS[kind].color); p.position.set(LANES[li], 1.0, SPAWN_Z); p.userData.kind = kind;
     scene.add(p); pickups.push(p); powerCD = POWERUP_COOLDOWN;
   }
@@ -155,11 +159,11 @@ function spawnRow() {
 }
 function spawnGate() {
   // 50/50 slide-under vs jump-over; spans all lanes (halfW covers every lane).
-  const slide = Math.random() < 0.5;
+  const slide = rng() < 0.5;
   const o = slide ? makeGate() : makeHurdle();
   o.position.set(0, 0, SPAWN_Z); o.userData.halfW = 3.3; scene.add(o); obstacles.push(o);
   // A reward roll in a random lane for clearing it cleanly.
-  if (Math.random() < 0.7) { const r = makeRoll(); r.position.set(LANES[(Math.random() * 3) | 0], 0.95, SPAWN_Z); scene.add(r); rolls.push(r); }
+  if (rng() < 0.7) { const r = makeRoll(); r.position.set(LANES[(rng() * 3) | 0], 0.95, SPAWN_Z); scene.add(r); rolls.push(r); }
 }
 function spawnScenery() {
   const x = (Math.random() < 0.5 ? -1 : 1) * (4.4 + Math.random() * 3.5), roll = Math.random();
@@ -171,7 +175,9 @@ function spawnScenery() {
 function resetGame() {
   [...obstacles, ...rolls, ...pickups, ...scenery].forEach(o => scene.remove(o));
   obstacles = []; rolls = []; pickups = []; scenery = [];
-  const eff = effects();
+  // Daily runs a seeded course with no meta-upgrades so everyone competes evenly.
+  rng = daily ? mulberry32(dailySeed(dailyDay)) : Math.random;
+  const eff = daily ? { shields: 0, magnet: 0, rollValue: 15, extraJumps: 0, headstart: 0 } : effects();
   shields = eff.shields; invuln = 0; magnetR = eff.magnet; rollValue = eff.rollValue; extraJumps = eff.extraJumps;
   level = 1 + eff.headstart;
   speed = 12.5; distance = (level - 1) * LEVEL_DIST; rollCount = 0; rollPoints = 0; rowTimer = 1.8; sceneAcc = 0; dustAcc = 0;
@@ -182,17 +188,19 @@ function resetGame() {
   applySkin(playerMats, selectedSkin());
   applyBiome(level, true);
 }
-function startGame() {
+function startGame(isDaily = false) {
+  daily = !!isDaily; dailyDay = dailyKey();
   ensureAudio(); sfxStart();
   resetGame(); state = 'playing';
   $('overlay').classList.add('hide'); $('gameover').classList.add('hide'); $('hud').classList.remove('hide');
   updateHud(); updateLevelHud(); updateShieldHud(); updateComboHud(false); updatePowerHud();
-  showBanner(`Lvl ${level} · ${biomeOf(level).name}`);
+  showBanner(daily ? '📅 Daily Challenge' : `Lvl ${level} · ${biomeOf(level).name}`);
 }
 function gameOver() {
   state = 'over'; shakeT = 0.45; flash('#ff5a6a'); buzz([40, 40, 80]); sfxCrash(); setTimeout(sfxOver, 260);
   particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.6, 0)), { count: 16, color: 0xff8a6a, speed: 4, up: 4, life: .7, grav: 12 });
   setBest(score());
+  if (daily) { setDailyBest(dailyDay, score()); renderDaily(); }
   bumpStats({ runs: 1, dist: Math.floor(distance), rolls: rollCount, maxCombo: comboMax, maxLevel: level });
   const unlocked = checkAchievements({ run: { level, score: score(), comboMax, rollCount, gotPower }, stats: getStats() });
   addRolls(rollCount);             // bank this run's rolls into the shop wallet
@@ -463,6 +471,12 @@ function renderStats() {
   const s = getStats(), km = (s.dist / 1000).toFixed(1);
   const html = `<span>🏆 Best ${getBest()}</span><span>🏃 ${s.runs} run${s.runs === 1 ? '' : 's'}</span><span>🧻 ${s.rolls}</span><span>🔥 x${comboMult(s.maxCombo)}</span><span>📏 ${km}km</span>`;
   document.querySelectorAll('.stats').forEach(el => { el.innerHTML = html; });
+}
+
+// The daily-challenge button label carries today's best for this seeded course.
+function renderDaily() {
+  const b = getDailyBest(dailyKey());
+  $('dailyBtn').textContent = b > 0 ? `📅 Daily · best ${b}` : '📅 Daily Challenge';
 }
 
 // Achievement badge grid (locked badges show a padlock), shown on both cards.

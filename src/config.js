@@ -45,11 +45,33 @@ export const $ = (id) => document.getElementById(id);
 // Haptic buzz (no-op on platforms without the Vibration API).
 export const buzz = (ms) => { if (navigator.vibrate) navigator.vibrate(ms); };
 
-// In-place Fisher–Yates shuffle.
-export function shuffle(a) {
+// In-place Fisher–Yates shuffle. Takes an RNG so the daily challenge can shuffle
+// deterministically; defaults to Math.random for normal runs.
+export function shuffle(a, rnd = Math.random) {
   for (let i = a.length - 1; i > 0; i--) {
-    const j = (Math.random() * (i + 1)) | 0;
+    const j = (rnd() * (i + 1)) | 0;
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
+}
+
+// Deterministic RNG (mulberry32) for the daily challenge: one seed reproduces
+// the exact obstacle sequence, so everyone races the same course each day.
+export function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+// Today's challenge key (UTC date) and a 32-bit seed hashed from it.
+export function dailyKey(d = new Date()) {
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+}
+export function dailySeed(key) {
+  let h = 2166136261;
+  for (let i = 0; i < key.length; i++) { h ^= key.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
 }
