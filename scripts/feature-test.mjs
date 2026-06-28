@@ -194,11 +194,18 @@ const SCENARIOS = [
   {
     name: 'upgrade-visuals',
     fn: (c, assert) => {
-      c.fund(2000); c.buy('shield'); c.buy('spring'); c.buy('spring');   // shield t1, spring t2
+      c.fund(2000); c.buy('shield'); c.buy('shield'); c.buy('spring');   // shield t2, spring t1
       const s = c.start();
-      assert(s.gearTiers.shield === 1, 'owning Cushion shows its gear at tier 1');
-      assert(s.gearTiers.spring === 2, 'a second Springy tier is more pronounced');
+      assert(s.gearTiers.shield === 2, 'owning Cushion shows its gear at tier 2');
+      assert(s.gearTiers.spring === 1, 'a Springy tier is owned');
       assert(s.gearTiers.magnet === 0, 'un-owned upgrades wear no gear');
+      // the worn props actually toggle with ownership...
+      assert(s.gearVisible.shield === true, 'the shield bubble is worn');
+      assert(s.gearVisible.spring === true, 'the spring coils are worn');
+      assert(s.gearVisible.magnet === false, 'no magnet prop when un-owned');
+      assert(s.gearVisible.fortune === false && s.gearVisible.headstart === false, 'no clover/rocket when un-owned');
+      // ...and the shield's tier shows as orbiting pips, one per tier, not bulk.
+      assert(s.gearVisible.shieldPips === 2, 'a tier-2 Cushion shows two tier pips');
     },
   },
   {

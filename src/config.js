@@ -35,7 +35,7 @@ export const POWERUP_COOLDOWN = 14;    // rows guaranteed between power-up spawn
 export const POWERUPS = {
   magnet: { icon: '🧲', color: 0x4fd0ff, label: 'Magnet' },
   x2:     { icon: '✨', color: 0xffd23f, label: '2× Score' },
-  ghost:  { icon: '👻', color: 0xc9a7ff, label: 'Ghost' },
+  ghost:  { icon: '👻', color: 0xb488ff, label: 'Ghost' },
 };
 export const POWERUP_KINDS = Object.keys(POWERUPS);
 
