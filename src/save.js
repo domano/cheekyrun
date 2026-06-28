@@ -22,32 +22,44 @@ function defaults() {
   };
 }
 
+// A stored field that should be a key->value map. Legacy/corrupt saves can hold
+// the wrong type here (a string, array or number); indexing — or worse, deleting
+// keys (see migrateSave) — on those throws. Since migrateSave runs at import, one
+// such field would brick the whole app before anything renders, so coerce every
+// map field to a real plain object on the way in.
+const asMap = (v) => (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
+
 export let save = load();
 function load() {
   const d = defaults();
   try {
-    const raw = JSON.parse(localStorage.getItem(KEY)) || {};
+    const raw = asMap(JSON.parse(localStorage.getItem(KEY)));
+    const rawCos = asMap(raw.cosmetics), rawMeta = asMap(raw.meta);
     return {
       wallet: raw.wallet | 0,
-      owned: raw.owned || d.owned,
+      owned: asMap(raw.owned),
       best: raw.best | 0,
-      stats: { ...d.stats, ...(raw.stats || {}) },
-      achievements: raw.achievements || d.achievements,
+      stats: { ...d.stats, ...asMap(raw.stats) },
+      achievements: asMap(raw.achievements),
       cosmetics: {
-        owned: { ...d.cosmetics.owned, ...((raw.cosmetics || {}).owned || {}) },
-        skin: (raw.cosmetics || {}).skin || d.cosmetics.skin,
+        owned: { ...d.cosmetics.owned, ...asMap(rawCos.owned) },
+        skin: rawCos.skin || d.cosmetics.skin,
       },
-      dailyBest: { ...d.dailyBest, ...(raw.dailyBest || {}) },
+      dailyBest: { ...d.dailyBest, ...asMap(raw.dailyBest) },
       meta: {
-        ...d.meta, ...(raw.meta || {}),
-        pool: { ...((raw.meta || {}).pool) },
-        banished: { ...((raw.meta || {}).banished) },
+        ...d.meta, ...rawMeta,
+        pool: asMap(rawMeta.pool),
+        banished: asMap(rawMeta.banished),
       },
     };
   } catch {
     return d;
   }
 }
+// Re-read the stored blob into the live singleton (mutated in place so every
+// importer's reference stays valid). Mirrors the import-time load + lets tests
+// exercise loading a hand-written save without a full page reload.
+export function reload() { Object.assign(save, load()); return save; }
 export function persist() {
   try { localStorage.setItem(KEY, JSON.stringify(save)); } catch { /* ignore */ }
 }

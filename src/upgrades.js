@@ -39,6 +39,10 @@ const byId = (id) => UPGRADES.find((u) => u.id === id);
 // keys forward and stops wearing phantom gear it never "owns" anymore. Runs once
 // on import; returns the ids it pruned (handy for tests).
 export function migrateSave() {
+  // Defensive: load() already coerces `owned` to a plain object, but this runs at
+  // import — a stray non-object here (deleting keys off a string throws in strict
+  // mode) would brick the whole app before anything renders. Belt and suspenders.
+  if (!save.owned || typeof save.owned !== 'object' || Array.isArray(save.owned)) save.owned = {};
   const valid = new Set(UPGRADES.map((u) => u.id));
   const pruned = Object.keys(save.owned).filter((id) => !valid.has(id));
   if (pruned.length) { pruned.forEach((id) => delete save.owned[id]); persist(); }
