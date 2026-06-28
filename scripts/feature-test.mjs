@@ -301,6 +301,55 @@ const SCENARIOS = [
       assert(s.spin > 0, 'leveling up kicks off a celebratory twirl');
     },
   },
+  {
+    name: 'perk-roll-value',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.clearField();
+      assert(c.state().mods.rollMult === 1, 'rollMult starts neutral');
+      const s1 = c.perk('lucky');
+      assert(s1.mods.rollMult === 1.25, 'Lucky Streak raises rollMult to 1.25');
+      assert(s1.perks.length === 1 && s1.perks[0].id === 'lucky', 'the perk is recorded on the run');
+      c.spawn('roll', 1, -4);
+      const s = c.step(60);
+      assert(s.rollCount === 1, 'the roll is collected');
+      assert(s.rollPoints === Math.round(s.rollValue * 1.25), 'roll points are scaled by the perk');
+    },
+  },
+  {
+    name: 'perk-extra-jump',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.clearField();
+      c.perk('hops');
+      assert(c.state().mods.extraJumpsBonus === 1, 'Hops raises the extra-jump bonus');
+      c.jump();                                   // leave the ground, then fall back
+      const s = c.step(60);                        // no rows spawn this early (rowTimer 1.8s)
+      assert(s.player.grounded, 'back on the ground');
+      assert(s.jumpsLeft === 3, 'landing refills to 2 base + 1 perk jump');
+    },
+  },
+  {
+    name: 'perk-stacking',
+    fn: (c, assert) => {
+      c.start();
+      c.perk('lucky'); c.perk('lucky'); let s = c.perk('lucky');   // cap is 3
+      assert(s.perks[0].stacks === 3, 'Lucky stacks up to its cap of 3');
+      assert(Math.abs(s.mods.rollMult - Math.pow(1.25, 3)) < 1e-9, 'each stack compounds rollMult');
+      s = c.perk('lucky');                          // beyond the cap
+      assert(s.perks[0].stacks === 3, 'a perk cannot exceed its stack cap');
+    },
+  },
+  {
+    name: 'curse-glass-cannon',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.set({ shields: 2 }); c.clearField();
+      const s1 = c.perk('glasscannon');
+      assert(s1.mods.rollX === 2, 'Glass Cannon doubles roll value');
+      assert(s1.mods.noShields === true, 'Glass Cannon disables cushions');
+      c.spawn('cactus', 1, -4);
+      const s = c.step(60);
+      assert(s.state === 'over', 'with cushions disabled, a hit ends the run despite owning shields');
+    },
+  },
 ];
 
 /* ------------------------------- runner ------------------------------- */

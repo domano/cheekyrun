@@ -7,6 +7,7 @@ import { buildPlayer, applyGear } from './player.js';
 import { LEVEL_DIST, biomeOf, obstacleSet, levelFromDistance, levelProgress } from './levels.js';
 import { trackOffset, deformRoad } from './track.js';
 import { UPGRADES, effects, tierOf, nextCost, buy, getWallet, addRolls } from './upgrades.js';
+import { PERKS, freshMods, applyPerks, perkById } from './perks.js';
 import { getBest, setBest, getStats, bumpStats, resetSave } from './save.js';
 import { hasAch, unlock } from './save.js';
 import { ACHIEVEMENTS, checkAchievements } from './achievements.js';
@@ -41,6 +42,9 @@ let rng = Math.random, daily = false, dailyDay = '';   // daily challenge: seede
 const speedLines = $('speedlines');
 // Level + upgrade run state (set from the save at each run start).
 let level, shields, invuln, magnetR, rollValue, extraJumps;
+// Roguelite draft: perks[] picked this run ({id,stacks}); mods derives the run
+// modifiers from them; levelUps counts level-up events to time the every-2nd draft.
+let perks = [], mods = freshMods(), levelUps = 0;
 
 // Biome colour tween state — current values lerp toward the target each frame.
 const bCur = { fog: new THREE.Color(), ground: new THREE.Color(), path: new THREE.Color(), disc: new THREE.Color(), hills: [new THREE.Color(), new THREE.Color(), new THREE.Color()] };
@@ -190,6 +194,22 @@ function spawnScenery() {
   o.position.set(x, 0, SPAWN_Z - Math.random() * 6); o.rotation.y = Math.random() * Math.PI; o.userData.lx = x; scene.add(o); scenery.push(o);
 }
 
+/* ---------------- perks (roguelite draft) ---------------- */
+// Re-derive the run modifiers from the perks picked so far. perks[] is the source
+// of truth; mods is a pure fold of it, so stacking is just stacks++ then recompute.
+function recomputeRunMods() { mods = applyPerks(perks); }
+// Add one stack of a perk to this run. Shield grants are a one-shot (applied here,
+// not in recompute) so a shield spent mid-run isn't refunded by the next pick.
+function applyPerk(id) {
+  const def = perkById(id); if (!def) return false;
+  const cur = perks.find(p => p.id === id);
+  if (cur) { if (cur.stacks >= def.stack) return false; cur.stacks++; }
+  else perks.push({ id, stacks: 1 });
+  if (def.shieldGrant) { shields += def.shieldGrant; updateShieldHud(); }
+  recomputeRunMods();
+  return true;
+}
+
 /* ---------------- flow ---------------- */
 function resetGame() {
   [...obstacles, ...rolls, ...pickups, ...scenery].forEach(o => scene.remove(o));
@@ -199,9 +219,10 @@ function resetGame() {
   const eff = daily ? { shields: 0, magnet: 0, rollValue: 15, extraJumps: 0, headstart: 0 } : effects();
   shields = eff.shields; invuln = 0; magnetR = eff.magnet; rollValue = eff.rollValue; extraJumps = eff.extraJumps;
   level = 1 + eff.headstart;
+  perks = []; levelUps = 0; recomputeRunMods();   // fresh run: no perks drafted yet
   speed = 12.5; distance = (level - 1) * LEVEL_DIST; rollCount = 0; rollPoints = 0; rowTimer = 1.8; sceneAcc = 0; dustAcc = 0;
   elapsed = Math.min(70, (level - 1) * 9); difficulty = 0; safeLane = 1; forcedGap = 0;
-  laneIdx = 1; targetX = 0; vy = 0; grounded = true; jumpsLeft = 2 + extraJumps; banked = 0; groundY = 0; duckTimer = 0; duckAmt = 0; shakeT = 0;
+  laneIdx = 1; targetX = 0; vy = 0; grounded = true; jumpsLeft = 2 + extraJumps + mods.extraJumpsBonus; banked = 0; groundY = 0; duckTimer = 0; duckAmt = 0; shakeT = 0;
   combo = 0; comboTimer = 0; comboMax = 0; squash = 0; emoteT = 0; spin = 0; power = null; powerT = 0; powerCD = 6; gotPower = false;
   player.position.set(0, 0, 0); player.rotation.set(0, 0, 0); player.scale.set(1, 1, 1);
   applySkin(playerMats, selectedSkin());
@@ -243,7 +264,7 @@ function popScore(v, mult) { const e = $('scorePop'); e.textContent = '+' + v + 
 
 // Combo: bump on a roll/near-miss, refresh the window, and pulse the HUD chip.
 let comboHideT;
-function bumpCombo() { clearTimeout(comboHideT); $('comboHud').classList.remove('lose'); combo++; comboTimer = COMBO_WINDOW; comboMax = Math.max(comboMax, combo); updateComboHud(true); }
+function bumpCombo() { clearTimeout(comboHideT); $('comboHud').classList.remove('lose'); combo++; comboTimer = COMBO_WINDOW * mods.comboWindowMult; comboMax = Math.max(comboMax, combo); updateComboHud(true); }
 function breakCombo() {
   if (!combo) return;
   const had = combo >= 2; combo = 0;
@@ -312,7 +333,7 @@ function tick(dt) {
     elapsed += dt;
     invuln = Math.max(0, invuln - dt);
     difficulty = Math.min(1, elapsed / 70);           // warm up over ~70s
-    speed = (12.5 + 13.5 * difficulty) * (1 + 0.045 * (level - 1));  // levels keep nudging the pace up
+    speed = (12.5 + 13.5 * difficulty) * (1 + 0.045 * (level - 1)) * mods.speedMult;  // levels + perks nudge the pace
     if (power === 'dash') speed *= DASH_SPEED_MULT;                  // Boost: a brief speed surge (you're invuln while it lasts)
     distance += speed * dt;
     const lv = levelFromDistance(distance);
@@ -347,7 +368,7 @@ function moveObstacles(dt) {
     if (dz < 0.8 && dx < halfW) {
       const safe = o.userData.duck ? (duckTimer > 0) : (groundY > 1.0);
       if (!safe && invuln <= 0) {
-        if (shields > 0) {
+        if (shields > 0 && !mods.noShields) {
           shields--; invuln = 1.1; updateShieldHud(); breakCombo(); flash('#8fd3ff'); buzz(30); sfxShield(); shakeT = 0.25;
           particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.6, 0)), { count: 14, color: hitColor(o), speed: 4, up: 3, life: .5, grav: 8 });
           scene.remove(o); obstacles.splice(i, 1); continue;
@@ -360,7 +381,8 @@ function moveObstacles(dt) {
     // through it, not side-stepped) the instant it passes — pays out and chains.
     if (!o.userData.scored && prevZ < player.position.z && o.position.z >= player.position.z && dx < halfW + NEARMISS_MARGIN) {
       o.userData.scored = true;
-      bumpCombo(); emote(); rollPoints += NEARMISS_BONUS; popScore(NEARMISS_BONUS, comboMult(combo)); buzz(8);
+      const nm = Math.round(NEARMISS_BONUS * mods.nearMissMult);
+      bumpCombo(); emote(); rollPoints += nm; popScore(nm, comboMult(combo)); buzz(8);
       particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.9, 0)), { count: 7, color: 0xeaffff, speed: 2.4, up: 2, life: .4, grav: 4, size: 0.4 });
     }
     const off = trackOffset(o.position.z, distance); o.position.x = lx + off.x; o.position.y = off.y;
@@ -372,7 +394,7 @@ function moveRolls(dt) {
     const o = rolls[i]; o.position.z += speed * dt; o.rotation.y += dt * 4;
     // Magnet: tug nearby rolls toward the player so they're easier to grab. Acts
     // on the logical lane X (lx), not the curved render X, so it pulls true.
-    const mr = power === 'magnet' ? Math.max(magnetR, 9) : magnetR;
+    const baseMr = magnetR + mods.magnetBonus, mr = power === 'magnet' ? Math.max(baseMr, 9) : baseMr;
     if (mr > 0) {
       const mdx = player.position.x - o.userData.lx, mdz = player.position.z - o.position.z, md = Math.hypot(mdx, mdz);
       if (md < mr && md > 0.001) {
@@ -384,8 +406,9 @@ function moveRolls(dt) {
     const dz = Math.abs(o.position.z - player.position.z), dx = Math.abs(lx - player.position.x);
     if (dz < 0.9 && dx < 0.95) {
       bumpCombo(); emote();
-      const mult = comboMult(combo) * (power === 'x2' ? 2 : 1), gained = rollValue * mult;
+      const mult = comboMult(combo) * (power === 'x2' ? 2 : 1) * mods.rollX, gained = Math.round(rollValue * mult * mods.rollMult);
       rollCount++; rollPoints += gained; popScore(gained, mult); buzz(18); sfxCoin();
+      if (mods.jumpOnRoll && !grounded) jumpsLeft = Math.min(jumpsLeft + 1, 2 + extraJumps + mods.extraJumpsBonus);
       particles.emit(o.position.clone(), { count: 12, color: 0xffd56b, speed: 3, up: 3, life: .5, grav: 9, size: 0.5 }); scene.remove(o); rolls.splice(i, 1); continue;
     }
     const off = trackOffset(o.position.z, distance);
@@ -445,8 +468,8 @@ function updatePlayer(dt, t) {
   if (!grounded) {
     // Asymmetric gravity: float up gently, fall back snappily — hops feel weighty
     // and responsive without changing how high you reach.
-    vy -= (vy > 0 ? 23 : 34) * dt; groundY += vy * dt; if (groundY <= 0) {
-      groundY = 0; vy = 0; grounded = true; jumpsLeft = 2 + extraJumps; squash = 0.42;
+    vy -= (vy > 0 ? 23 * mods.floatMult : 34) * dt; groundY += vy * dt; if (groundY <= 0) {
+      groundY = 0; vy = 0; grounded = true; jumpsLeft = 2 + extraJumps + mods.extraJumpsBonus; squash = 0.42;
       particles.emit(new THREE.Vector3(player.position.x, 0.05, player.position.z + 0.2), { count: 4, color: 0xe7d8be, speed: 1.6, up: 0.8, life: .35, grav: 6, size: 0.45 });
     }
   }
@@ -667,6 +690,7 @@ function buildDebugApi() {
       biomeObstacles: [...obstacleSet(level).jump, obstacleSet(level).duck],
       rollCount, rollPoints, combo, comboMult: comboMult(combo), comboMax,
       shields, invuln: +invuln.toFixed(2), magnetR, rollValue, extraJumps, jumpsLeft,
+      perks: perks.map(p => ({ id: p.id, stacks: p.stacks })), mods, levelUps,
       power, powerT: +powerT.toFixed(2),
       emote: +emoteT.toFixed(2), spin: +spin.toFixed(2),
       laneIdx, targetX,
@@ -706,6 +730,8 @@ function buildDebugApi() {
     combo: v => { combo = v; }, rollCount: v => { rollCount = v; }, rollPoints: v => { rollPoints = v; },
     power: v => { power = v; if (v && powerT <= 0) powerT = POWERUP_DURATION; if (v === 'ghost' || v === 'dash') invuln = Math.max(invuln, POWERUP_DURATION); },
     powerT: v => { powerT = v; }, safeLane: v => { safeLane = v; }, forcedGap: v => { forcedGap = v; },
+    perks: v => { perks = (v || []).map(x => typeof x === 'string' ? { id: x, stacks: 1 } : { id: x.id, stacks: x.stacks || 1 }); recomputeRunMods(); },
+    levelUps: v => { levelUps = v; },
   };
   function set(o = {}) {
     for (const k in o) { if (SETTERS[k]) SETTERS[k](o[k]); }
@@ -723,6 +749,7 @@ function buildDebugApi() {
       world: ['spawn(kind, lane?, z?)', 'clearField()', `kinds: ${OBSTACLE_KINDS.join('|')}|gate|hurdle|roll|powerup[:magnet|x2|ghost]`],
       input: ['left()', 'right()', 'lane(i)', 'jump()', 'duck()'],
       shop: ['wallet()', 'fund(n)', 'buy(id)', 'effects()'],
+      perks: ['perk(id)', `ids: ${PERKS.map(p => p.id).join('|')}`],
       cosmetics: ['skin()', 'pickSkin(id)', 'unlockAch(id)'],
     }),
     // ---- lifecycle ----
@@ -755,6 +782,8 @@ function buildDebugApi() {
     // ---- shop / meta ----
     wallet: getWallet, fund: (n) => { addRolls(n); renderShop(); return getWallet(); },
     buy: (id) => { const ok = buy(id); renderShop(); return ok; }, effects,
+    // ---- perks (roguelite draft) ----
+    perk: (id) => { applyPerk(id); return snapshot(); },
     // ---- cosmetics (skins) ----
     // skin() reads the saved selection + the colours actually on the live mats.
     // pickSkin() mirrors the menu click (gate on unlock, persist, recolour);
