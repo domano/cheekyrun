@@ -57,6 +57,42 @@ full playbook lives in the **`test-game` skill**
 `/opt/pw-browsers/chromium` (the scripts point to it automatically); on a
 dev machine run `npx agent-browser install` once.
 
+## Decomposing big changes onto subagents
+
+The deterministic feature tests above exist so a big change can be split into
+independent slices and handed to parallel subagents, each of which **verifies
+its own work without playing the game or reading screenshots**. Prefer this over
+one long serial edit whenever the work spans more than one feature or module.
+
+**How to split.** Carve the change along the module boundaries in the table
+below — give each subagent ownership of as few files as possible, ideally one
+`src/*` module plus its own new scenario in `scripts/feature-test.mjs`. Slices
+that would edit the same lines aren't independent; either sequence them or land
+the shared edit yourself first, then fan out. The thinner the file overlap, the
+cleaner the merge.
+
+**What each subagent is told to do** (put this in its prompt):
+1. Implement only its slice; keep the toon aesthetic and the terse house style.
+2. Add or update a `npm run features` scenario that exercises the slice through
+   the `window.cheeky` bridge — set state, `step()` the sim, assert on JSON.
+3. Verify before returning: `npm run build`, then `npm run features` (and
+   `npm run smoke` if it touched the loop/controls) must all pass. Report the
+   scenario name and the pass/fail line — that JSON result is the deliverable,
+   not a screenshot. Only flag a screenshot when the slice is visual.
+4. Return a short summary of what changed and which files, so slices can be
+   integrated without re-reading everything.
+
+**Running them in parallel.** Launch the subagents in one batch so they run
+concurrently. If two must touch overlapping files, give them isolated git
+worktrees so their edits don't collide. Sonnet is a good default for a
+well-scoped slice; reserve heavier models for slices that need real design.
+
+**Integrating.** After collecting the slices, run the **full** suite once on the
+merged tree — `npm run build && npm run smoke && npm run features` — before
+committing. A green `features` run with every slice's scenario present is the
+signal the decomposition came back together correctly. If a feature has no
+scenario, it wasn't really tested; add one.
+
 ## Architecture
 
 The game is a single `requestAnimationFrame` loop in `src/main.js`. Everything
