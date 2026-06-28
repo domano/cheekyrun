@@ -28,23 +28,33 @@
   <div id="scorePop">+15</div>
   <button id="muteBtn" title="Sound on/off">🔊</button>
 
-  <div id="overlay" class="scrim">
-    <div class="card">
-      <div class="float">🍑👂</div>
-      <div class="title">Cheeky Run</div>
-      <div class="tag">a butt with ears, on the run</div>
-      <div class="how">
-        <b>Swipe ◀ ▶</b> &nbsp;change lanes<br>
-        <b>Tap / swipe ▲</b> &nbsp;hop (double-jump!)<br>
-        <b>Swipe ▼</b> &nbsp;duck under bars<br>
-        🧻 grab rolls &nbsp;·&nbsp; 🌵 dodge cacti
-      </div><br>
-      <button class="btn" id="startBtn">Let's go!</button>
-      <button class="btn ghost" id="dailyBtn">📅 Daily Challenge</button>
+  <div id="overlay" class="scrim menu">
+    <div class="menu-inner">
+      <header class="menu-hero">
+        <div class="float">🍑👂</div>
+        <h1 class="title">Cheeky Run</h1>
+        <div class="tag">a butt with ears, on the run</div>
+      </header>
+
+      <div class="menu-cta">
+        <button class="btn" id="startBtn">Let's go!</button>
+        <button class="btn ghost" id="dailyBtn">📅 Daily Challenge</button>
+      </div>
+
       <div class="stats"></div>
-      <div class="shop"></div>
-      <div class="cosmetics"></div>
-      <div class="achievements"></div>
+
+      <div class="hints">
+        <div class="hint"><b>◀ ▶</b><span>Swipe to switch lanes</span></div>
+        <div class="hint"><b>▲ / Tap</b><span>Hop — double-jump!</span></div>
+        <div class="hint"><b>▼</b><span>Duck under bars</span></div>
+        <div class="hint"><b>🧻 / 🌵</b><span>Grab rolls, dodge cacti</span></div>
+      </div>
+
+      <div class="menu-panels">
+        <div class="shop"></div>
+        <div class="cosmetics"></div>
+        <div class="achievements"></div>
+      </div>
     </div>
   </div>
 
