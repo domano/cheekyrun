@@ -13,8 +13,13 @@
 
   <div id="hud" class="hide">
     <div class="pill"><small>Score</small><span id="score">0</span></div>
-    <div class="pill">🧻<span id="rolls">0</span></div>
+    <div id="levelbox">
+      <div class="pill lvlpill"><small>Lvl</small><span id="level">1</span></div>
+      <div id="lvlbar"><div id="lvlfill"></div></div>
+    </div>
+    <div class="pill" id="rollpill"><span id="shieldHud" class="hide">🛡️<span id="shields">0</span></span>🧻<span id="rolls">0</span></div>
   </div>
+  <div id="banner"></div>
   <div id="scorePop">+15</div>
   <button id="muteBtn" title="Sound on/off">🔊</button>
 
@@ -30,6 +35,7 @@
         🧻 grab rolls &nbsp;·&nbsp; 🌵 dodge cacti
       </div><br>
       <button class="btn" id="startBtn">Let's go!</button>
+      <div class="shop"></div>
     </div>
   </div>
 
@@ -39,7 +45,9 @@
       <div class="title" style="font-size:32px;margin-top:6px">Wiped out!</div>
       <div class="final">Score <span id="finalScore">0</span></div>
       <div class="best" id="bestLine">Best: 0</div>
+      <div class="banked">🧻 +<span id="earned">0</span> banked</div>
       <button class="btn" id="againBtn">Again!</button>
+      <div class="shop"></div>
     </div>
   </div>
 

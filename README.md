@@ -4,7 +4,8 @@ A butt with ears, on the run — a toon-shaded 3D endless runner built with
 [Three.js](https://threejs.org/) and bundled with [Vite](https://vitejs.dev/).
 
 Swipe between lanes, hop (double-jump!), duck under bars, grab toilet rolls and
-dodge cacti.
+dodge cacti. Climb through **levels** that cycle the world through new biomes,
+and spend your rolls on permanent **upgrades**.
 
 ## Play
 
@@ -12,6 +13,27 @@ dodge cacti.
 - **Tap / swipe ▲** / **Up / Space** — hop (double-jump!)
 - **Swipe ▼** / **Down** — duck under bars
 - 🧻 grab rolls · 🌵 dodge cacti
+
+## Levels
+
+The run is split into levels by distance. Every level the world cycles to a new
+biome — Meadow → Sunset → Twilight → Candyland — repainting the sky, fog,
+ground and hills, and the pace ramps up a notch. The HUD shows the current
+level and a progress bar to the next one.
+
+## Upgrades
+
+Rolls grabbed during a run are **banked** into a wallet on game over. Spend
+them in the shop (on the menu and game-over screens) on permanent upgrades that
+persist between sessions via `localStorage`:
+
+| Upgrade | Effect |
+| --- | --- |
+| 🧲 Roll Magnet | Pulls nearby rolls toward you |
+| 🛡️ Cushion | Soaks up a crash (refills each run) |
+| 🍀 Lucky Rolls | More points per roll |
+| 🦿 Springy Cheeks | Jump higher, and one more time |
+| 🚀 Head Start | Begin a few levels in |
 
 ## Develop
 
@@ -34,6 +56,8 @@ ES modules under `src/`:
 | `index.html` | Markup: HUD, overlays, canvas mount point |
 | `src/style.css` | All styling |
 | `src/main.js` | Entry point — scene setup, spawning, game flow, controls, loop |
+| `src/levels.js` | Level progression + biome themes |
+| `src/upgrades.js` | Persistent upgrade shop (localStorage save, effects) |
 | `src/config.js` | Shared constants and small utilities |
 | `src/materials.js` | Cel-shading gradient, toon material, ink outline helpers |
 | `src/props.js` | Mesh factories (obstacles, rolls, trees, bushes, flowers, clouds) |

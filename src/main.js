@@ -4,17 +4,26 @@ import { makeGradient, toon } from './materials.js';
 import { makeObstacle, makeRoll, makeTree, makeBush, makeFlower, makeCloud } from './props.js';
 import { createParticles } from './particles.js';
 import { buildPlayer } from './player.js';
+import { LEVEL_DIST, biomeOf, levelFromDistance, levelProgress } from './levels.js';
+import { UPGRADES, effects, tierOf, nextCost, buy, getWallet, addRolls } from './upgrades.js';
 import {
   initAudio, ensureAudio, toggleSound,
-  sfxLane, sfxJump, sfxDuck, sfxCoin, sfxCrash, sfxStart, sfxOver,
+  sfxLane, sfxJump, sfxDuck, sfxCoin, sfxCrash, sfxStart, sfxOver, sfxLevel, sfxShield,
 } from './audio.js';
 
 let scene, camera, renderer, clock;
 let player, shadowBlob, ears = [], feet = [], tail, particles;
 let obstacles = [], rolls = [], scenery = [], stripes = [], clouds = [];
+let groundMat, pathMat, discMat, hillMats = [];
 let state = 'menu', best = 0;
-let speed, distance, rollCount, rowTimer, sceneAcc, dustAcc, elapsed, difficulty, safeLane;
+let speed, distance, rollCount, rollPoints, rowTimer, sceneAcc, dustAcc, elapsed, difficulty, safeLane;
 let laneIdx, targetX, vy, grounded, jumpsLeft, banked, groundY, duckTimer, duckAmt, shakeT;
+// Level + upgrade run state (set from the save at each run start).
+let level, shields, invuln, magnetR, rollValue, extraJumps;
+
+// Biome colour tween state — current values lerp toward the target each frame.
+const bCur = { fog: new THREE.Color(), ground: new THREE.Color(), path: new THREE.Color(), disc: new THREE.Color(), hills: [new THREE.Color(), new THREE.Color(), new THREE.Color()] };
+const bTgt = { fog: new THREE.Color(), ground: new THREE.Color(), path: new THREE.Color(), disc: new THREE.Color(), hills: [new THREE.Color(), new THREE.Color(), new THREE.Color()] };
 
 // Let the audio scheduler read the live game state.
 initAudio(() => state);
@@ -46,17 +55,21 @@ function init() {
   const sc = sun.shadow.camera; sc.near = 1; sc.far = 60; sc.left = -11; sc.right = 11; sc.top = 18; sc.bottom = -18;
   sun.shadow.bias = -0.0006; scene.add(sun);
 
-  const disc = new THREE.Mesh(new THREE.SphereGeometry(3.4, 24, 24), new THREE.MeshBasicMaterial({ color: 0xfff2b0 }));
+  discMat = new THREE.MeshBasicMaterial({ color: 0xfff2b0 });
+  const disc = new THREE.Mesh(new THREE.SphereGeometry(3.4, 24, 24), discMat);
   disc.position.set(-15, 17, -46); scene.add(disc);
 
   [[-9, 0x8fd16f], [3, 0x79c283], [12, 0x9bd778]].forEach(([x, c], i) => {
-    const hill = new THREE.Mesh(new THREE.SphereGeometry(10 + i * 2, 20, 16), toon(c));
+    const hm = toon(c); hillMats.push(hm);
+    const hill = new THREE.Mesh(new THREE.SphereGeometry(10 + i * 2, 20, 16), hm);
     hill.position.set(x, -6, -52 - i * 3); hill.scale.set(1.6, 0.7, 1); scene.add(hill);
   });
 
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(60, 220), toon(0x95df7d));
+  groundMat = toon(0x95df7d);
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(60, 220), groundMat);
   ground.rotation.x = -Math.PI / 2; ground.position.z = -50; ground.receiveShadow = true; scene.add(ground);
-  const path = new THREE.Mesh(new THREE.PlaneGeometry(7.4, 220), toon(0xe7c49c));
+  pathMat = toon(0xe7c49c);
+  const path = new THREE.Mesh(new THREE.PlaneGeometry(7.4, 220), pathMat);
   path.rotation.x = -Math.PI / 2; path.position.set(0, 0.01, -50); path.receiveShadow = true; scene.add(path);
 
   const dashGeo = new THREE.PlaneGeometry(0.2, 1.7);
@@ -77,6 +90,7 @@ function init() {
   clock = new THREE.Clock(); resetGame();
   addEventListener('resize', onResize); bindControls();
   $('startBtn').onclick = startGame; $('againBtn').onclick = startGame; $('muteBtn').onclick = toggleSound;
+  renderShop();
 }
 
 /* ---------------- spawning ---------------- */
@@ -119,31 +133,46 @@ function spawnScenery() {
 function resetGame() {
   [...obstacles, ...rolls, ...scenery].forEach(o => scene.remove(o));
   obstacles = []; rolls = []; scenery = [];
-  speed = 12.5; distance = 0; rollCount = 0; rowTimer = 1.8; sceneAcc = 0; dustAcc = 0; elapsed = 0; difficulty = 0; safeLane = 1;
-  laneIdx = 1; targetX = 0; vy = 0; grounded = true; jumpsLeft = 2; banked = 0; groundY = 0; duckTimer = 0; duckAmt = 0; shakeT = 0;
+  const eff = effects();
+  shields = eff.shields; invuln = 0; magnetR = eff.magnet; rollValue = eff.rollValue; extraJumps = eff.extraJumps;
+  level = 1 + eff.headstart;
+  speed = 12.5; distance = (level - 1) * LEVEL_DIST; rollCount = 0; rollPoints = 0; rowTimer = 1.8; sceneAcc = 0; dustAcc = 0;
+  elapsed = Math.min(70, (level - 1) * 9); difficulty = 0; safeLane = 1;
+  laneIdx = 1; targetX = 0; vy = 0; grounded = true; jumpsLeft = 2 + extraJumps; banked = 0; groundY = 0; duckTimer = 0; duckAmt = 0; shakeT = 0;
   player.position.set(0, 0, 0); player.rotation.set(0, 0, 0); player.scale.set(1, 1, 1);
+  applyBiome(level, true);
 }
 function startGame() {
   ensureAudio(); sfxStart();
   resetGame(); state = 'playing';
-  $('overlay').classList.add('hide'); $('gameover').classList.add('hide'); $('hud').classList.remove('hide'); updateHud();
+  $('overlay').classList.add('hide'); $('gameover').classList.add('hide'); $('hud').classList.remove('hide');
+  updateHud(); updateLevelHud(); updateShieldHud();
+  showBanner(`Lvl ${level} · ${biomeOf(level).name}`);
 }
 function gameOver() {
   state = 'over'; shakeT = 0.45; buzz([40, 40, 80]); sfxCrash(); setTimeout(sfxOver, 260);
   particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.6, 0)), { count: 16, color: 0xff8a6a, speed: 4, up: 4, life: .7, grav: 12 });
   best = Math.max(best, score());
+  addRolls(rollCount);             // bank this run's rolls into the shop wallet
   $('finalScore').textContent = score(); $('bestLine').textContent = 'Best: ' + best;
+  $('earned').textContent = rollCount; renderShop();
   setTimeout(() => { $('hud').classList.add('hide'); $('gameover').classList.remove('hide'); }, 420);
 }
-const score = () => Math.floor(distance) + rollCount * 15;
+const score = () => Math.floor(distance) + rollPoints;
 function updateHud() { $('score').textContent = score(); $('rolls').textContent = rollCount; }
+function updateLevelHud() { $('level').textContent = level; $('lvlfill').style.width = (levelProgress(distance) * 100).toFixed(1) + '%'; }
+function updateShieldHud() {
+  const box = $('shieldHud');
+  if (shields > 0) { box.classList.remove('hide'); $('shields').textContent = shields; }
+  else box.classList.add('hide');
+}
 function popScore(v) { const e = $('scorePop'); e.textContent = '+' + v; e.style.opacity = 1; clearTimeout(popScore._t); popScore._t = setTimeout(() => e.style.opacity = 0, 260); }
 
 /* ---------------- controls ---------------- */
 function moveLane(dir) { const n = Math.max(0, Math.min(2, laneIdx + dir)); if (n !== laneIdx) { laneIdx = n; targetX = LANES[laneIdx]; buzz(12); sfxLane(); } }
 function jump() {
   if (jumpsLeft > 0) {
-    const dbl = !grounded; vy = grounded ? 9.4 : 8.4; grounded = false; jumpsLeft--; buzz(15); sfxJump(dbl);
+    const dbl = !grounded; vy = (grounded ? 9.4 : 8.4) + extraJumps * 0.5; grounded = false; jumpsLeft--; buzz(15); sfxJump(dbl);
     particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.05, 0.2)), { count: 5, color: 0xeaddc6, speed: 1.6, up: 1.2, life: .4, grav: 6, size: 0.5 });
   }
 }
@@ -170,10 +199,13 @@ function animate() {
   const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
   if (state === 'playing') {
     elapsed += dt;
-    difficulty = Math.min(1, elapsed / 80);          // warm up over ~80s
-    speed = 12.5 + 13.5 * difficulty;                 // capped: 12.5 -> 26
+    invuln = Math.max(0, invuln - dt);
+    difficulty = Math.min(1, elapsed / 70);           // warm up over ~70s
+    speed = (12.5 + 13.5 * difficulty) * (1 + 0.045 * (level - 1));  // levels keep nudging the pace up
     distance += speed * dt;
-    const T = 1.35 - 0.6 * difficulty;                // seconds between rows: 1.35 -> 0.75
+    const lv = levelFromDistance(distance);
+    if (lv > level) { level = lv; onLevelUp(); }
+    const T = (1.35 - 0.6 * difficulty) / (1 + 0.04 * (level - 1));  // seconds between rows
     rowTimer -= dt; if (rowTimer <= 0) { spawnRow(); rowTimer = T; }
     sceneAcc += speed * dt; if (sceneAcc >= 5) { sceneAcc = 0; spawnScenery(); }
     moveObstacles(dt); moveRolls(dt);
@@ -183,9 +215,9 @@ function animate() {
         particles.emit(new THREE.Vector3(player.position.x, 0.06, player.position.z + 0.3), { count: 2, color: 0xe7d8be, speed: 1.2, up: 0.8, life: .45, grav: 5, size: 0.4 });
       }
     }
-    updateHud();
+    updateHud(); updateLevelHud();
   }
-  moveScenery(dt); scrollStripes(dt); driftClouds(dt);
+  moveScenery(dt); scrollStripes(dt); driftClouds(dt); tweenBiome(dt);
   updatePlayer(dt, t); particles.update(dt); updateCamera(dt, t);
   renderer.render(scene, camera);
 }
@@ -193,16 +225,34 @@ function moveObstacles(dt) {
   for (let i = obstacles.length - 1; i >= 0; i--) {
     const o = obstacles[i]; o.position.z += speed * dt;
     const dz = Math.abs(o.position.z - player.position.z), dx = Math.abs(o.position.x - player.position.x);
-    if (dz < 0.8 && dx < 0.95) { const safe = o.userData.kind === 'bar' ? (duckTimer > 0) : (groundY > 1.0); if (!safe) { gameOver(); return; } }
+    if (dz < 0.8 && dx < 0.95) {
+      const safe = o.userData.kind === 'bar' ? (duckTimer > 0) : (groundY > 1.0);
+      if (!safe && invuln <= 0) {
+        if (shields > 0) {
+          shields--; invuln = 1.1; updateShieldHud(); buzz(30); sfxShield(); shakeT = 0.25;
+          particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.6, 0)), { count: 14, color: 0x8fd3ff, speed: 4, up: 3, life: .5, grav: 8 });
+          scene.remove(o); obstacles.splice(i, 1); continue;
+        }
+        gameOver(); return;
+      }
+    }
     if (o.position.z > DESPAWN_Z) { scene.remove(o); obstacles.splice(i, 1); }
   }
 }
 function moveRolls(dt) {
   for (let i = rolls.length - 1; i >= 0; i--) {
     const o = rolls[i]; o.position.z += speed * dt; o.rotation.y += dt * 4; o.position.y = 0.95 + Math.sin(o.position.z * 0.6) * 0.06;
+    // Magnet: tug nearby rolls toward the player so they're easier to grab.
+    if (magnetR > 0) {
+      const mdx = player.position.x - o.position.x, mdz = player.position.z - o.position.z, md = Math.hypot(mdx, mdz);
+      if (md < magnetR && md > 0.001) {
+        const pull = Math.min(1, dt * (5 + 9 * (1 - md / magnetR)));
+        o.position.x += mdx * pull; o.position.z += mdz * pull;
+      }
+    }
     const dz = Math.abs(o.position.z - player.position.z), dx = Math.abs(o.position.x - player.position.x);
     if (dz < 0.9 && dx < 0.95) {
-      rollCount++; popScore(15); buzz(18); sfxCoin();
+      rollCount++; rollPoints += rollValue; popScore(rollValue); buzz(18); sfxCoin();
       particles.emit(o.position.clone(), { count: 12, color: 0xffd56b, speed: 3, up: 3, life: .5, grav: 9, size: 0.5 }); scene.remove(o); rolls.splice(i, 1); continue;
     }
     if (o.position.z > DESPAWN_Z) { scene.remove(o); rolls.splice(i, 1); }
@@ -218,7 +268,7 @@ function updatePlayer(dt, t) {
   banked += (((targetX - player.position.x) * 0.5) - banked) * Math.min(1, dt * 11); player.rotation.z = banked;
   if (!grounded) {
     vy -= 27 * dt; groundY += vy * dt; if (groundY <= 0) {
-      groundY = 0; vy = 0; grounded = true; jumpsLeft = 2;
+      groundY = 0; vy = 0; grounded = true; jumpsLeft = 2 + extraJumps;
       particles.emit(new THREE.Vector3(player.position.x, 0.05, player.position.z + 0.2), { count: 4, color: 0xe7d8be, speed: 1.6, up: 0.8, life: .35, grav: 6, size: 0.45 });
     }
   }
@@ -246,3 +296,60 @@ function updateCamera(dt, t) {
 function scrollStripes(dt) { const v = (state === 'playing' ? speed : 6) * dt; stripes.forEach(d => { d.position.z += v; if (d.position.z > DESPAWN_Z) d.position.z -= 78; }); }
 function driftClouds(dt) { clouds.forEach(c => { c.position.z += (state === 'playing' ? speed * 0.25 : 1.5) * dt; if (c.position.z > 16) { c.position.z = -60; c.position.x = (Math.random() - 0.5) * 30; } }); }
 function onResize() { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); }
+
+/* ---------------- levels / biomes ---------------- */
+function onLevelUp() {
+  const b = biomeOf(level);
+  showBanner(`Lvl ${level} · ${b.name}`); sfxLevel(); buzz([15, 30, 15]);
+  applyBiome(level, false);
+  particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.8, 0)), { count: 18, color: 0xfff0a0, speed: 4, up: 4, life: .7, grav: 8 });
+}
+function applyBiome(lv, instant) {
+  const b = biomeOf(lv);
+  bTgt.fog.setHex(b.fog); bTgt.ground.setHex(b.ground); bTgt.path.setHex(b.path); bTgt.disc.setHex(b.disc);
+  b.hills.forEach((h, i) => bTgt.hills[i].setHex(h));
+  document.body.style.background = `linear-gradient(${b.bg[0]} 0%, ${b.bg[1]} 28%, ${b.bg[2]} 66%, ${b.bg[3]} 100%)`;
+  if (instant) { copyBiome(); writeBiome(); }
+}
+function copyBiome() {
+  bCur.fog.copy(bTgt.fog); bCur.ground.copy(bTgt.ground); bCur.path.copy(bTgt.path); bCur.disc.copy(bTgt.disc);
+  bCur.hills.forEach((c, i) => c.copy(bTgt.hills[i]));
+}
+function writeBiome() {
+  if (!groundMat) return;
+  scene.fog.color.copy(bCur.fog); groundMat.color.copy(bCur.ground); pathMat.color.copy(bCur.path); discMat.color.copy(bCur.disc);
+  hillMats.forEach((m, i) => bCur.hills[i] && m.color.copy(bCur.hills[i]));
+}
+function tweenBiome(dt) {
+  const k = Math.min(1, dt * 2.2);
+  bCur.fog.lerp(bTgt.fog, k); bCur.ground.lerp(bTgt.ground, k); bCur.path.lerp(bTgt.path, k); bCur.disc.lerp(bTgt.disc, k);
+  bCur.hills.forEach((c, i) => c.lerp(bTgt.hills[i], k));
+  writeBiome();
+}
+function showBanner(text) {
+  const b = $('banner'); b.textContent = text;
+  b.classList.remove('show'); void b.offsetWidth; b.classList.add('show');
+  clearTimeout(showBanner._t); showBanner._t = setTimeout(() => b.classList.remove('show'), 1600);
+}
+
+/* ---------------- upgrade shop ---------------- */
+function renderShop() {
+  const wallet = getWallet();
+  const grid = UPGRADES.map(u => {
+    const l = tierOf(u.id), c = nextCost(u.id), maxed = c === null, afford = !maxed && wallet >= c;
+    const dots = Array.from({ length: u.max }, (_, i) => `<i class="${i < l ? 'on' : ''}"></i>`).join('');
+    const cls = `up${maxed ? ' maxed' : (afford ? '' : ' poor')}`;
+    return `<button class="${cls}" data-id="${u.id}"${maxed ? ' disabled' : ''}>
+      <span class="upi">${u.icon}</span>
+      <span class="upn">${u.name}</span>
+      <span class="upd">${u.desc}</span>
+      <span class="upmeta"><span class="updots">${dots}</span><span class="upc">${maxed ? 'MAX' : c + ' 🧻'}</span></span>
+    </button>`;
+  }).join('');
+  document.querySelectorAll('.shop').forEach(root => {
+    root.innerHTML = `<div class="shophead"><span>🛒 Upgrades</span><span class="wallet">🧻 ${wallet}</span></div><div class="shopgrid">${grid}</div>`;
+  });
+  document.querySelectorAll('.shop .up').forEach(b => {
+    b.onclick = (e) => { e.stopPropagation(); ensureAudio(); if (buy(b.dataset.id)) { sfxCoin(); buzz(18); renderShop(); } else buzz(25); };
+  });
+}

@@ -100,3 +100,5 @@ export function sfxCoin() { if (!A()) return; const t = actx.currentTime; osc(t,
 export function sfxCrash() { if (!A()) return; const t = actx.currentTime; noise(t, 0.4, 0.5, 400); osc(t, 420, 0.5, 'sawtooth', 0.25, sfxGain, 45); }
 export function sfxStart() { if (!A()) return; const t = actx.currentTime;[60, 64, 67, 72].forEach((n, i) => osc(t + i * 0.07, m2f(n), 0.12, 'square', 0.16)); }
 export function sfxOver() { if (!A()) return; const t = actx.currentTime;[72, 69, 65, 60].forEach((n, i) => osc(t + i * 0.13, m2f(n), 0.2, 'square', 0.16)); }
+export function sfxLevel() { if (!A()) return; const t = actx.currentTime;[72, 76, 79, 84].forEach((n, i) => osc(t + i * 0.08, m2f(n), 0.18, 'square', 0.18)); }
+export function sfxShield() { if (!A()) return; const t = actx.currentTime; osc(t, 300, 0.22, 'sawtooth', 0.2, sfxGain, 900); osc(t + 0.04, m2f(79), 0.16, 'square', 0.14); }
