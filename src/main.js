@@ -1,10 +1,10 @@
 import * as THREE from 'three';
-import { LANES, SPAWN_Z, DESPAWN_Z, INK, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE_RAMP, GATE_COOLDOWN, COMBO_WINDOW, comboMult, NEARMISS_MARGIN, NEARMISS_BONUS, SKIM_MARGIN, SKIM_BONUS, SKIM_WINDOW, SAFE_HAZARD_MIN_DIFF, SAFE_HAZARD_CHANCE, JUMP_BUFFER, HITSTOP_SHIELD, HITSTOP_DEATH, SLOWMO_FACTOR, SLOWMO_TIME, SLOWMO_MIN_MULT, SCORE_FLOW_RATE, POWERUP_DURATION, POWERUP_CHANCE, POWERUP_MIN_DIFF, POWERUP_COOLDOWN, POWERUPS, POWERUP_KINDS, DASH_SPEED_MULT, DRAFT_EVERY, DRAFT_CHOICES, DRAFT_ARM, DRAFT_GRACE, mulberry32, dailyKey, dailySeed, $, buzz, shuffle } from './config.js';
+import { LANES, SPAWN_Z, DESPAWN_Z, INK, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE_RAMP, GATE_COOLDOWN, COMBO_WINDOW, comboMult, NEARMISS_MARGIN, NEARMISS_BONUS, SKIM_MARGIN, SKIM_BONUS, SKIM_WINDOW, SAFE_HAZARD_MIN_DIFF, SAFE_HAZARD_CHANCE, JUMP_BUFFER, HITSTOP_SHIELD, HITSTOP_DEATH, SLOWMO_FACTOR, SLOWMO_TIME, SLOWMO_MIN_MULT, SCORE_FLOW_RATE, HEAT_PER_LEVEL, HEAT_LEVEL_CAP, HEAT_MAX, PHOENIX_COMBO, PHOENIX_INVULN, GREED_CAP, RING_TIME, POWERUP_DURATION, POWERUP_CHANCE, POWERUP_MIN_DIFF, POWERUP_COOLDOWN, POWERUPS, POWERUP_KINDS, DASH_SPEED_MULT, DRAFT_EVERY, DRAFT_CHOICES, DRAFT_ARM, DRAFT_GRACE, mulberry32, dailyKey, dailySeed, $, buzz, shuffle } from './config.js';
 import { makeGradient, toon } from './materials.js';
 import { makeObstacle, makeHurdle, makeGate, makeRoll, makePowerup, makeTree, makeBush, makeFlower, makeCloud, OBSTACLE_KINDS } from './props.js';
 import { createParticles } from './particles.js';
 import { buildPlayer, applyGear } from './player.js';
-import { LEVEL_DIST, biomeOf, obstacleSet, levelFromDistance, levelProgress } from './levels.js';
+import { LEVEL_DIST, biomeOf, obstacleSet, biomePlay, biomeAir, levelFromDistance, levelProgress } from './levels.js';
 import { trackOffset, deformRoad } from './track.js';
 import { UPGRADES, effects, tierOf, nextCost, buy, getWallet, addRolls, DEFAULT_POOL, unlockedPerkIds, META, buyMeta, migrateSave } from './upgrades.js';
 import { PERKS, freshMods, applyPerks, perkById, draftChoices } from './perks.js';
@@ -12,12 +12,12 @@ import { save, getRerolls, useReroll, getBanishes, useBanish, getBoon, setBoon, 
 import { getBest, setBest, getStats, bumpStats, resetSave, reload } from './save.js';
 import { hasAch, unlock } from './save.js';
 import { ACHIEVEMENTS, checkAchievements } from './achievements.js';
-import { selectedSkin, selectSkin, getDailyBest, setDailyBest } from './save.js';
+import { selectedSkin, selectSkin, getDailyBest, setDailyBest, getDailyStreak } from './save.js';
 import { SKINS, skinById, skinUnlocked, buySkin, applySkin } from './cosmetics.js';
 import { installDebug } from './debug.js';
 import {
   initAudio, ensureAudio, toggleSound, setIntensity, getIntensity,
-  sfxLane, sfxJump, sfxDuck, sfxCoin, sfxCrash, sfxStart, sfxOver, sfxLevel, sfxShield, sfxComboBreak, sfxWhoosh, sfxFanfare,
+  sfxLane, sfxJump, sfxDuck, sfxCoin, sfxCrash, sfxStart, sfxOver, sfxLevel, sfxShield, sfxComboBreak, sfxWhoosh, sfxFanfare, sfxFart, sfxPowerEnd,
 } from './audio.js';
 
 let scene, camera, renderer, clock;
@@ -25,6 +25,7 @@ let player, shadowBlob, ears = [], feet = [], tail, particles, playerMats, gear,
 let gearTiers = {}, fartCount = 0;   // worn upgrade tiers (for visuals/tests) + fart-puff counter
 let obstacles = [], rolls = [], pickups = [], scenery = [], stripes = [], clouds = [];
 let groundMat, pathMat, discMat, hillMats = [], roadGround, roadPath;
+let fxRing, ringT = 0, camKick = 0;    // level-up shockwave ring + a one-shot camera FOV punch
 let state = 'menu';
 let speed, distance, rollCount, rollPoints, rowTimer, sceneAcc, dustAcc, elapsed, difficulty, safeLane, forcedGap;
 let laneIdx, targetX, vy, grounded, jumpsLeft, banked, groundY, duckTimer, duckAmt, shakeT;
@@ -48,6 +49,9 @@ let rng = Math.random, daily = false, dailyDay = '';   // daily challenge: seede
 const speedLines = $('speedlines');
 // Level + upgrade run state (set from the save at each run start).
 let level, shields, invuln, magnetR, rollValue, extraJumps;
+// Phoenix comeback: `phoenix` is an armed save (earned at a hot combo); once spent
+// `phoenixUsed` blocks re-arming, so it's strictly once per run.
+let phoenix = false, phoenixUsed = false;
 // Roguelite draft: perks[] picked this run ({id,stacks}); mods derives the run
 // modifiers from them; levelUps counts level-up events to time the every-2nd draft.
 let perks = [], mods = freshMods(), levelUps = 0, draftCards = [], draftArm = 0;
@@ -55,6 +59,8 @@ let perks = [], mods = freshMods(), levelUps = 0, draftCards = [], draftArm = 0;
 // Biome colour tween state — current values lerp toward the target each frame.
 const bCur = { fog: new THREE.Color(), ground: new THREE.Color(), path: new THREE.Color(), disc: new THREE.Color(), hills: [new THREE.Color(), new THREE.Color(), new THREE.Color()] };
 const bTgt = { fog: new THREE.Color(), ground: new THREE.Color(), path: new THREE.Color(), disc: new THREE.Color(), hills: [new THREE.Color(), new THREE.Color(), new THREE.Color()] };
+// Fog band (sight distance) tweens too, so a biome's "air" eases in like its colours.
+const fogCur = { near: 32, far: 64 }, fogTgt = { near: 32, far: 64 };
 
 // Let the audio scheduler read the live game state.
 initAudio(() => state);
@@ -144,6 +150,12 @@ function init() {
     new THREE.MeshBasicMaterial({ color: INK, transparent: true, opacity: .26 }));
   shadowBlob.rotation.x = -Math.PI / 2; shadowBlob.position.y = 0.03; scene.add(shadowBlob);
 
+  // Level-up shockwave: a flat ring that bursts outward from the player and fades.
+  // Additive so it reads as a flash of light, not a solid disc. Hidden until fired.
+  fxRing = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.72, 40),
+    new THREE.MeshBasicMaterial({ color: 0xfff0a0, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
+  fxRing.rotation.x = -Math.PI / 2; fxRing.position.y = 0.04; fxRing.visible = false; scene.add(fxRing);
+
   clock = new THREE.Clock(); resetGame();
   addEventListener('resize', onResize); bindControls();
   $('startBtn').onclick = () => startGame(false);
@@ -157,31 +169,36 @@ function init() {
 /* ---------------- spawning ---------------- */
 function spawnRow() {
   const d = difficulty;
+  // `heat` is difficulty that keeps creeping past the 70s cap with the level, so a
+  // deep run grows *denser and trickier*, not just faster. At level 1 in the Meadow
+  // heat === difficulty and the biome biases are all 1, so the warm-up is unchanged.
+  const heat = Math.min(HEAT_MAX, d + Math.min(HEAT_LEVEL_CAP, (level - 1) * HEAT_PER_LEVEL));
+  const bp = biomePlay(level);   // per-biome spawn character (more gates here, denser rolls there)
   // FULL-WIDTH GATE: every lane is blocked, so the only way through is the right
   // action — jump a low hurdle or slide under a high bar. Side-stepping can't
-  // dodge it. Phases in after the warm-up, ramps with difficulty, and is spaced
+  // dodge it. Phases in after the warm-up, ramps with heat, and is spaced
   // out by forcedGap so two gates never stack into something unfair.
   if (forcedGap > 0) {
     forcedGap--;
-  } else if (d > GATE_MIN_DIFF && rng() < GATE_CHANCE + GATE_CHANCE_RAMP * d) {
+  } else if (heat > GATE_MIN_DIFF && rng() < (GATE_CHANCE + GATE_CHANCE_RAMP * heat) * bp.gateBias) {
     spawnGate(); forcedGap = GATE_COOLDOWN; return;
   }
 
   // CORRIDOR: one lane is always guaranteed open, and it only shifts by <=1
   // lane per row, so a single lane-change always keeps you safe. Calmer early.
   let nextSafe;
-  if (rng() < (0.6 - 0.35 * d)) { nextSafe = safeLane; }
+  if (rng() < (0.6 - 0.35 * Math.min(1, heat))) { nextSafe = safeLane; }
   else { const nb = [safeLane - 1, safeLane + 1].filter(l => l >= 0 && l <= 2); nextSafe = nb[(rng() * nb.length) | 0]; }
 
   // block 1 lane (easy) or sometimes 2 (later) — never the safe lane, never all 3
-  const p2 = Math.max(0, (d - 0.2)) * 0.7 * mods.obstacleMult;   // perks can crank the danger
+  const p2 = Math.max(0, (heat - 0.2)) * 0.7 * mods.obstacleMult;   // heat + perks crank the danger
   const blockCount = (rng() < p2) ? 2 : 1;
   const others = [0, 1, 2].filter(l => l !== nextSafe); shuffle(others, rng);
   const blocked = others.slice(0, blockCount);
 
   // each biome draws from its own roster; the duck bar phases in after warm-up
   const theme = obstacleSet(level);
-  const kinds = d < 0.28 ? theme.jump : [...theme.jump, theme.duck];
+  const kinds = heat < 0.28 ? theme.jump : [...theme.jump, theme.duck];
   blocked.forEach(li => {
     const o = makeObstacle(kinds[(rng() * kinds.length) | 0]);
     o.position.set(LANES[li], 0, SPAWN_Z); o.userData.lane = li; o.userData.lx = LANES[li]; scene.add(o); obstacles.push(o);
@@ -191,18 +208,18 @@ function spawnRow() {
   // jumpable/duckable hazard — so reaching safety needs a lane-change AND a clear
   // in the same beat. Still fair (one move + one action); telegraphed like any row.
   let safeHazard = false;
-  if (d > SAFE_HAZARD_MIN_DIFF && rng() < SAFE_HAZARD_CHANCE * d) {
+  if (heat > SAFE_HAZARD_MIN_DIFF && rng() < SAFE_HAZARD_CHANCE * heat * bp.hazardBias) {
     const h = makeObstacle(kinds[(rng() * kinds.length) | 0]);
     h.position.set(LANES[nextSafe], 0, SPAWN_Z); h.userData.lane = nextSafe; h.userData.lx = LANES[nextSafe]; scene.add(h); obstacles.push(h);
     safeHazard = true; safeHazardCount++;
   }
 
-  // rolls only ever sit in open lanes (perks can make them denser); skip the safe
-  // lane when it's carrying a compound hazard so a roll never overlaps it.
+  // rolls only ever sit in open lanes (perks/biome can make them denser); skip the
+  // safe lane when it's carrying a compound hazard so a roll never overlaps it.
   const open = [nextSafe, ...others.slice(blockCount)];
   open.forEach(li => {
     if (li === nextSafe && safeHazard) return;
-    const chance = (li === nextSafe ? 0.4 : 0.5) * mods.rollSpawnMult;
+    const chance = (li === nextSafe ? 0.4 : 0.5) * mods.rollSpawnMult * bp.rollBias;
     if (rng() < chance) { const r = makeRoll(); r.position.set(LANES[li], 0.95, SPAWN_Z); r.userData.lx = LANES[li]; scene.add(r); rolls.push(r); }
   });
 
@@ -357,6 +374,7 @@ function resetGame() {
   laneIdx = 1; targetX = 0; vy = 0; grounded = true; jumpsLeft = 2 + extraJumps + mods.extraJumpsBonus; banked = 0; groundY = 0; duckTimer = 0; duckAmt = 0; shakeT = 0;
   jumpBufferT = 0; laneChangeT = -99; hitStopT = 0; slowmoT = 0; worldScale = 1;
   combo = 0; comboTimer = 0; comboMax = 0; flowAcc = 0; safeHazardCount = 0; squash = 0; emoteT = 0; spin = 0; power = null; powerT = 0; powerCD = 6; gotPower = false;
+  phoenix = false; phoenixUsed = false; ringT = 0; camKick = 0;
   player.position.set(0, 0, 0); player.rotation.set(0, 0, 0); player.scale.set(1, 1, 1);
   applySkin(playerMats, selectedSkin());
   refreshGear(); fartCount = 0; updatePowerVisual(); renderPerkTray();
@@ -367,12 +385,14 @@ function startGame(isDaily = false) {
   ensureAudio(); sfxStart();
   resetGame(); state = 'playing';
   $('overlay').classList.add('hide'); $('gameover').classList.add('hide'); $('hud').classList.remove('hide');
-  updateHud(); updateLevelHud(); updateShieldHud(); updateComboHud(false); updatePowerHud();
-  showBanner(daily ? '📅 Daily Challenge' : `Lvl ${level} · ${biomeOf(level).name}`);
+  updateHud(); updateLevelHud(); updateShieldHud(); updateComboHud(false); updatePowerHud(); updatePhoenixHud();
+  const streak = daily ? getDailyStreak(dailyDay) : 0;
+  showBanner(daily ? (streak > 1 ? `📅 Daily · 🔥 ${streak}-day streak` : '📅 Daily Challenge') : `Lvl ${level} · ${biomeOf(level).name}`);
 }
 function gameOver() {
   state = 'over'; shakeT = 0.45; hitStopT = reduceMotion ? 0 : HITSTOP_DEATH; flash('#ff5a6a'); buzz([40, 40, 80]); sfxCrash();
-  particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.6, 0)), { count: 16, color: 0xff8a6a, speed: 4, up: 4, life: .7, grav: 12 });
+  camKick = reduceMotion ? 0 : Math.max(camKick, 7);   // a zoom-punch so the wipe-out lands
+  particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.6, 0)), { count: 16, color: 0xff8a6a, speed: 4, up: 4, life: .7, grav: 12, dir: new THREE.Vector3(0, 0, 1) });
   // Capture the bar to beat BEFORE banking this score, so we can celebrate a new
   // personal best — the single strongest "one more run" hook in a runner.
   const sc = score(), prevBest = getBest(), isBest = sc > prevBest && sc > 0;
@@ -415,6 +435,24 @@ function updateShieldGear() {
   if (!gear) return;
   gear.shield.visible = shields > 0;
   gear.shieldPips.forEach((pip, i) => { pip.visible = i < shields; });
+}
+// The armed-Phoenix badge: a pulsing flame that shows you've banked a save.
+function updatePhoenixHud() { $('phoenixHud').classList.toggle('hide', !phoenix); }
+// Earn the once-per-run save when a streak gets hot enough; celebrate the arm.
+function armPhoenix() {
+  phoenix = true; updatePhoenixHud();
+  showBanner('🔥 Phoenix ready!'); sfxFanfare(); buzz([10, 20, 10]); flash('#ffd23f');
+  particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.9, 0)), { count: 14, color: 0xff9a3a, speed: 3, up: 4, life: .6, grav: 6 });
+}
+// Spend the Phoenix to cheat a fatal hit: an invuln dash out of danger instead of
+// game over. Breaks the combo (you earned the save *with* it) and can't re-arm.
+function usePhoenix() {
+  phoenix = false; phoenixUsed = true; updatePhoenixHud();
+  invuln = PHOENIX_INVULN; breakCombo();
+  flash('#ff7a3a'); buzz([20, 50, 20]); shakeT = 0.3; sfxFanfare();
+  hitStopT = reduceMotion ? 0 : HITSTOP_SHIELD; camKick = Math.max(camKick, 6);
+  particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.7, 0)), { count: 22, color: 0xff9a3a, speed: 5, up: 5, life: .8, grav: 7 });
+  showBanner('🔥 Phoenix Save!');
 }
 // `nm` tints near-misses cyan so the two reward channels read apart from the
 // gold roll pops.
@@ -463,6 +501,7 @@ function duck() { duckTimer = 0.5; buzz(12); sfxDuck(); if (!grounded) vy = Math
 // every jump and slide. `fartCount` is a deterministic hook for the tests.
 function fart() {
   fartCount++;
+  sfxFart();
   particles.emit(new THREE.Vector3(player.position.x, player.position.y + 0.35, player.position.z + 0.55),
     { count: 7, color: 0xc6e26a, speed: 1.3, up: 0.5, life: .75, grav: 1.4, size: 0.7 });
 }
@@ -522,13 +561,15 @@ function tick(dt) {
     const lv = levelFromDistance(distance);
     if (lv > level) { level = lv; onLevelUp(); }
     if (comboTimer > 0) { comboTimer -= sdt; if (comboTimer <= 0) breakCombo(); }
+    // Earn the once-per-run Phoenix save when the streak gets hot enough.
+    if (!phoenix && !phoenixUsed && combo >= PHOENIX_COMBO) armPhoenix();
     // Flow scoring: a hot combo drips bonus score as you run, so a greedy chained
     // run visibly out-scores a cautious one (kept fractional for clean integers).
     if (combo >= 2) { flowAcc += speed * sdt * (cmult(combo) - 1) * SCORE_FLOW_RATE; const w = Math.floor(flowAcc); if (w) { rollPoints += w; flowAcc -= w; } }
-    const T = (1.35 - 0.6 * difficulty) / (1 + 0.04 * (level - 1));  // seconds between rows
+    const T = (1.35 - 0.6 * difficulty) / (1 + 0.04 * (level - 1)) * biomePlay(level).rowMult;  // seconds between rows
     rowTimer -= sdt; if (rowTimer <= 0) { spawnRow(); rowTimer = T; }
     sceneAcc += speed * sdt; if (sceneAcc >= 5) { sceneAcc = 0; spawnScenery(); }
-    if (power) { powerT -= sdt; if (powerT <= 0) { power = null; updatePowerVisual(); } updatePowerHud(); }
+    if (power) { powerT -= sdt; if (powerT <= 0) { power = null; updatePowerVisual(); sfxPowerEnd(); } updatePowerHud(); }
     moveObstacles(sdt); moveRolls(sdt); movePickups(sdt);
     if (grounded) {
       dustAcc += sdt; if (dustAcc > 0.11) {
@@ -544,7 +585,7 @@ function tick(dt) {
   } else if (speedLines.style.opacity !== '0') speedLines.style.opacity = 0;
   moveScenery(dt); scrollStripes(dt); driftClouds(dt); tweenBiome(dt);
   deformRoad(roadPath, distance); deformRoad(roadGround, distance);
-  updatePlayer(dt, t); particles.update(dt); updateCamera(dt, t);
+  updatePlayer(dt, t); particles.update(dt); updateFx(dt); updateCamera(dt, t);
   renderer.render(scene, camera);
 }
 const hitColor = (o) => o.userData.color || 0xff8a6a;
@@ -557,11 +598,13 @@ function moveObstacles(dt) {
       const safe = o.userData.duck ? (duckTimer > 0) : (groundY > 1.0);
       if (!safe && invuln <= 0) {
         if (shields > 0 && !mods.noShields) {
-          shields--; invuln = 1.1; updateShieldHud(); breakCombo(); flash('#8fd3ff'); buzz(30); sfxShield(); shakeT = 0.25;
+          shields--; invuln = 1.1; updateShieldHud(); breakCombo(); flash('#8fd3ff'); buzz(30); sfxShield(shields === 0); shakeT = 0.25;
           hitStopT = reduceMotion ? 0 : HITSTOP_SHIELD;   // freeze the beat so the save reads as a real impact
           particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.6, 0)), { count: 14, color: hitColor(o), speed: 4, up: 3, life: .5, grav: 8 });
           scene.remove(o); obstacles.splice(i, 1); continue;
         }
+        // A banked Phoenix cheats the fatal hit: invuln-dash clear instead of dying.
+        if (phoenix) { usePhoenix(); scene.remove(o); obstacles.splice(i, 1); continue; }
         particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.6, 0)), { count: 14, color: hitColor(o), speed: 4.5, up: 3, life: .6, grav: 10 });
         gameOver(); return;
       }
@@ -607,8 +650,11 @@ function moveRolls(dt) {
     const lx = o.userData.lx;
     const dz = Math.abs(o.position.z - player.position.z), dx = Math.abs(lx - player.position.x);
     if (dz < 0.9 && dx < 0.95) {
-      bumpCombo(); emote();
-      const mult = cmult(combo) * (power === 'x2' ? 2 : 1) * mods.rollX, gained = Math.round(rollValue * mult * mods.rollMult);
+      if (!mods.rollsNoCombo) bumpCombo();   // Perfectionist: rolls no longer feed the streak
+      emote();
+      // Magpie: each roll already banked this run makes this one worth more (capped).
+      const greed = mods.greedScale ? (1 + Math.min(GREED_CAP, rollCount * mods.greedScale)) : 1;
+      const mult = cmult(combo) * (power === 'x2' ? 2 : 1) * mods.rollX, gained = Math.round(rollValue * mult * mods.rollMult * greed);
       rollCount++; rollPoints += gained; popScore(gained, mult); buzz(18); sfxCoin(combo);   // pitch climbs with the streak
       if (mods.jumpOnRoll && !grounded) jumpsLeft = Math.min(jumpsLeft + 1, 2 + extraJumps + mods.extraJumpsBonus);
       particles.emit(o.position.clone(), { count: 12, color: 0xffd56b, speed: 3, up: 3, life: .5, grav: 9, size: 0.5 }); scene.remove(o); rolls.splice(i, 1); continue;
@@ -727,7 +773,10 @@ function updateCamera(dt, t) {
   // turns to follow the bend and pitches with the rise/fall ahead.
   const look = trackOffset(-14, distance);
   camera.position.x += ((player.position.x * 0.32 + look.x * 0.28) - camera.position.x) * Math.min(1, dt * 5);
-  const fov = 62 + Math.min(Math.max(speed - 12.5, 0), 16) * 0.5;
+  // A one-shot FOV "punch" on big beats (level-up, a Phoenix save, the crash) eases
+  // back to 0; suppressed under reduce-motion since it's vestibular.
+  const kick = reduceMotion ? 0 : camKick; camKick = Math.max(0, camKick - dt * 22);
+  const fov = 62 + Math.min(Math.max(speed - 12.5, 0), 16) * 0.5 + kick;
   if (Math.abs(camera.fov - fov) > 0.05) { camera.fov = fov; camera.updateProjectionMatrix(); }
   if (shakeT > 0) { shakeT -= dt; const s = shakeT * 1.2; camera.position.x += (Math.random() - 0.5) * s; camera.position.y = 5.4 + (Math.random() - 0.5) * s; }
   else camera.position.y += (5.4 - camera.position.y) * Math.min(1, dt * 8);
@@ -741,6 +790,16 @@ function scrollStripes(dt) {
   });
 }
 function driftClouds(dt) { clouds.forEach(c => { c.position.z += (state === 'playing' ? speed * 0.25 * worldScale : 1.5) * dt; if (c.position.z > 16) { c.position.z = -60; c.position.x = (Math.random() - 0.5) * 30; } }); }
+// The level-up shockwave: expand the flat ring out from the player and fade it.
+function updateFx(dt) {
+  if (ringT <= 0) return;
+  ringT = Math.max(0, ringT - dt);
+  const k = 1 - ringT / RING_TIME;                       // 0 → 1 over its life
+  fxRing.position.x = player.position.x; fxRing.position.z = player.position.z;
+  fxRing.scale.setScalar(1 + k * 9);
+  fxRing.material.opacity = (1 - k) * 0.7;
+  fxRing.visible = ringT > 0;
+}
 function onResize() { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); }
 
 /* ---------------- levels / biomes ---------------- */
@@ -754,29 +813,40 @@ function onLevelUp() {
   sfxLevel(); buzz([15, 30, 15]);
   spin = Math.PI * 2; squash = -0.25;     // a celebratory twirl + little stretch-up
   applyBiome(level, false);
-  particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.8, 0)), { count: 18, color: 0xfff0a0, speed: 4, up: 4, life: .7, grav: 8 });
+  // Big-moment pass: a ground shockwave ring, a fatter two-colour burst, a brief
+  // camera punch + shake — the headline beat of a run should *feel* like an event.
+  const disc = biomeOf(level).disc;
+  ringT = RING_TIME; fxRing.material.color.setHex(disc); fxRing.scale.setScalar(1); fxRing.material.opacity = 0.7;
+  fxRing.position.set(player.position.x, 0.04, player.position.z); fxRing.visible = true;
+  if (!reduceMotion) { shakeT = Math.max(shakeT, 0.12); camKick = Math.max(camKick, 4); }
+  particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.8, 0)), { count: 26, color: 0xfff0a0, speed: 4.5, up: 5, life: .8, grav: 8 });
+  particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.5, 0)), { count: 16, color: disc, speed: 3, up: 3, life: .7, grav: 6 });
   if (willDraft) openDraft();
 }
 function applyBiome(lv, instant) {
   const b = biomeOf(lv);
   bTgt.fog.setHex(b.fog); bTgt.ground.setHex(b.ground); bTgt.path.setHex(b.path); bTgt.disc.setHex(b.disc);
   b.hills.forEach((h, i) => bTgt.hills[i].setHex(h));
+  const air = biomeAir(lv); fogTgt.near = air.near; fogTgt.far = air.far;   // the stage's sight distance / mood
   document.body.style.background = `linear-gradient(${b.bg[0]} 0%, ${b.bg[1]} 28%, ${b.bg[2]} 66%, ${b.bg[3]} 100%)`;
   if (instant) { copyBiome(); writeBiome(); }
 }
 function copyBiome() {
   bCur.fog.copy(bTgt.fog); bCur.ground.copy(bTgt.ground); bCur.path.copy(bTgt.path); bCur.disc.copy(bTgt.disc);
   bCur.hills.forEach((c, i) => c.copy(bTgt.hills[i]));
+  fogCur.near = fogTgt.near; fogCur.far = fogTgt.far;
 }
 function writeBiome() {
   if (!groundMat) return;
   scene.fog.color.copy(bCur.fog); groundMat.color.copy(bCur.ground); pathMat.color.copy(bCur.path); discMat.color.copy(bCur.disc);
+  scene.fog.near = fogCur.near; scene.fog.far = fogCur.far;
   hillMats.forEach((m, i) => bCur.hills[i] && m.color.copy(bCur.hills[i]));
 }
 function tweenBiome(dt) {
   const k = Math.min(1, dt * 2.2);
   bCur.fog.lerp(bTgt.fog, k); bCur.ground.lerp(bTgt.ground, k); bCur.path.lerp(bTgt.path, k); bCur.disc.lerp(bTgt.disc, k);
   bCur.hills.forEach((c, i) => c.lerp(bTgt.hills[i], k));
+  fogCur.near += (fogTgt.near - fogCur.near) * k; fogCur.far += (fogTgt.far - fogCur.far) * k;
   writeBiome();
 }
 // A brief full-screen colour wash for big moments. CSS does the fade.
@@ -858,8 +928,9 @@ function renderStats() {
 
 // The daily-challenge button label carries today's best for this seeded course.
 function renderDaily() {
-  const b = getDailyBest(dailyKey());
-  $('dailyBtn').textContent = b > 0 ? `📅 Daily · best ${b}` : '📅 Daily Challenge';
+  const day = dailyKey(), b = getDailyBest(day), st = getDailyStreak(day);
+  const streak = st > 1 ? ` · 🔥${st}` : '';
+  $('dailyBtn').textContent = b > 0 ? `📅 Daily · best ${b}${streak}` : (st > 1 ? `📅 Daily${streak}` : '📅 Daily Challenge');
 }
 
 // Achievement badge grid (locked badges show a padlock), shown on both cards.
@@ -916,7 +987,7 @@ function renderCosmetics() {
 // passing scenario exercises real behaviour — it just removes the timing: set
 // state directly, step the sim with a fixed dt, read it back as JSON.
 function buildDebugApi() {
-  const refreshHud = () => { updateHud(); updateLevelHud(); updateShieldHud(); updateComboHud(false); updatePowerHud(); };
+  const refreshHud = () => { updateHud(); updateLevelHud(); updateShieldHud(); updateComboHud(false); updatePowerHud(); updatePhoenixHud(); };
 
   // Curve/hill warp readout: near (at the player) is always 0 so collisions stay
   // fair; far (at the spawn line) shows how the road bends/rolls into the distance.
@@ -932,8 +1003,11 @@ function buildDebugApi() {
       distance: +distance.toFixed(2), speed: +speed.toFixed(2), difficulty: +difficulty.toFixed(3), elapsed: +elapsed.toFixed(2),
       level, biome: biomeOf(level).name, levelProgress: +levelProgress(distance).toFixed(3),
       biomeObstacles: [...obstacleSet(level).jump, obstacleSet(level).duck],
+      biomePlay: biomePlay(level), fog: { near: +scene.fog.near.toFixed(1), far: +scene.fog.far.toFixed(1) },
       rollCount, rollPoints, combo, comboMult: cmult(combo), comboMax, comboTimer: +comboTimer.toFixed(2),
       shields, invuln: +invuln.toFixed(2), magnetR, rollValue, extraJumps, jumpsLeft,
+      phoenix, phoenixUsed, ringT: +ringT.toFixed(3), camKick: +camKick.toFixed(2),
+      dailyStreak: getDailyStreak(dailyKey()),
       jumpBufferT: +jumpBufferT.toFixed(3), hitStopT: +hitStopT.toFixed(3), slowmoT: +slowmoT.toFixed(3),
       safeHazards: safeHazardCount, musicIntensity: +getIntensity().toFixed(3),
       perks: perks.map(p => ({ id: p.id, stacks: p.stacks })), mods, levelUps,
@@ -976,6 +1050,7 @@ function buildDebugApi() {
     shields: v => { shields = v; }, invuln: v => { invuln = v; }, magnetR: v => { magnetR = v; },
     rollValue: v => { rollValue = v; }, extraJumps: v => { extraJumps = v; }, jumpsLeft: v => { jumpsLeft = v; },
     combo: v => { combo = v; }, rollCount: v => { rollCount = v; }, rollPoints: v => { rollPoints = v; },
+    phoenix: v => { phoenix = !!v; if (phoenix) phoenixUsed = false; }, phoenixUsed: v => { phoenixUsed = !!v; },
     power: v => { power = v; if (v && powerT <= 0) powerT = POWERUP_DURATION; if (v === 'ghost' || v === 'dash') invuln = Math.max(invuln, POWERUP_DURATION); },
     powerT: v => { powerT = v; }, safeLane: v => { safeLane = v; }, forcedGap: v => { forcedGap = v; },
     perks: v => { perks = (v || []).map(x => typeof x === 'string' ? { id: x, stacks: 1 } : { id: x.id, stacks: x.stacks || 1 }); recomputeRunMods(); refreshGear(); },
@@ -1061,6 +1136,9 @@ function buildDebugApi() {
     buyMeta: (id) => { const ok = buyMeta(id); renderShop(); return ok; },
     boon: (id) => { setBoon(id || null); renderShop(); return getBoon(); },
     startDaily: () => { startGame(true); return snapshot(); },
+    // Record a daily result for an explicit day key, so the return-streak logic is
+    // testable without waiting for real calendar days to pass.
+    dailyResult: (day, sc) => { setDailyBest(day, sc | 0); renderDaily(); return { best: getDailyBest(day), streak: getDailyStreak(day) }; },
     // ---- cosmetics (skins) ----
     // skin() reads the saved selection + the colours actually on the live mats.
     // pickSkin() mirrors the menu click (gate on unlock, persist, recolour);

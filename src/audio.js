@@ -102,9 +102,28 @@ export function toggleSound() {
   $('muteBtn').textContent = soundOn ? '🔊' : '🔇';
 }
 
+// Sidechain duck: briefly pull the music down so a big SFX (crash, fanfare)
+// reads over a full arrangement instead of fighting it, then ramp back up.
+function duckMusic(amount = 0.12, hold = 0.5) {
+  if (!audioReady || !musicGain) return;
+  const t = actx.currentTime;
+  musicGain.gain.cancelScheduledValues(t);
+  musicGain.gain.setTargetAtTime(amount, t, 0.02);
+  musicGain.gain.setTargetAtTime(0.45, t + hold, 0.12);
+}
+
+// A few cents of human detune on the most-repeated one-shots so the ear doesn't
+// lock onto an identical blip every lane change.
+const detune = () => 1 + (Math.random() - 0.5) * 0.04;
+
 // SFX — all guarded so they're silent until audio is ready and unmuted.
 const A = () => audioReady && soundOn;
-export function sfxLane() { if (!A()) return; osc(actx.currentTime, 520, 0.05, 'square', 0.1); }
+export function sfxLane() { if (!A()) return; osc(actx.currentTime, 520 * detune(), 0.05, 'square', 0.1); }
+// The signature gag: a soft raspberry parp on every jump/slide — a pitch-bent
+// triangle with a touch of filtered noise, randomized so it never repeats.
+export function sfxFart() { if (!A()) return; const t = actx.currentTime, f = 230 * detune(); osc(t, f, 0.18, 'triangle', 0.1, sfxGain, f * 0.4); noise(t, 0.12, 0.05, 600); }
+// A soft two-note down-blip when a power-up wears off, so it isn't a silent loss.
+export function sfxPowerEnd() { if (!A()) return; const t = actx.currentTime; osc(t, m2f(67), 0.1, 'triangle', 0.08, sfxGain, m2f(60)); osc(t + 0.07, m2f(55), 0.14, 'triangle', 0.07, sfxGain, m2f(50)); }
 export function sfxJump(dbl) { if (!A()) return; const t = actx.currentTime; osc(t, dbl ? 620 : 380, 0.16, 'square', 0.18, sfxGain, dbl ? 1150 : 780); }
 export function sfxDuck() { if (!A()) return; osc(actx.currentTime, 320, 0.14, 'square', 0.16, sfxGain, 120); }
 // Coin chime climbs a pentatonic ladder with the combo (capped) so a hot streak
@@ -114,12 +133,17 @@ export function sfxCoin(step = 0) { if (!A()) return; const t = actx.currentTime
 // A short airy whoosh for a near-miss / skim — a filtered noise sweep that sits
 // quietly under the coin so it reads as "that was close" without nagging.
 export function sfxWhoosh() { if (!A()) return; const t = actx.currentTime; noise(t, 0.16, 0.1, 1200); osc(t, 900, 0.16, 'triangle', 0.05, sfxGain, 2200); }
-// A triumphant rising fanfare for a new personal best.
-export function sfxFanfare() { if (!A()) return; const t = actx.currentTime;[72, 76, 79, 84, 88].forEach((n, i) => osc(t + i * 0.09, m2f(n), 0.22, 'square', 0.18)); }
-export function sfxCrash() { if (!A()) return; const t = actx.currentTime; noise(t, 0.4, 0.5, 400); osc(t, 420, 0.5, 'sawtooth', 0.25, sfxGain, 45); }
+// A triumphant rising fanfare for a new personal best — ducks the music so the
+// win punches through, then caps it with a sustained octave-up "win" chord.
+export function sfxFanfare() { if (!A()) return; const t = actx.currentTime; duckMusic(0.18, 0.6);[72, 76, 79, 84, 88].forEach((n, i) => osc(t + i * 0.09, m2f(n), 0.22, 'square', 0.18)); [84, 88, 91].forEach(n => osc(t + 0.5, m2f(n), 0.5, 'square', 0.12)); }
+// The crash: a two-layer impact (noise + saw body PLUS a sub thump for weight)
+// that ducks the music hard so the wipe-out lands instead of mushing into the loop.
+export function sfxCrash() { if (!A()) return; const t = actx.currentTime; duckMusic(0.08, 0.7); noise(t, 0.4, 0.5, 400); osc(t, 420, 0.5, 'sawtooth', 0.25, sfxGain, 45); osc(t, 120, 0.4, 'sine', 0.3, sfxGain, 38); }
 export function sfxStart() { if (!A()) return; const t = actx.currentTime;[60, 64, 67, 72].forEach((n, i) => osc(t + i * 0.07, m2f(n), 0.12, 'square', 0.16)); }
 export function sfxOver() { if (!A()) return; const t = actx.currentTime;[72, 69, 65, 60].forEach((n, i) => osc(t + i * 0.13, m2f(n), 0.2, 'square', 0.16)); }
 export function sfxLevel() { if (!A()) return; const t = actx.currentTime;[72, 76, 79, 84].forEach((n, i) => osc(t + i * 0.08, m2f(n), 0.18, 'square', 0.18)); }
-export function sfxShield() { if (!A()) return; const t = actx.currentTime; osc(t, 300, 0.22, 'sawtooth', 0.2, sfxGain, 900); osc(t + 0.04, m2f(79), 0.16, 'square', 0.14); }
+// A shield save. When it was your *last* cushion, a tenser, lower variant with a
+// dissonant minor-2nd so you *hear* you're now running bare.
+export function sfxShield(last) { if (!A()) return; const t = actx.currentTime; osc(t, 300, 0.22, 'sawtooth', 0.2, sfxGain, 900); if (last) { osc(t + 0.04, m2f(63), 0.2, 'square', 0.14); osc(t + 0.04, m2f(64), 0.2, 'square', 0.1); } else { osc(t + 0.04, m2f(79), 0.16, 'square', 0.14); } }
 // A soft, quiet two-note slide down — the "aw, lost the combo" cue.
 export function sfxComboBreak() { if (!A()) return; const t = actx.currentTime; osc(t, m2f(67), 0.12, 'triangle', 0.1, sfxGain, m2f(60)); osc(t + 0.08, m2f(60), 0.16, 'triangle', 0.09, sfxGain, m2f(55)); }

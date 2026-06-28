@@ -20,6 +20,8 @@ export function freshMods() {
     floatMult: 1,
     jumpOnRoll: false,
     comboCeil: 0,
+    rollsNoCombo: false,   // Perfectionist: rolls stop feeding the combo (near-misses must)
+    greedScale: 0,         // Magpie: roll value escalates per roll already grabbed this run
   };
 }
 
@@ -56,6 +58,19 @@ export const PERKS = [
     rarity: 'epic', weight: 22, stack: 1, apply: (m) => { m.comboCeil += 2; } },
   { id: 'featherweight', icon: '🎈', name: 'Featherweight', desc: 'Super floaty, but one fewer jump.',
     rarity: 'curse', weight: 26, stack: 1, apply: (m) => { m.floatMult *= 0.45; m.extraJumpsBonus -= 1; } },
+  // --- Keystones: build-defining picks that change *how* you play, not just stats ---
+  // A dodge build: rolls no longer feed the combo, so the only way to keep a streak
+  // alive is to thread obstacles — and those near-misses pay triple.
+  { id: 'perfectionist', icon: '🎯', name: 'Perfectionist', desc: 'Near-misses pay 3×, but rolls give no combo.',
+    rarity: 'epic', weight: 20, stack: 1, apply: (m) => { m.nearMissMult *= 3; m.rollsNoCombo = true; } },
+  // A greed build: every roll you bank makes the next ones worth more (up to +150%),
+  // so a long, clean harvest snowballs.
+  { id: 'magpie', icon: '🐦', name: 'Magpie', desc: 'Each roll grabbed makes rolls worth more.',
+    rarity: 'epic', weight: 20, stack: 1, apply: (m) => { m.greedScale += 0.01; } },
+  // A high-roller curse: triple roll value, but you run bare (no cushions) through
+  // a denser hazard field — pure score, no safety net.
+  { id: 'allin', icon: '🎰', name: 'All In', desc: '3× rolls, but no cushions & much more danger.',
+    rarity: 'curse', weight: 22, stack: 1, apply: (m) => { m.rollX *= 3; m.noShields = true; m.obstacleMult *= 1.4; } },
 ];
 
 export const perkById = (id) => PERKS.find((p) => p.id === id);

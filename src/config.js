@@ -18,7 +18,7 @@ export const GATE_COOLDOWN = 2;       // normal rows guaranteed between gates
 // drops. The multiplier steps up one notch every COMBO_STEP hits, capped.
 export const COMBO_WINDOW = 2.6;      // seconds a combo survives idle
 export const COMBO_STEP = 4;          // hits between each +1 to the multiplier
-export const COMBO_MAX = 5;           // multiplier ceiling
+export const COMBO_MAX = 8;           // multiplier ceiling — high enough to stay a chase
 // `extra` raises the multiplier ceiling (the Hot Streak perk feeds it mods.comboCeil).
 export const comboMult = (c, extra = 0) => Math.min(COMBO_MAX + extra, 1 + Math.floor(c / COMBO_STEP));
 
@@ -45,12 +45,31 @@ export const SAFE_HAZARD_CHANCE = 0.4;      // scaled by difficulty, so it ramps
 export const JUMP_BUFFER = 0.13;
 // Hit-stop: a brief world freeze on impact so the hit reads as a physical event.
 export const HITSTOP_SHIELD = 0.06;   // shield save — the run keeps going, so the freeze is felt
-export const HITSTOP_DEATH = 0.09;    // the crash
+export const HITSTOP_DEATH = 0.14;    // the crash — a longer freeze so the wipe-out lands hard
 // Near-miss slow-mo: a short time-dilation on a hot-combo skim/near-miss. Only
 // kicks in once the multiplier is climbing, so it stays an event, not constant.
 export const SLOWMO_FACTOR = 0.45;    // world runs at this fraction of real time
 export const SLOWMO_TIME = 0.13;      // seconds the dilation lasts
-export const SLOWMO_MIN_MULT = 3;     // combo multiplier needed to trigger it
+export const SLOWMO_MIN_MULT = 2;     // combo multiplier needed to trigger it (lower = fires more often)
+
+// Difficulty "heat": the warm-up difficulty caps at 1.0 after ~70s, so without
+// this a long run only gets *faster*, never denser. heat keeps creeping with the
+// level and feeds the pattern-selection probabilities in spawnRow(), so a deep
+// run keeps escalating in variety/danger (speed stays on its own gentler curve).
+export const HEAT_PER_LEVEL = 0.04;   // virtual difficulty added per level past 1
+export const HEAT_LEVEL_CAP = 0.6;    // ceiling on the level contribution
+export const HEAT_MAX = 1.6;          // overall clamp so spawns stay fair
+
+// Phoenix: a once-per-run earned comeback. Hold a hot enough streak and you bank
+// a single save — the next fatal hit becomes an invuln dash instead of game over.
+export const PHOENIX_COMBO = 20;      // combo length that arms the save
+export const PHOENIX_INVULN = 1.6;    // invuln seconds granted when it fires
+
+// Magpie perk: roll value escalates with rolls already grabbed this run, capped.
+export const GREED_CAP = 1.5;         // max bonus multiplier (+150%)
+
+// Level-up shockwave: a flat ring that expands and fades for this long.
+export const RING_TIME = 0.5;
 // Flow scoring: while a combo is hot the multiplier feeds bonus score as you run,
 // so a greedy chained run visibly out-scores a cautious one. Tuned gentle.
 export const SCORE_FLOW_RATE = 0.6;
@@ -118,4 +137,12 @@ export function dailySeed(key) {
   let h = 2166136261;
   for (let i = 0; i < key.length; i++) { h ^= key.charCodeAt(i); h = Math.imul(h, 16777619); }
   return h >>> 0;
+}
+// The day-key for the day before a given key — lets the daily streak tell a
+// consecutive return ("yesterday") from a broken one.
+export function prevKey(key) {
+  const [y, m, d] = key.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() - 1);
+  return dailyKey(dt);
 }
