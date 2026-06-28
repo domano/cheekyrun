@@ -208,6 +208,25 @@ const SCENARIOS = [
     },
   },
   {
+    name: 'shield-gear-tracks-remaining',
+    fn: (c, assert) => {
+      // The worn Cushion bubble follows the live shield count, not ownership:
+      // visible while protected, gone the instant the last cushion is spent.
+      c.start(); c.set({ shields: 2 }); c.clearField();
+      let s = c.state();
+      assert(s.gearVisible.shield === true, 'the cushion bubble shows while shields remain');
+      assert(s.gearVisible.shieldPips === 2, 'one orbiting pip per remaining cushion');
+      c.set({ shields: 1 });
+      assert(c.state().gearVisible.shieldPips === 1, 'spending a cushion drops a pip');
+      // Crash through the final shield — the bubble must pop, not linger.
+      c.set({ shields: 1, invuln: 0 }); c.spawn('cactus', 1, -4);
+      s = c.step(60);
+      assert(s.shields === 0, 'the last cushion is spent absorbing the hit');
+      assert(s.gearVisible.shield === false, 'the bubble vanishes with no cushion left');
+      assert(s.gearVisible.shieldPips === 0, 'and no tier pips remain');
+    },
+  },
+  {
     name: 'perk-gear',
     fn: (c, assert) => {
       c.start();

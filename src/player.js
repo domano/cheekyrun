@@ -141,16 +141,15 @@ function buildAura(player) {
 }
 
 // Reveal each worn prop for its tier/stack count, e.g.
-// { shield: 2, spring: 1, magnet: 4, fortune: 3, headstart: 1 } — shield/headstart
-// from owned upgrades, magnet/spring/fortune from drafted perk stacks. Anything at
-// 0 (or absent) is hidden — so a fresh run with no upgrades or perks shows nothing.
+// { spring: 1, magnet: 4, fortune: 3, headstart: 1 } — headstart from the owned
+// upgrade, magnet/spring/fortune from drafted perk stacks. Anything at 0 (or
+// absent) is hidden — so a fresh run with no upgrades or perks shows nothing.
+// The Cushion bubble is *not* driven here: it tracks the live shield count
+// (see updateShieldGear in main.js) so it pops the moment the last one is spent.
 // Props stay a fixed, modest size; tier shows through small details, not bulk,
 // so the silhouette stays clean even with everything equipped.
 export function applyGear(gear, t = {}) {
   const k = (id) => t[id] | 0;
-
-  gear.shield.visible = k('shield') > 0;
-  gear.shieldPips.forEach((pip, i) => { pip.visible = i < k('shield'); });
 
   gear.spring.visible = k('spring') > 0;
   if (gear.spring.visible) gear.spring.scale.setScalar(0.9 + 0.14 * k('spring'));

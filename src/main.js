@@ -354,6 +354,15 @@ function updateShieldHud() {
   const box = $('shieldHud');
   if (shields > 0) { box.classList.remove('hide'); $('shields').textContent = shields; }
   else box.classList.add('hide');
+  updateShieldGear();
+}
+// The worn Cushion bubble mirrors the live shield count, not just ownership: it
+// wraps the character while protected and pops the instant the last cushion is
+// spent, with one orbiting pip per remaining shield.
+function updateShieldGear() {
+  if (!gear) return;
+  gear.shield.visible = shields > 0;
+  gear.shieldPips.forEach((pip, i) => { pip.visible = i < shields; });
 }
 function popScore(v, mult) { const e = $('scorePop'); e.textContent = '+' + v + (mult > 1 ? ' x' + mult : ''); e.style.opacity = 1; clearTimeout(popScore._t); popScore._t = setTimeout(() => e.style.opacity = 0, 260); }
 
