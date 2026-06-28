@@ -1,30 +1,100 @@
 ---
 name: test-game
-description: Test Cheeky Run in a real browser with agent-browser. Use after any change to gameplay, rendering, UI, controls, levels, upgrades, or audio to confirm the page loads, a run actually starts, and nothing throws. Covers the one-command smoke test plus how to drive the game by hand (start a run, change lanes, jump, duck, open the shop, read the HUD, screenshot).
-allowed-tools: Bash(npm run smoke:*), Bash(npm run build:*), Bash(npm run preview:*), Bash(npx agent-browser:*), Bash(agent-browser:*)
+description: Test Cheeky Run without playing it in real time. Use after any change to gameplay, rendering, UI, controls, levels, upgrades, or audio. Covers the one-command smoke test, the deterministic feature-test harness (npm run features), the window.cheeky debug bridge for driving the game by hand, and screenshots for visual checks.
+allowed-tools: Bash(npm run smoke:*), Bash(npm run features:*), Bash(npm run build:*), Bash(npm run preview:*), Bash(npx agent-browser:*), Bash(agent-browser:*)
 ---
 
-# Testing Cheeky Run with agent-browser
+# Testing Cheeky Run
 
-There is no unit-test runner. Behaviour is verified by driving the real
-preview build with [`agent-browser`](https://www.npmjs.com/package/agent-browser)
-(installed as a devDependency, pinned in `package.json`). It snapshots the
-accessibility tree into compact `@eN` refs and sends real input over CDP — so
-it can start a run, press arrow keys, click shop buttons, and read the HUD.
+There is no unit-test runner. Cheeky Run is a real-time, timing-sensitive
+runner, so "play it and watch" is a poor way to verify a feature. Prefer, in
+order:
 
-## Fast path: the smoke test
+1. **`npm run smoke`** — does it boot and run at all? (seconds)
+2. **`npm run features`** — does each *feature* behave? Deterministic, no
+   screenshots. **Add a scenario here for any new feature.**
+3. **`window.cheeky` by hand** — drive a specific case and read JSON back.
+4. **A screenshot** — only when the change is *visual* (a biome, a prop, UI).
 
-After almost any change, run:
+The first three need no frame-perfect timing and no eyeballing. Reach for
+screenshots last, only for look-and-feel.
+
+Everything is driven by [`agent-browser`](https://www.npmjs.com/package/agent-browser)
+(a pinned devDependency): it snapshots the accessibility tree into compact
+`@eN` refs, sends real input over CDP, and — crucially — can `eval` JavaScript
+in the page to call the debug bridge and read state back.
+
+## 1. Smoke test — does it boot?
 
 ```bash
 npm run smoke
 ```
 
-This builds, serves the preview, loads the page, starts a run, sends a few
-inputs (lane / jump / duck), and **fails** if the console logged an error or
-the score never advanced. It writes a screenshot to `/tmp/cheekyrun-smoke.png`.
-The script lives at `scripts/smoke-test.sh`. A green smoke test catches most
-regressions (broken imports, runtime throws, a loop that won't start).
+Builds, serves the preview, loads the page, starts a run, sends a few inputs
+(lane / jump / duck), and **fails** on any console error or if the score never
+advanced. Screenshot at `/tmp/cheekyrun-smoke.png`. Script: `scripts/smoke-test.sh`.
+Catches broken imports, runtime throws, a loop that won't start.
+
+## 2. Feature tests — does each feature behave?
+
+```bash
+npm run features            # all scenarios
+npm run features -- shield  # only scenarios whose name matches "shield"
+```
+
+This is the main way to verify features without playing the game. It boots the
+preview with the **debug bridge** enabled (`?debug`), then for each scenario
+reloads with a clean save and runs an in-page function that sets state, steps
+the simulation with a *fixed* dt, and asserts on the JSON it reads back. No
+real-time inputs, no screenshots — results are stable. Script:
+`scripts/feature-test.mjs`.
+
+**When you add a feature, add a scenario.** It's one entry in the `SCENARIOS`
+array — a `{ name, fn }` where `fn(c, assert)` runs in the page (`c` is
+`window.cheeky`). Example:
+
+```js
+{
+  name: 'my-feature',
+  fn: (c, assert) => {
+    c.start({ shields: 2 });          // teleport into a configured run
+    c.clearField();                   // remove auto-spawned obstacles
+    c.spawn('cactus', 1, -4);         // put one dead ahead
+    const s = c.step(60);             // advance 60 frames deterministically
+    assert(s.shields === 1, 'a crash spends one shield');
+  },
+}
+```
+
+## The debug bridge: `window.cheeky`
+
+Built only when debug mode is on — `?debug` in the URL or
+`localStorage.cheekydebug` set (see `src/debug.js`). Zero overhead and no global
+in a normal production build. It drives the *same* functions and state the real
+game uses, so a passing check exercises real behaviour; it just removes the
+timing. Call `cheeky.help()` in the console for the live list. Key calls:
+
+| Call | What it does |
+| --- | --- |
+| `cheeky.state()` | Full game state as JSON (state, score, level, biome, shields, power, combo, player pos, object counts, wallet…) |
+| `cheeky.start(overrides?)` | Start a run; optional `{level,speed,shields,…}` teleport applied after |
+| `cheeky.step(frames=1, dt=1/60)` | **Advance the sim deterministically** and return `state()`. Auto-pauses the real-time loop |
+| `cheeky.pause()` / `cheeky.resume()` | Freeze / unfreeze the live loop |
+| `cheeky.set({…})` | Teleport state: `level, distance, speed, shields, invuln, magnetR, rollValue, extraJumps, combo, power, …` |
+| `cheeky.spawn(kind, lane?, z?)` | Force one object ahead. kinds: `cactus·rock·bar·gate·hurdle·roll·powerup[:magnet\|x2\|ghost]` |
+| `cheeky.clearField()` | Remove every obstacle / roll / pickup |
+| `cheeky.left() / right() / lane(i) / jump() / duck()` | Drive the controls directly |
+| `cheeky.seed(n)` | Make spawns deterministic (apply after `start()`) |
+| `cheeky.fund(n) / buy(id) / effects()` | Drive the upgrade shop (`id`: magnet·shield·fortune·spring·headstart) |
+
+One-off check from the shell (the browser persists between commands):
+
+```bash
+export AGENT_BROWSER_EXECUTABLE_PATH=/opt/pw-browsers/chromium
+npm run build && npm run preview &           # serves http://localhost:4173/
+npx agent-browser open 'http://localhost:4173/?debug=1'
+npx agent-browser eval 'cheeky.start({level:3}); cheeky.step(120)'   # → state JSON
+```
 
 ## Browser binary
 
@@ -39,61 +109,44 @@ The smoke script sets this automatically when the variable is unset and that
 path exists. On a normal dev machine, run `npx agent-browser install` once to
 fetch a managed Chrome instead.
 
-## Driving the game by hand
+## 3. Drive by hand with the debug bridge
 
-Use this when a change needs a closer look than the smoke test gives (a new
-biome, a shop item, a control tweak). Start the preview first:
-
-```bash
-npm run build && npm run preview   # serves http://localhost:4173/
-export AGENT_BROWSER_EXECUTABLE_PATH=/opt/pw-browsers/chromium
-```
-
-Then, in another shell, drive it. The browser persists between commands:
+When you want to poke at one specific case interactively. The browser persists
+between commands, so set up once and `eval` away. Reading JSON back beats
+pressing arrow keys at the right millisecond.
 
 ```bash
-npx agent-browser open http://localhost:4173/
-npx agent-browser snapshot -i                       # see menu buttons + their @refs
-npx agent-browser find role button click --name "Let's go!"   # start a run
-npx agent-browser wait 1500
+npx agent-browser open 'http://localhost:4173/?debug=1'
+npx agent-browser eval 'cheeky.start()'                       # → state JSON
+npx agent-browser eval 'cheeky.spawn("gate", 1, -3); cheeky.duck(); cheeky.step(25)'
+npx agent-browser eval 'cheeky.set({level:4, power:"ghost"}); cheeky.state()'
 ```
 
-Controls map to keyboard events (mobile uses swipe/tap — see `bindControls`
-in `src/main.js`):
+If you really need raw key input (e.g. to test `bindControls` itself), keys
+still map: `ArrowLeft`/`ArrowRight` = lane, `ArrowUp`/`Space` = jump,
+`ArrowDown` = duck. Start the run with the button if not using the bridge:
+`find role button click --name "Let's go!"`. HUD selectors: `#score`, `#level`,
+`#rolls`; overlays `#overlay` / `#gameover`; mute `#muteBtn`.
 
-| Action | Command |
-| --- | --- |
-| Move lane left / right | `npx agent-browser press ArrowLeft` / `press ArrowRight` |
-| Jump (double-jump-able) | `npx agent-browser press ArrowUp` (or `press Space`) |
-| Duck under bars | `npx agent-browser press ArrowDown` |
+## 4. Screenshots — visual changes only
 
-Read state from the HUD and capture a frame:
+The smoke and feature tests never look at pixels, so a new biome, prop, skin, or
+UI tweak still needs an eyeball. Set state with the bridge first so you frame
+exactly what you want, then capture and **Read the PNG**:
 
 ```bash
-npx agent-browser get text "#score"      # current score
-npx agent-browser get text "#level"      # current level
-npx agent-browser get text "#rolls"      # rolls collected this run
-npx agent-browser console --error        # MUST be empty
-npx agent-browser screenshot /tmp/shot.png   # then Read the PNG to eyeball it
-npx agent-browser close                  # when done
+npx agent-browser eval 'cheeky.start({level:3}); cheeky.step(120)'   # Twilight, mid-run
+npx agent-browser screenshot /tmp/shot.png
 ```
-
-Key selectors / labels (from `index.html`):
-
-- Start a run: button **"Let's go!"** (`#startBtn`); after a crash, **"Again!"** (`#againBtn`).
-- Game-over overlay: `#gameover` (has class `hide` while playing); final score `#finalScore`.
-- Shop buttons appear in the menu and game-over `.shop` containers — snapshot to
-  get their refs, then `click @eN` to buy (rolls permitting).
-- Mute toggle: `#muteBtn`.
 
 ## What to check after a change
 
-- `npm run build` succeeds **and** `npm run smoke` passes (no console errors,
-  score advances).
-- For visual/biome/UI changes, take a `screenshot` and Read the PNG to confirm
+- `npm run build` succeeds, `npm run smoke` passes, **and `npm run features`
+  passes** (no console errors, every scenario green).
+- For any **new feature**, add a `npm run features` scenario that exercises it.
+- For **visual** changes (biome/prop/skin/UI), also take a screenshot — set the
+  scene with `cheeky.set(...)` / `cheeky.step(...)` — and Read the PNG to confirm
   the toon look survived.
-- For a new mechanic, drive the specific path by hand (e.g. buy the upgrade,
-  start a run, verify its effect in the HUD or on screen) before committing.
 
 ## More agent-browser help
 
