@@ -116,6 +116,7 @@ else is a focused module it pulls from. State lives in module-scope `let`s in
 | `src/player.js` | Builds the player character; returns animated sub-parts (ears, feet, tail) |
 | `src/particles.js` | Reusable pooled particle system (dust, sparkle, debris) |
 | `src/levels.js` | Level progression by distance + biome themes |
+| `src/save.js` | The one persistent-state singleton: versioned localStorage blob with a migration chain + defaults backfill (resilient to future schema changes); typed getters/setters for every system |
 | `src/upgrades.js` | Persistent upgrade shop: localStorage save, purchase logic, resolved effects |
 | `src/audio.js` | Self-contained chiptune music scheduler + SFX (Web Audio) |
 | `src/debug.js` | Opt-in test/debug bridge — attaches `window.cheeky` when `?debug` is set (the API itself is built in `main.js`) |
@@ -143,7 +144,8 @@ else is a focused module it pulls from. State lives in module-scope `let`s in
   canvas, so biomes set both `document.body.style.background` and the 3D
   fog/ground/path/hills/disc material colours.
 
-- **Upgrades (`upgrades.js`):** a tiny localStorage save (`cheekyrun.save.v1`)
+- **Upgrades (`upgrades.js`):** a tiny localStorage save (key `cheekyrun.save`;
+  see `save.js` for the loader)
   holds a roll `wallet` and owned upgrade tiers. Rolls grabbed in a run are
   banked on game over via `addRolls()`. `effects()` resolves the current save
   into gameplay values read once at run start in `resetGame()` (shields,

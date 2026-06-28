@@ -1,21 +1,44 @@
 // The single source of persistent state. One localStorage blob, loaded once
 // into a module-singleton so every system (upgrades, best score, stats,
-// achievements, cosmetics, daily challenge) reads and writes the same object.
+// achievements, cosmetics, daily challenge, roguelite meta) reads and writes
+// the same object.
 //
-// The schema only ever grows: load() backfills every field with a default, so
-// an older save is a strict subset and migrates transparently — no version bump
-// needed. Keep load() inside a try/catch returning full defaults; a throw here
-// would blank the page (and fail the smoke test).
+// ── Resilience model ────────────────────────────────────────────────────────
+// The store is built to survive arbitrary future change sessions. Three layers,
+// applied on every load (see hydrate()):
+//
+//   1. VERSIONED MIGRATIONS. The blob carries its own schema version. When the
+//      *shape* of a field changes (a rename, a split, a restructure), add one
+//      step to MIGRATIONS and bump VERSION — old blobs are walked forward step
+//      by step. This is the only thing a structural change needs to touch.
+//   2. DEEP-MERGE BACKFILL. Every load deep-merges the stored data over a fresh
+//      defaults() tree, so *additive* fields need no migration at all: add the
+//      field to defaults() and old saves pick it up with its default. New code
+//      reading an old save never sees `undefined`.
+//   3. TYPE COERCION. The merge coerces each known field to the type its default
+//      declares and leaves open-ended maps (owned, achievements, pools…) intact,
+//      so a corrupt or hand-edited blob can't hand a string where a number is
+//      expected and brick startup.
+//
+// A blob written by a *newer* build (version ahead of ours) is left as-is and
+// merged over defaults: fields we don't understand are preserved untouched, so
+// downgrading then upgrading again loses nothing. load() is wrapped so a throw
+// can never blank the page — on any failure it returns clean defaults.
 
 import { prevKey } from './config.js';
 
-const KEY = 'cheekyrun.save.v1';
+// Stable key: the schema version lives *inside* the blob, not in the key, so it
+// never has to change again — migrations carry old data forward. (The previous
+// system keyed on `cheekyrun.save.v1`; that blob is intentionally abandoned, so
+// existing players start fresh on the new, future-proof store.)
+const KEY = 'cheekyrun.save';
+const VERSION = 1;
 
 function defaults() {
   return {
     wallet: 0,
-    owned: {},                                  // upgrade id -> tier
-    best: 0,                                     // persistent high score
+    owned: {},                                   // upgrade id -> tier
+    best: 0,                                      // persistent high score
     stats: { runs: 0, dist: 0, rolls: 0, maxCombo: 0, maxLevel: 1 },
     achievements: {},                            // achievement id -> true
     cosmetics: { owned: { classic: true }, skin: 'classic' },
@@ -24,38 +47,60 @@ function defaults() {
   };
 }
 
-// A stored field that should be a key->value map. Legacy/corrupt saves can hold
-// the wrong type here (a string, array or number); indexing — or worse, deleting
-// keys (see migrateSave) — on those throws. Since migrateSave runs at import, one
-// such field would brick the whole app before anything renders, so coerce every
-// map field to a real plain object on the way in.
-const asMap = (v) => (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
+// Migration steps. MIGRATIONS[i] upgrades a data blob from schema version i to
+// i+1; it receives the raw stored data and returns the next-version shape. Only
+// STRUCTURAL changes belong here — renames, splits, reshapes. Additive fields
+// are handled for free by the defaults() backfill, so most sessions add nothing.
+//
+// Example, when version 1 → 2 splits `cosmetics.skin` into a trail + body skin:
+//   const MIGRATIONS = [
+//     (d) => { d.cosmetics = { ...d.cosmetics, body: d.cosmetics.skin, trail: 'classic' }; return d; },
+//   ];
+const MIGRATIONS = [];
+
+const isObj = (v) => v != null && typeof v === 'object' && !Array.isArray(v);
+
+// Recursively merge stored `raw` over a `def` tree. The default's type at each
+// leaf decides the rule:
+//   • object default → recurse; keys present only in `raw` (open-map entries and
+//     fields from a newer build) are carried through untouched.
+//   • number/boolean/string default → coerce `raw` to that type, else fall back.
+//   • null default → pass `raw` through verbatim (a free-form slot, e.g. boon).
+// This single pass is layers 2 + 3 above: additive backfill and type coercion.
+function merge(def, raw) {
+  if (isObj(def)) {
+    const out = isObj(raw) ? { ...raw } : {};
+    for (const k of Object.keys(def)) out[k] = merge(def[k], isObj(raw) ? raw[k] : undefined);
+    return out;
+  }
+  if (typeof def === 'number') return Number.isFinite(+raw) ? Math.trunc(+raw) : def;
+  if (typeof def === 'boolean') return !!raw;
+  if (typeof def === 'string') return typeof raw === 'string' ? raw : def;
+  return raw === undefined ? def : raw;          // null/any default: keep what's there
+}
+
+// Walk a raw data blob from `version` up to VERSION, then merge it over fresh
+// defaults. Pure (no I/O) so it's trivially testable and reused by load().
+function hydrate(stored, version) {
+  let data = isObj(stored) ? stored : {};
+  let v = Number.isFinite(+version) ? (version | 0) : 0;   // 0 == pre-versioned / unknown
+  // Older blob: walk each migration forward. A newer blob (v > VERSION) is left
+  // for the merge to reconcile — we never run migrations backward.
+  for (; v < VERSION && MIGRATIONS[v]; v++) data = MIGRATIONS[v](data) || data;
+  return merge(defaults(), data);
+}
 
 export let save = load();
 function load() {
-  const d = defaults();
   try {
-    const raw = asMap(JSON.parse(localStorage.getItem(KEY)));
-    const rawCos = asMap(raw.cosmetics), rawMeta = asMap(raw.meta);
-    return {
-      wallet: raw.wallet | 0,
-      owned: asMap(raw.owned),
-      best: raw.best | 0,
-      stats: { ...d.stats, ...asMap(raw.stats) },
-      achievements: asMap(raw.achievements),
-      cosmetics: {
-        owned: { ...d.cosmetics.owned, ...asMap(rawCos.owned) },
-        skin: rawCos.skin || d.cosmetics.skin,
-      },
-      dailyBest: { ...d.dailyBest, ...asMap(raw.dailyBest) },
-      meta: {
-        ...d.meta, ...rawMeta,
-        pool: asMap(rawMeta.pool),
-        banished: asMap(rawMeta.banished),
-      },
-    };
+    const raw = JSON.parse(localStorage.getItem(KEY));
+    // Canonical shape is { v, data }. Tolerate a bare blob too (a hand-written or
+    // pre-envelope save), reading its version field if present, else treating it
+    // as pre-versioned so the migration chain runs from the start.
+    if (isObj(raw) && 'data' in raw) return hydrate(raw.data, raw.v);
+    return hydrate(raw, isObj(raw) ? raw.v : 0);
   } catch {
-    return d;
+    return defaults();
   }
 }
 // Re-read the stored blob into the live singleton (mutated in place so every
@@ -63,7 +108,7 @@ function load() {
 // exercise loading a hand-written save without a full page reload.
 export function reload() { Object.assign(save, load()); return save; }
 export function persist() {
-  try { localStorage.setItem(KEY, JSON.stringify(save)); } catch { /* ignore */ }
+  try { localStorage.setItem(KEY, JSON.stringify({ v: VERSION, data: save })); } catch { /* ignore */ }
 }
 
 // Wipe persistent state back to defaults — both the stored blob and the live

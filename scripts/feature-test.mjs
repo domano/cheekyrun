@@ -259,12 +259,13 @@ const SCENARIOS = [
   {
     name: 'malformed-save-still-boots',
     fn: (c, assert) => {
-      // Regression: a legacy/corrupt save whose map fields aren't plain objects
-      // (here `owned` as a string) once threw in migrateSave() at IMPORT time —
+      // Regression: a corrupt save whose map fields aren't plain objects (here
+      // `owned` as a string) once threw in migrateSave() at IMPORT time —
       // strict-mode `delete` on a string index — taking the whole module graph
       // down before init()/animate() ran. Symptom: menu HTML with no 3D scene,
-      // empty shop, dead buttons. Such a save must now load cleanly.
-      localStorage.setItem('cheekyrun.save.v1', JSON.stringify({
+      // empty shop, dead buttons. The loader's type coercion must turn every such
+      // junk field into a clean empty map so the save loads cleanly.
+      localStorage.setItem('cheekyrun.save', JSON.stringify({
         owned: 'abc', wallet: 70, meta: 'nope', cosmetics: 'classic', achievements: 5,
       }));
       let s;
@@ -283,7 +284,7 @@ const SCENARIOS = [
       // run start on a negative level, and biomeOf() returns undefined → a throw
       // deep in startup. The catch-all must wipe such a save to defaults and boot
       // clean rather than leave a dead page (no 3D scene, empty shop, dead buttons).
-      localStorage.setItem('cheekyrun.save.v1', JSON.stringify({ owned: { headstart: -3 }, wallet: 200, best: 4000 }));
+      localStorage.setItem('cheekyrun.save', JSON.stringify({ owned: { headstart: -3 }, wallet: 200, best: 4000 }));
       let s;
       try { s = c.reloadSave(); } catch (e) { assert(false, 'recovery itself threw: ' + e.message); return; }
       assert(s.recovered === true, 'the value-corrupt save tripped the reset-to-defaults path');
@@ -291,6 +292,46 @@ const SCENARIOS = [
       assert(c.effects().headstart === 0, 'the corrupt upgrade tier was reset to defaults');
       const r = c.start();
       assert(r.state === 'playing' && r.level === 1, 'a normal run starts from level 1 on the reset save');
+    },
+  },
+  {
+    name: 'versioned-save-resilience',
+    fn: (c, assert) => {
+      const KEY = 'cheekyrun.save';
+      const read = () => JSON.parse(localStorage.getItem(KEY));
+
+      // 1. A pre-versioned blob with REAL data but a MISSING field (no `meta`,
+      //    no `stats`) must hydrate: known data survives, the gap is backfilled
+      //    from defaults — no `undefined`, no crash. This is the everyday case
+      //    when new code reads a save written before a field existed.
+      localStorage.setItem(KEY, JSON.stringify({ wallet: 250, owned: { shield: 2 } }));
+      c.reloadSave();
+      assert(c.wallet() === 250, 'a pre-versioned blob keeps its wallet');
+      assert(c.effects().shields === 2, 'a pre-versioned blob keeps its owned tiers');
+      assert(c.state().meta.rerolls === 0, 'a missing field backfills to its default (no undefined)');
+
+      // 2. Any persist() stamps the current schema version, wrapped as {v,data}.
+      c.fund(10);
+      const blob = read();
+      assert(typeof blob.v === 'number' && blob.data, 'the save is stored as a versioned {v,data} envelope');
+      assert(blob.data.wallet === 260, 'game data lives under .data');
+
+      // 3. Forward compatibility: a blob from a FUTURE build (version ahead of
+      //    ours, carrying fields we do not understand) must not be wiped — we
+      //    keep the unknown field so a later upgrade loses nothing, and we never
+      //    run migrations backward.
+      localStorage.setItem(KEY, JSON.stringify({ v: 999, data: { wallet: 7, futureThing: { keep: true } } }));
+      c.reloadSave();
+      assert(c.wallet() === 7, 'a future-version save still loads its known fields');
+      assert(read().data.futureThing.keep === true, 'unknown future fields are preserved, not dropped');
+
+      // 4. Total garbage (not even JSON) falls back to clean defaults instead of
+      //    throwing at load.
+      localStorage.setItem(KEY, '}{not json');
+      let ok = true;
+      try { c.reloadSave(); } catch { ok = false; }
+      assert(ok, 'unparseable bytes load without throwing');
+      assert(c.wallet() === 0, 'unparseable bytes fall back to default wallet');
     },
   },
   {
