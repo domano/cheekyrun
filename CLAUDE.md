@@ -53,6 +53,11 @@ UI tweak) — set the scene with the bridge, capture, and **Read the PNG**. The
 full playbook lives in the **`test-game` skill**
 (`.claude/skills/test-game/SKILL.md`); invoke `/test-game` or follow it directly.
 
+To judge whether a *visual* change actually looks cute and on-style — not just
+that it works — use the **`pixie` skill** (`.claude/skills/pixie/SKILL.md`,
+invoke `/pixie`): it screenshots the scene and runs it past "Pixie", a recurring
+art-director persona, for concrete, numbered art direction and a sign-off.
+
 `agent-browser` needs a Chromium: in the agent sandbox it's pre-installed at
 `/opt/pw-browsers/chromium` (the scripts point to it automatically); on a
 dev machine run `npx agent-browser install` once.
