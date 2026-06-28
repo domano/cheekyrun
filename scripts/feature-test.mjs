@@ -208,6 +208,25 @@ const SCENARIOS = [
     },
   },
   {
+    name: 'shield-gear-tracks-remaining',
+    fn: (c, assert) => {
+      // The worn Cushion bubble follows the live shield count, not ownership:
+      // visible while protected, gone the instant the last cushion is spent.
+      c.start(); c.set({ shields: 2 }); c.clearField();
+      let s = c.state();
+      assert(s.gearVisible.shield === true, 'the cushion bubble shows while shields remain');
+      assert(s.gearVisible.shieldPips === 2, 'one orbiting pip per remaining cushion');
+      c.set({ shields: 1 });
+      assert(c.state().gearVisible.shieldPips === 1, 'spending a cushion drops a pip');
+      // Crash through the final shield — the bubble must pop, not linger.
+      c.set({ shields: 1, invuln: 0 }); c.spawn('cactus', 1, -4);
+      s = c.step(60);
+      assert(s.shields === 0, 'the last cushion is spent absorbing the hit');
+      assert(s.gearVisible.shield === false, 'the bubble vanishes with no cushion left');
+      assert(s.gearVisible.shieldPips === 0, 'and no tier pips remain');
+    },
+  },
+  {
     name: 'perk-gear',
     fn: (c, assert) => {
       c.start();
@@ -235,6 +254,43 @@ const SCENARIOS = [
       const s = c.start();
       assert(s.gearVisible.magnet === false && s.gearVisible.spring === false && s.gearVisible.fortune === false, 'a migrated save wears no phantom gear');
       assert(s.gearVisible.shield === true, 'the still-owned Cushion is still worn');
+    },
+  },
+  {
+    name: 'malformed-save-still-boots',
+    fn: (c, assert) => {
+      // Regression: a legacy/corrupt save whose map fields aren't plain objects
+      // (here `owned` as a string) once threw in migrateSave() at IMPORT time —
+      // strict-mode `delete` on a string index — taking the whole module graph
+      // down before init()/animate() ran. Symptom: menu HTML with no 3D scene,
+      // empty shop, dead buttons. Such a save must now load cleanly.
+      localStorage.setItem('cheekyrun.save.v1', JSON.stringify({
+        owned: 'abc', wallet: 70, meta: 'nope', cosmetics: 'classic', achievements: 5,
+      }));
+      let s;
+      try { s = c.reloadSave(); } catch (e) { assert(false, 'loading a malformed save threw: ' + e.message); return; }
+      assert(typeof s === 'object', 'a malformed save loads without throwing');
+      assert(c.effects().shields === 0, 'string `owned` is coerced to a clean map — no phantom tiers');
+      const r = c.start();
+      assert(r.state === 'playing', 'a run still starts after loading the malformed save');
+      assert(r.gearVisible.shield === false, 'no phantom gear is worn from the junk save');
+    },
+  },
+  {
+    name: 'corrupt-save-recovers-to-defaults',
+    fn: (c, assert) => {
+      // Type coercion can't catch a bad *value*: a negative upgrade tier makes the
+      // run start on a negative level, and biomeOf() returns undefined → a throw
+      // deep in startup. The catch-all must wipe such a save to defaults and boot
+      // clean rather than leave a dead page (no 3D scene, empty shop, dead buttons).
+      localStorage.setItem('cheekyrun.save.v1', JSON.stringify({ owned: { headstart: -3 }, wallet: 200, best: 4000 }));
+      let s;
+      try { s = c.reloadSave(); } catch (e) { assert(false, 'recovery itself threw: ' + e.message); return; }
+      assert(s.recovered === true, 'the value-corrupt save tripped the reset-to-defaults path');
+      assert(s.state === 'menu', 'startup lands on a clean, live menu');
+      assert(c.effects().headstart === 0, 'the corrupt upgrade tier was reset to defaults');
+      const r = c.start();
+      assert(r.state === 'playing' && r.level === 1, 'a normal run starts from level 1 on the reset save');
     },
   },
   {

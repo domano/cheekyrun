@@ -9,7 +9,7 @@ import { trackOffset, deformRoad } from './track.js';
 import { UPGRADES, effects, tierOf, nextCost, buy, getWallet, addRolls, DEFAULT_POOL, unlockedPerkIds, META, buyMeta, migrateSave } from './upgrades.js';
 import { PERKS, freshMods, applyPerks, perkById, draftChoices } from './perks.js';
 import { save, getRerolls, useReroll, getBanishes, useBanish, getBoon, setBoon, banishPerk, poolHas } from './save.js';
-import { getBest, setBest, getStats, bumpStats, resetSave } from './save.js';
+import { getBest, setBest, getStats, bumpStats, resetSave, reload } from './save.js';
 import { hasAch, unlock } from './save.js';
 import { ACHIEVEMENTS, checkAchievements } from './achievements.js';
 import { selectedSkin, selectSkin, getDailyBest, setDailyBest } from './save.js';
@@ -54,8 +54,25 @@ const bTgt = { fog: new THREE.Color(), ground: new THREE.Color(), path: new THRE
 // Let the audio scheduler read the live game state.
 initAudio(() => state);
 
-init();
+safeInit();
 animate();
+
+// Start up against the stored save, but never let a corrupt or incompatible
+// legacy save leave a dead page. load() already coerces field *types*, but a bad
+// *value* (e.g. a negative upgrade tier → a negative level → biomeOf() undefined)
+// can still throw deep in init(). If anything throws, wipe the save to defaults
+// and boot once more on a clean slate — an unreadable save is unrecoverable
+// anyway, and a playable game beats a black screen.
+function safeInit() {
+  try {
+    init();
+  } catch (e) {
+    console.warn('Cheeky Run: corrupt save detected at startup — resetting to defaults', e);
+    try { resetSave(); } catch { /* ignore */ }
+    try { $('game').replaceChildren(); } catch { /* ignore */ }   // drop a half-built canvas before re-init
+    init();
+  }
+}
 
 /* ---------------- setup ---------------- */
 function init() {
@@ -355,6 +372,15 @@ function updateShieldHud() {
   const box = $('shieldHud');
   if (shields > 0) { box.classList.remove('hide'); $('shields').textContent = shields; }
   else box.classList.add('hide');
+  updateShieldGear();
+}
+// The worn Cushion bubble mirrors the live shield count, not just ownership: it
+// wraps the character while protected and pops the instant the last cushion is
+// spent, with one orbiting pip per remaining shield.
+function updateShieldGear() {
+  if (!gear) return;
+  gear.shield.visible = shields > 0;
+  gear.shieldPips.forEach((pip, i) => { pip.visible = i < shields; });
 }
 function popScore(v, mult) { const e = $('scorePop'); e.textContent = '+' + v + (mult > 1 ? ' x' + mult : ''); e.style.opacity = 1; clearTimeout(popScore._t); popScore._t = setTimeout(() => e.style.opacity = 0, 260); }
 
@@ -934,6 +960,19 @@ function buildDebugApi() {
     // still "owns" magnet/spring/fortune) then runs the cleanup, returning the
     // pruned ids and the surviving owned map — so the legacy fix is testable.
     migrate: (legacy) => { if (legacy) Object.assign(save.owned, legacy); const pruned = migrateSave(); renderShop(); return { pruned, owned: { ...save.owned } }; },
+    // Re-run startup (load the stored blob → migrate → resetGame) against
+    // whatever bytes a test wrote to localStorage, recovering to defaults if it
+    // throws — mirrors safeInit()'s guard. Lets a scenario prove a malformed or
+    // value-corrupt legacy save boots to a clean, playable menu instead of a
+    // dead page. Returns whether a reset was needed.
+    reloadSave: () => {
+      reload();
+      let recovered = false;
+      try { migrateSave(); resetGame(); }
+      catch { recovered = true; resetSave(); migrateSave(); resetGame(); }
+      state = 'menu'; paused = true; refreshHud(); renderShop(); renderStats(); renderAchievements(); renderCosmetics();
+      return { ...snapshot(), recovered };
+    },
     wallet: getWallet, fund: (n) => { addRolls(n); renderShop(); return getWallet(); },
     buy: (id) => { const ok = buy(id); renderShop(); return ok; }, effects,
     // ---- perks (roguelite draft) ----
