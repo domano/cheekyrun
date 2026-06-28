@@ -233,6 +233,13 @@ canvas{display:block}
   transition:transform .07s,box-shadow .07s}
 .rerollbtn:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--ink)}
 .drafthint{font-size:12px;font-weight:800;opacity:.55}
+/* arming: the brief input-lock right after a draft opens. Cards dim and ignore
+   taps so a stray jump/lane press can't pick for you; a soft pulse signals the
+   wind-up, then .arming is dropped and the cards snap fully alive. */
+#draft.arming .perkcard{pointer-events:none;opacity:.55;filter:saturate(.7);animation:draftarm .45s ease-out}
+#draft.arming .rerollbtn{pointer-events:none;opacity:.5}
+@keyframes draftarm{from{opacity:.3;transform:scale(.97)}to{opacity:.55;transform:none}}
+@media (prefers-reduced-motion:reduce){#draft.arming .perkcard{animation:none}}
 /* meta shop: owned unlocks stay solid (only the content fades), curse unlocks
    carry a restrained red title, and charge counts read as their own chip */
 .up.owned{cursor:default;opacity:1}
