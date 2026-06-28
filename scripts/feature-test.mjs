@@ -258,6 +258,23 @@ const SCENARIOS = [
     },
   },
   {
+    name: 'corrupt-save-recovers-to-defaults',
+    fn: (c, assert) => {
+      // Type coercion can't catch a bad *value*: a negative upgrade tier makes the
+      // run start on a negative level, and biomeOf() returns undefined → a throw
+      // deep in startup. The catch-all must wipe such a save to defaults and boot
+      // clean rather than leave a dead page (no 3D scene, empty shop, dead buttons).
+      localStorage.setItem('cheekyrun.save.v1', JSON.stringify({ owned: { headstart: -3 }, wallet: 200, best: 4000 }));
+      let s;
+      try { s = c.reloadSave(); } catch (e) { assert(false, 'recovery itself threw: ' + e.message); return; }
+      assert(s.recovered === true, 'the value-corrupt save tripped the reset-to-defaults path');
+      assert(s.state === 'menu', 'startup lands on a clean, live menu');
+      assert(c.effects().headstart === 0, 'the corrupt upgrade tier was reset to defaults');
+      const r = c.start();
+      assert(r.state === 'playing' && r.level === 1, 'a normal run starts from level 1 on the reset save');
+    },
+  },
+  {
     name: 'powerup-visual',
     fn: (c, assert) => {
       c.start();

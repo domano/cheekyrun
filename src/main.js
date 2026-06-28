@@ -54,8 +54,25 @@ const bTgt = { fog: new THREE.Color(), ground: new THREE.Color(), path: new THRE
 // Let the audio scheduler read the live game state.
 initAudio(() => state);
 
-init();
+safeInit();
 animate();
+
+// Start up against the stored save, but never let a corrupt or incompatible
+// legacy save leave a dead page. load() already coerces field *types*, but a bad
+// *value* (e.g. a negative upgrade tier → a negative level → biomeOf() undefined)
+// can still throw deep in init(). If anything throws, wipe the save to defaults
+// and boot once more on a clean slate — an unreadable save is unrecoverable
+// anyway, and a playable game beats a black screen.
+function safeInit() {
+  try {
+    init();
+  } catch (e) {
+    console.warn('Cheeky Run: corrupt save detected at startup — resetting to defaults', e);
+    try { resetSave(); } catch { /* ignore */ }
+    try { $('game').replaceChildren(); } catch { /* ignore */ }   // drop a half-built canvas before re-init
+    init();
+  }
+}
 
 /* ---------------- setup ---------------- */
 function init() {
@@ -926,10 +943,19 @@ function buildDebugApi() {
     // still "owns" magnet/spring/fortune) then runs the cleanup, returning the
     // pruned ids and the surviving owned map — so the legacy fix is testable.
     migrate: (legacy) => { if (legacy) Object.assign(save.owned, legacy); const pruned = migrateSave(); renderShop(); return { pruned, owned: { ...save.owned } }; },
-    // Re-run the import-time sequence (load the stored blob → migrate) against
-    // whatever bytes a test wrote to localStorage, then re-init the menu. Lets a
-    // scenario prove a malformed/legacy save loads cleanly instead of bricking.
-    reloadSave: () => { reload(); migrateSave(); resetGame(); refreshHud(); renderShop(); return snapshot(); },
+    // Re-run startup (load the stored blob → migrate → resetGame) against
+    // whatever bytes a test wrote to localStorage, recovering to defaults if it
+    // throws — mirrors safeInit()'s guard. Lets a scenario prove a malformed or
+    // value-corrupt legacy save boots to a clean, playable menu instead of a
+    // dead page. Returns whether a reset was needed.
+    reloadSave: () => {
+      reload();
+      let recovered = false;
+      try { migrateSave(); resetGame(); }
+      catch { recovered = true; resetSave(); migrateSave(); resetGame(); }
+      state = 'menu'; paused = true; refreshHud(); renderShop(); renderStats(); renderAchievements(); renderCosmetics();
+      return { ...snapshot(), recovered };
+    },
     wallet: getWallet, fund: (n) => { addRolls(n); renderShop(); return getWallet(); },
     buy: (id) => { const ok = buy(id); renderShop(); return ok; }, effects,
     // ---- perks (roguelite draft) ----

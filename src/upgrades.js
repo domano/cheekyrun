@@ -48,7 +48,10 @@ export function migrateSave() {
   if (pruned.length) { pruned.forEach((id) => delete save.owned[id]); persist(); }
   return pruned;
 }
-migrateSave();
+// Runs at import: must never throw, or the whole module graph fails to load and
+// the page goes dead before anything renders. The guard above plus this catch
+// keep a corrupt save from bricking startup here.
+try { migrateSave(); } catch (e) { console.warn('Cheeky Run: save migration failed; ignoring', e); }
 
 export const tierOf = (id) => save.owned[id] | 0;
 
