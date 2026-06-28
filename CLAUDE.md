@@ -19,29 +19,42 @@ npm run dev      # dev server with hot reload (http://localhost:5173)
 npm run build    # production build into dist/
 npm run preview  # serve the production build (http://localhost:4173)
 npm run smoke    # browser smoke test: build, drive a run, assert no errors
+npm run features # deterministic feature tests against the debug bridge
 ```
 
 ## Testing every change
 
-There is no lint or unit-test setup. Behaviour is verified by driving the real
-preview build in a browser with [`agent-browser`](https://www.npmjs.com/package/agent-browser)
+There is no lint or unit-test setup, and the game is real-time and
+timing-sensitive — so don't verify by "playing" it. Behaviour is checked by
+driving the real preview build with [`agent-browser`](https://www.npmjs.com/package/agent-browser)
 (a devDependency). **After every change, before committing:**
 
 1. `npm run build` — it must succeed.
-2. `npm run smoke` — it must pass. This builds, serves the preview, loads the
-   page, starts a run, sends inputs (lane / jump / duck), and fails on any
-   console error or if the score never advances. Screenshot lands at
-   `/tmp/cheekyrun-smoke.png`. Script: `scripts/smoke-test.sh`.
+2. `npm run smoke` — it must pass. Builds, serves the preview, starts a run,
+   sends inputs, and fails on any console error or if the score never advances.
+   Screenshot at `/tmp/cheekyrun-smoke.png`. Script: `scripts/smoke-test.sh`.
+3. `npm run features` — it must pass. Deterministic per-feature scenarios that
+   set state, step the sim with a fixed dt, and assert on JSON — no screenshots,
+   no timing. Script: `scripts/feature-test.mjs`.
 
-For changes the smoke test doesn't cover well (a new biome, shop item, control
-tweak, or anything visual), also drive the game by hand and **Read the
-screenshot** to eyeball it. The full playbook — starting a run, lane/jump/duck
-key mappings, reading the HUD, opening the shop, screenshots — lives in the
-**`test-game` skill** (`.claude/skills/test-game/SKILL.md`); invoke `/test-game`
-or follow it directly.
+**When you add or change a feature, add/adjust a `npm run features` scenario**
+so it's covered without anyone having to play the game. Each scenario is one
+`{ name, fn }` entry; `fn(c, assert)` runs in the page driving the debug bridge.
+
+The bridge is `window.cheeky`, built only in debug mode (`?debug` in the URL or
+`localStorage.cheekydebug`; see `src/debug.js`) so production stays clean. It
+exposes the real game state and lets you teleport/step/spawn deterministically:
+`cheeky.state()`, `cheeky.start(overrides?)`, `cheeky.step(frames, dt)`,
+`cheeky.set({...})`, `cheeky.spawn(kind, lane, z)`, `cheeky.jump()/duck()/left()`,
+`cheeky.fund()/buy()/effects()`. Call `cheeky.help()` for the full list.
+
+Screenshots are only needed for **visual** changes (a new biome, prop, skin, or
+UI tweak) — set the scene with the bridge, capture, and **Read the PNG**. The
+full playbook lives in the **`test-game` skill**
+(`.claude/skills/test-game/SKILL.md`); invoke `/test-game` or follow it directly.
 
 `agent-browser` needs a Chromium: in the agent sandbox it's pre-installed at
-`/opt/pw-browsers/chromium` (the smoke script points to it automatically); on a
+`/opt/pw-browsers/chromium` (the scripts point to it automatically); on a
 dev machine run `npx agent-browser install` once.
 
 ## Architecture
@@ -64,13 +77,17 @@ else is a focused module it pulls from. State lives in module-scope `let`s in
 | `src/levels.js` | Level progression by distance + biome themes |
 | `src/upgrades.js` | Persistent upgrade shop: localStorage save, purchase logic, resolved effects |
 | `src/audio.js` | Self-contained chiptune music scheduler + SFX (Web Audio) |
+| `src/debug.js` | Opt-in test/debug bridge — attaches `window.cheeky` when `?debug` is set (the API itself is built in `main.js`) |
 
 ### How the core systems fit together
 
-- **Game loop (`animate` in `main.js`):** advances `elapsed`/`distance`,
-  derives `difficulty` and `speed`, spawns obstacle rows and scenery on timers,
-  moves everything toward the camera, runs collision, and renders. Obstacles
-  and rolls are plain arrays iterated back-to-front so in-loop splices are safe.
+- **Game loop (`animate` → `tick(dt)` in `main.js`):** `animate` is the
+  `requestAnimationFrame` driver; the per-frame work lives in `tick(dt)`, which
+  advances `elapsed`/`distance`, derives `difficulty` and `speed`, spawns
+  obstacle rows and scenery on timers, moves everything toward the camera, runs
+  collision, and renders. Splitting it out lets the debug bridge call `tick`
+  with a fixed dt for deterministic, timing-free testing. Obstacles and rolls
+  are plain arrays iterated back-to-front so in-loop splices are safe.
 
 - **Spawning is a "corridor":** `spawnRow()` guarantees one always-open lane
   that drifts by at most one lane per row, so a single lane-change is always a

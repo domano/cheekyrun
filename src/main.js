@@ -11,6 +11,7 @@ import { hasAch } from './save.js';
 import { ACHIEVEMENTS, checkAchievements } from './achievements.js';
 import { selectedSkin, selectSkin, getDailyBest, setDailyBest } from './save.js';
 import { SKINS, skinById, skinUnlocked, buySkin, applySkin } from './cosmetics.js';
+import { installDebug } from './debug.js';
 import {
   initAudio, ensureAudio, toggleSound,
   sfxLane, sfxJump, sfxDuck, sfxCoin, sfxCrash, sfxStart, sfxOver, sfxLevel, sfxShield,
@@ -25,6 +26,12 @@ let speed, distance, rollCount, rollPoints, rowTimer, sceneAcc, dustAcc, elapsed
 let laneIdx, targetX, vy, grounded, jumpsLeft, banked, groundY, duckTimer, duckAmt, shakeT;
 let combo, comboTimer, comboMax;
 let squash;   // signed squash-&-stretch impulse: + on landing, - on launch, decays to 0
+// `simTime` is the animation clock (sum of per-frame dt). Driving it ourselves
+// — rather than reading clock.elapsedTime — lets the debug bridge advance the
+// sim with a fixed dt, so tests are deterministic instead of wall-clock bound.
+// `paused` freezes the rAF loop for deterministic stepping. Declared up here so
+// they're initialised before the top-level animate() call (avoids a TDZ throw).
+let simTime = 0, paused = false;
 let power, powerT, powerCD, gotPower;   // active power-up kind, remaining time, spawn cooldown (rows), grabbed-any flag
 let rng = Math.random, daily = false, dailyDay = '';   // daily challenge: seeded RNG + today's key
 const speedLines = $('speedlines');
@@ -105,6 +112,7 @@ function init() {
   $('dailyBtn').onclick = () => startGame(true);
   $('muteBtn').onclick = toggleSound;
   renderShop(); renderStats(); renderAchievements(); renderCosmetics(); renderDaily();
+  installDebug(buildDebugApi);
 }
 
 /* ---------------- spawning ---------------- */
@@ -258,7 +266,13 @@ function bindControls() {
 /* ---------------- loop ---------------- */
 function animate() {
   requestAnimationFrame(animate);
-  const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
+  if (paused) return;                 // frozen for deterministic stepping (see debug API)
+  tick(Math.min(clock.getDelta(), 0.05));
+}
+// One simulation + render step for a given dt. Pure of real time: feed it a
+// fixed dt N times and the run advances identically every time.
+function tick(dt) {
+  simTime += dt; const t = simTime;
   if (state === 'playing') {
     elapsed += dt;
     invuln = Math.max(0, invuln - dt);
@@ -528,4 +542,101 @@ function nextAchToast() {
   t.innerHTML = `<span class="achi">${a.icon}</span><span class="acht"><b>Achievement!</b><br>${a.name}</span>`;
   t.classList.remove('show'); void t.offsetWidth; t.classList.add('show'); sfxLevel(); buzz([10, 30, 10]);
   clearTimeout(nextAchToast._t); nextAchToast._t = setTimeout(nextAchToast, 2200);
+}
+
+/* ---------------- debug / test bridge ---------------- */
+// Built only when debug mode is on (see debug.js) and hung off window.cheeky.
+// Everything here drives the SAME functions and state the real game uses, so a
+// passing scenario exercises real behaviour — it just removes the timing: set
+// state directly, step the sim with a fixed dt, read it back as JSON.
+function buildDebugApi() {
+  const refreshHud = () => { updateHud(); updateLevelHud(); updateShieldHud(); updateComboHud(false); updatePowerHud(); };
+
+  // Full game state as a plain (JSON-serialisable) object.
+  function snapshot() {
+    return {
+      state, score: score(), paused,
+      distance: +distance.toFixed(2), speed: +speed.toFixed(2), difficulty: +difficulty.toFixed(3), elapsed: +elapsed.toFixed(2),
+      level, biome: biomeOf(level).name, levelProgress: +levelProgress(distance).toFixed(3),
+      rollCount, rollPoints, combo, comboMult: comboMult(combo), comboMax,
+      shields, invuln: +invuln.toFixed(2), magnetR, rollValue, extraJumps, jumpsLeft,
+      power, powerT: +powerT.toFixed(2),
+      laneIdx, targetX,
+      player: { x: +player.position.x.toFixed(3), groundY: +groundY.toFixed(3), grounded, ducking: duckTimer > 0 },
+      counts: { obstacles: obstacles.length, rolls: rolls.length, pickups: pickups.length, scenery: scenery.length },
+      wallet: getWallet(), daily,
+    };
+  }
+
+  // Force a specific obstacle/roll/power-up into the world at a lane and Z.
+  // Defaults to the player's lane, just ahead — a few steps and it reaches them.
+  function spawn(kind = 'cactus', lane = laneIdx, z = -8) {
+    let o, arr;
+    if (kind === 'roll') { o = makeRoll(); o.position.set(LANES[lane], 0.95, z); arr = rolls; }
+    else if (kind === 'gate' || kind === 'hurdle') {
+      o = kind === 'gate' ? makeGate() : makeHurdle();
+      o.position.set(0, 0, z); o.userData.halfW = 3.3; arr = obstacles;
+    } else if (kind.startsWith('powerup')) {
+      const pk = kind.split(':')[1] || POWERUP_KINDS[0];
+      o = makePowerup(POWERUPS[pk].color); o.position.set(LANES[lane], 1.0, z); o.userData.kind = pk; arr = pickups;
+    } else {                                       // cactus | rock | bar
+      o = makeObstacle(kind); o.position.set(LANES[lane], 0, z); o.userData.lane = lane; arr = obstacles;
+    }
+    scene.add(o); arr.push(o); return kind;
+  }
+
+  // Apply a bag of state overrides (teleport the run), then refresh the HUD.
+  const SETTERS = {
+    level: v => { level = v; distance = Math.max(distance, (v - 1) * LEVEL_DIST); applyBiome(level, true); },
+    distance: v => { distance = v; level = levelFromDistance(v); },
+    speed: v => { speed = v; }, difficulty: v => { difficulty = v; }, elapsed: v => { elapsed = v; },
+    shields: v => { shields = v; }, invuln: v => { invuln = v; }, magnetR: v => { magnetR = v; },
+    rollValue: v => { rollValue = v; }, extraJumps: v => { extraJumps = v; }, jumpsLeft: v => { jumpsLeft = v; },
+    combo: v => { combo = v; }, rollCount: v => { rollCount = v; }, rollPoints: v => { rollPoints = v; },
+    power: v => { power = v; if (v && powerT <= 0) powerT = POWERUP_DURATION; if (v === 'ghost') invuln = Math.max(invuln, POWERUP_DURATION); },
+    powerT: v => { powerT = v; }, safeLane: v => { safeLane = v; }, forcedGap: v => { forcedGap = v; },
+  };
+  function set(o = {}) {
+    for (const k in o) { if (SETTERS[k]) SETTERS[k](o[k]); }
+    refreshHud(); return snapshot();
+  }
+
+  const api = {
+    // ---- inspect ----
+    state: snapshot,
+    help: () => ({
+      inspect: ['state()'],
+      lifecycle: ['start(overrides?)', 'reset()', 'over()'],
+      time: ['pause()', 'resume()', 'step(frames=1, dt=1/60)', 'seed(n)'],
+      teleport: ['set({level,speed,shields,power,...})', `keys: ${Object.keys(SETTERS).join(', ')}`],
+      world: ['spawn(kind, lane?, z?)', 'clearField()', "kinds: cactus|rock|bar|gate|hurdle|roll|powerup[:magnet|x2|ghost]"],
+      input: ['left()', 'right()', 'lane(i)', 'jump()', 'duck()'],
+      shop: ['wallet()', 'fund(n)', 'buy(id)', 'effects()'],
+    }),
+    // ---- lifecycle ----
+    start: (overrides) => { startGame(false); if (overrides) set(overrides); return snapshot(); },
+    reset: () => { resetGame(); refreshHud(); return snapshot(); },
+    over: () => { if (state === 'playing') gameOver(); return snapshot(); },
+    // ---- deterministic time ----
+    pause: () => { paused = true; return snapshot(); },
+    resume: () => { paused = false; clock.getDelta(); return snapshot(); },   // drop the accumulated gap
+    step: (frames = 1, dt = 1 / 60) => { paused = true; for (let i = 0; i < frames; i++) tick(dt); return snapshot(); },
+    seed: (n) => { rng = mulberry32(n >>> 0); return n >>> 0; },              // deterministic spawns (apply after start)
+    // ---- teleport ----
+    set,
+    // ---- world ----
+    spawn,
+    clearField: () => {
+      [...obstacles, ...rolls, ...pickups].forEach(o => scene.remove(o));
+      obstacles = []; rolls = []; pickups = []; return snapshot();
+    },
+    // ---- input ----
+    left: () => { moveLane(-1); return laneIdx; }, right: () => { moveLane(1); return laneIdx; },
+    lane: (i) => { moveLane(i - laneIdx); return laneIdx; },
+    jump: () => { jump(); return snapshot(); }, duck: () => { duck(); return snapshot(); },
+    // ---- shop / meta ----
+    wallet: getWallet, fund: (n) => { addRolls(n); renderShop(); return getWallet(); },
+    buy: (id) => { const ok = buy(id); renderShop(); return ok; }, effects,
+  };
+  return api;
 }
