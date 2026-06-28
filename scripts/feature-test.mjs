@@ -307,12 +307,12 @@ const SCENARIOS = [
       c.start({ magnetR: 0 }); c.clearField();
       assert(c.state().mods.rollMult === 1, 'rollMult starts neutral');
       const s1 = c.perk('lucky');
-      assert(s1.mods.rollMult === 1.25, 'Lucky Streak raises rollMult to 1.25');
+      assert(s1.mods.rollMult === 1.18, 'Lucky Streak raises rollMult to 1.18');
       assert(s1.perks.length === 1 && s1.perks[0].id === 'lucky', 'the perk is recorded on the run');
       c.spawn('roll', 1, -4);
       const s = c.step(60);
       assert(s.rollCount === 1, 'the roll is collected');
-      assert(s.rollPoints === Math.round(s.rollValue * 1.25), 'roll points are scaled by the perk');
+      assert(s.rollPoints === Math.round(s.rollValue * 1.18), 'roll points are scaled by the perk');
     },
   },
   {
@@ -333,7 +333,7 @@ const SCENARIOS = [
       c.start();
       c.perk('lucky'); c.perk('lucky'); let s = c.perk('lucky');   // cap is 3
       assert(s.perks[0].stacks === 3, 'Lucky stacks up to its cap of 3');
-      assert(Math.abs(s.mods.rollMult - Math.pow(1.25, 3)) < 1e-9, 'each stack compounds rollMult');
+      assert(Math.abs(s.mods.rollMult - Math.pow(1.18, 3)) < 1e-9, 'each stack compounds rollMult');
       s = c.perk('lucky');                          // beyond the cap
       assert(s.perks[0].stacks === 3, 'a perk cannot exceed its stack cap');
     },
@@ -348,6 +348,55 @@ const SCENARIOS = [
       c.spawn('cactus', 1, -4);
       const s = c.step(60);
       assert(s.state === 'over', 'with cushions disabled, a hit ends the run despite owning shields');
+    },
+  },
+  {
+    name: 'perk-greed-mods',
+    fn: (c, assert) => {
+      c.start();
+      const s = c.perk('greedygut');
+      assert(Math.abs(s.mods.rollSpawnMult - 1.6) < 1e-9, 'Greedy Gut boosts roll spawns');
+      assert(Math.abs(s.mods.obstacleMult - 1.25) < 1e-9, 'Greedy Gut also cranks the danger');
+    },
+  },
+  {
+    name: 'draft-cadence',
+    fn: (c, assert) => {
+      c.start(); c.seed(1);
+      c.set({ distance: 248 }); let s = c.step(30);     // cross into level 2 (1st level-up)
+      assert(s.level === 2 && s.levelUps === 1, 'reached level 2 on the first level-up');
+      assert(s.state === 'draft', 'the first level-up front-loads a draft');
+      assert(s.draft.length === 3, 'three perks are offered');
+      c.pick(0);                                         // take one, resume
+      c.set({ distance: 498 }); s = c.step(30);          // cross into level 3 (2nd level-up)
+      assert(s.level === 3 && s.levelUps === 2, 'reached level 3');
+      assert(s.state === 'playing', 'no draft on the second level-up');
+      c.set({ distance: 748 }); s = c.step(30);          // cross into level 4 (3rd level-up)
+      assert(s.level === 4 && s.state === 'draft', 'the third level-up drafts again');
+    },
+  },
+  {
+    name: 'draft-pick-applies-and-resumes',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.seed(2);
+      c.openDraft();
+      const d = c.draft();
+      assert(d.state === 'draft' && d.choices.length === 3, 'a draft of three is open');
+      const first = d.choices[0];
+      let s = c.pick(0);
+      assert(s.state === 'playing', 'picking a perk resumes the run');
+      assert(s.perks.length === 1 && s.perks[0].id === first, 'the chosen card becomes the run perk');
+      const d0 = s.distance; s = c.step(30);
+      assert(s.distance > d0, 'the simulation advances again after the pick');
+    },
+  },
+  {
+    name: 'draft-deterministic',
+    fn: (c, assert) => {
+      c.start(); c.seed(7); c.openDraft(); const a = c.draft().choices;
+      c.start(); c.seed(7); c.openDraft(); const b = c.draft().choices;
+      assert(a.length === 3 && b.length === 3, 'both drafts offer three perks');
+      assert(a.join(',') === b.join(','), 'the same seed yields the same draft');
     },
   },
 ];

@@ -167,6 +167,54 @@ canvas{display:block}
 .up.poor .upc{background:#ffd0d0}
 .up.maxed{cursor:default;opacity:.85}
 .up.maxed .upc{background:#bdf0c4}
+
+/* ---------- roguelite perk draft ---------- */
+#draft{background:rgba(36,16,25,.55);animation:draftdim .12s ease-out}
+@keyframes draftdim{from{background:rgba(36,16,25,0)}to{background:rgba(36,16,25,.55)}}
+.draftcard{max-width:540px;padding:20px 18px 16px}
+.drafthead{display:flex;flex-direction:column;gap:2px;margin-bottom:14px}
+.drafthead .dh-title{font-size:20px;font-weight:800;color:var(--ink)}
+.drafthead .dh-sub{font-size:13px;font-weight:600;color:var(--ink);opacity:.6}
+.draftgrid{display:grid;grid-template-columns:1fr;gap:12px}
+@media (min-width:560px){.draftgrid{grid-template-columns:repeat(3,1fr)}}
+.perkcard{position:relative;appearance:none;cursor:pointer;font:inherit;text-align:center;
+  display:flex;flex-direction:column;align-items:center;gap:4px;min-height:188px;
+  background:#fff;border:2.5px solid var(--ink);border-radius:14px;padding:18px 12px 12px;
+  box-shadow:3px 3px 0 var(--ink);transition:transform .07s,box-shadow .07s}
+.perkcard:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--ink)}
+.perkcard .pk-key{position:absolute;top:-10px;left:-8px;width:24px;height:24px;border-radius:50%;
+  background:var(--pink);color:#fff;border:2px solid var(--ink);box-shadow:1.5px 1.5px 0 var(--ink);
+  font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center}
+.perkcard .pk-disc{width:52px;height:52px;border-radius:50%;border:2px solid var(--ink);
+  background:#fff3d6;display:flex;align-items:center;justify-content:center;margin-bottom:4px}
+.perkcard .pk-icon{font-size:30px;line-height:1}
+.perkcard .pk-name{font-weight:800;font-size:15px;line-height:1.1;color:var(--ink);margin:4px 0 2px}
+.perkcard .pk-desc{font-size:12.5px;font-weight:600;color:var(--ink);opacity:.72;line-height:1.3}
+.perkcard .pk-rar{margin-top:auto;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;
+  background:#ffe7ad;border:1.5px solid var(--ink);border-radius:6px;padding:2px 8px}
+.perkcard.rare{background:#eef5ff}
+.perkcard.rare .pk-disc{background:#eaf3ff}
+.perkcard.rare .pk-rar{background:#cfe4ff;border-color:#2f5d9c}
+.perkcard.epic{background:#f4ecff}
+.perkcard.epic .pk-disc{background:#f3eaff}
+.perkcard.epic .pk-rar{background:#e2cfff;border-color:#6a3fa0}
+/* curse: the visual outlier — red border + red shadow + a danger sticker */
+.perkcard.curse{background:#ffecea;border:3px solid #9c2b2b;box-shadow:3px 3px 0 #9c2b2b}
+.perkcard.curse:active{box-shadow:1px 1px 0 #9c2b2b}
+.perkcard.curse .pk-key{background:#9c2b2b}
+.perkcard.curse .pk-disc{background:#ffd9d5;border-color:#9c2b2b}
+.perkcard.curse .pk-name{color:#9c2b2b}
+.perkcard.curse .pk-rar{background:#9c2b2b;color:#fff;border-color:var(--ink)}
+.perkcard .pk-warn{position:absolute;top:-10px;right:-8px;width:24px;height:24px;border-radius:50%;
+  background:#9c2b2b;border:2px solid var(--ink);box-shadow:1.5px 1.5px 0 var(--ink);
+  font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center}
+.perkcard .pk-up{font-size:13px;font-weight:800;color:#1a8a3c;line-height:1.25}
+.perkcard .pk-down{font-size:12px;font-weight:700;color:#9c2b2b;line-height:1.25}
+.drafthint{margin-top:16px;font-size:12px;font-weight:800;opacity:.55}
+#draft .card{animation:draftin .26s ease-out}
+@keyframes draftin{from{opacity:0;transform:scale(.9) translateY(10px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){#draft,#draft .card{animation:none}}
+
 /* skin picker */
 .cosmetics{margin-top:20px;border-top:3px dashed rgba(36,16,25,.25);padding-top:16px;text-align:left}
 .skingrid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}

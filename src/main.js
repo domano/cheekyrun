@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { LANES, SPAWN_Z, DESPAWN_Z, INK, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE_RAMP, GATE_COOLDOWN, COMBO_WINDOW, comboMult, NEARMISS_MARGIN, NEARMISS_BONUS, POWERUP_DURATION, POWERUP_CHANCE, POWERUP_MIN_DIFF, POWERUP_COOLDOWN, POWERUPS, POWERUP_KINDS, DASH_SPEED_MULT, mulberry32, dailyKey, dailySeed, $, buzz, shuffle } from './config.js';
+import { LANES, SPAWN_Z, DESPAWN_Z, INK, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE_RAMP, GATE_COOLDOWN, COMBO_WINDOW, comboMult, NEARMISS_MARGIN, NEARMISS_BONUS, POWERUP_DURATION, POWERUP_CHANCE, POWERUP_MIN_DIFF, POWERUP_COOLDOWN, POWERUPS, POWERUP_KINDS, DASH_SPEED_MULT, DRAFT_EVERY, DRAFT_CHOICES, mulberry32, dailyKey, dailySeed, $, buzz, shuffle } from './config.js';
 import { makeGradient, toon } from './materials.js';
 import { makeObstacle, makeHurdle, makeGate, makeRoll, makePowerup, makeTree, makeBush, makeFlower, makeCloud, OBSTACLE_KINDS } from './props.js';
 import { createParticles } from './particles.js';
@@ -7,7 +7,7 @@ import { buildPlayer, applyGear } from './player.js';
 import { LEVEL_DIST, biomeOf, obstacleSet, levelFromDistance, levelProgress } from './levels.js';
 import { trackOffset, deformRoad } from './track.js';
 import { UPGRADES, effects, tierOf, nextCost, buy, getWallet, addRolls } from './upgrades.js';
-import { PERKS, freshMods, applyPerks, perkById } from './perks.js';
+import { PERKS, freshMods, applyPerks, perkById, draftChoices } from './perks.js';
 import { getBest, setBest, getStats, bumpStats, resetSave } from './save.js';
 import { hasAch, unlock } from './save.js';
 import { ACHIEVEMENTS, checkAchievements } from './achievements.js';
@@ -44,7 +44,7 @@ const speedLines = $('speedlines');
 let level, shields, invuln, magnetR, rollValue, extraJumps;
 // Roguelite draft: perks[] picked this run ({id,stacks}); mods derives the run
 // modifiers from them; levelUps counts level-up events to time the every-2nd draft.
-let perks = [], mods = freshMods(), levelUps = 0;
+let perks = [], mods = freshMods(), levelUps = 0, draftCards = [];
 
 // Biome colour tween state — current values lerp toward the target each frame.
 const bCur = { fog: new THREE.Color(), ground: new THREE.Color(), path: new THREE.Color(), disc: new THREE.Color(), hills: [new THREE.Color(), new THREE.Color(), new THREE.Color()] };
@@ -149,7 +149,7 @@ function spawnRow() {
   else { const nb = [safeLane - 1, safeLane + 1].filter(l => l >= 0 && l <= 2); nextSafe = nb[(rng() * nb.length) | 0]; }
 
   // block 1 lane (easy) or sometimes 2 (later) — never the safe lane, never all 3
-  const p2 = Math.max(0, (d - 0.2)) * 0.7;
+  const p2 = Math.max(0, (d - 0.2)) * 0.7 * mods.obstacleMult;   // perks can crank the danger
   const blockCount = (rng() < p2) ? 2 : 1;
   const others = [0, 1, 2].filter(l => l !== nextSafe); shuffle(others, rng);
   const blocked = others.slice(0, blockCount);
@@ -162,10 +162,10 @@ function spawnRow() {
     o.position.set(LANES[li], 0, SPAWN_Z); o.userData.lane = li; o.userData.lx = LANES[li]; scene.add(o); obstacles.push(o);
   });
 
-  // rolls only ever sit in open lanes
+  // rolls only ever sit in open lanes (perks can make them denser)
   const open = [nextSafe, ...others.slice(blockCount)];
   open.forEach(li => {
-    const chance = li === nextSafe ? 0.4 : 0.5;
+    const chance = (li === nextSafe ? 0.4 : 0.5) * mods.rollSpawnMult;
     if (rng() < chance) { const r = makeRoll(); r.position.set(LANES[li], 0.95, SPAWN_Z); r.userData.lx = LANES[li]; scene.add(r); rolls.push(r); }
   });
 
@@ -208,6 +208,47 @@ function applyPerk(id) {
   if (def.shieldGrant) { shields += def.shieldGrant; updateShieldHud(); }
   recomputeRunMods();
   return true;
+}
+// Which perks a draft can offer. Phase 2: the whole catalog is draftable; the
+// meta layer (Phase 3) narrows this to what's unlocked.
+function eligiblePool() { return PERKS.map(p => p.id); }
+function banishedIds() { return []; }
+// Freeze the world and offer a choice of perks. Uses the run's seeded `rng` so a
+// draft is deterministic in tests. Skips itself if there's nothing left to offer.
+function openDraft() {
+  draftCards = draftChoices(eligiblePool(), perks, banishedIds(), rng, DRAFT_CHOICES);
+  if (!draftCards.length) return;
+  state = 'draft'; renderDraft(); $('draft').classList.remove('hide'); sfxLevel();
+}
+function pickDraft(i) {
+  const card = draftCards[i]; if (!card) return;
+  applyPerk(card.id); showBanner(`${card.icon} ${card.name}!`); sfxCoin(); buzz(18);
+  draftCards = []; $('draft').classList.add('hide');
+  state = 'playing'; clock.getDelta();   // drop the wall-clock gap so dt doesn't spike on resume
+}
+// A curse's blurb reads "<upside>, but <downside>" / "<upside> — <downside>";
+// split it so the draft can paint the promise green and the price red.
+function splitCurse(desc) {
+  const m = desc.match(/^(.*?)(?:, but | — )(.*)$/);
+  return m ? { up: m[1], down: m[2] } : null;
+}
+function renderDraft() {
+  $('draftgrid').innerHTML = draftCards.map((p, i) => {
+    const sc = p.rarity === 'curse' ? splitCurse(p.desc) : null;
+    const desc = sc ? `<span class="pk-up">${sc.up}</span><span class="pk-down">${sc.down}</span>`
+                    : `<span class="pk-desc">${p.desc}</span>`;
+    const warn = p.rarity === 'curse' ? '<span class="pk-warn">💀</span>' : '';
+    return `
+    <button class="perkcard ${p.rarity}" data-i="${i}">
+      <span class="pk-key">${i + 1}</span>${warn}
+      <span class="pk-disc"><span class="pk-icon">${p.icon}</span></span>
+      <span class="pk-name">${p.name}</span>${desc}
+      <span class="pk-rar">${p.rarity}</span>
+    </button>`;
+  }).join('');
+  document.querySelectorAll('#draft .perkcard').forEach(b => {
+    b.onclick = (e) => { e.stopPropagation(); ensureAudio(); pickDraft(+b.dataset.i); };
+  });
 }
 
 /* ---------------- flow ---------------- */
@@ -305,6 +346,12 @@ function fart() {
 function emote() { emoteT = 0.45; squash = Math.max(squash, 0.28); }
 function bindControls() {
   addEventListener('keydown', e => {
+    if (state === 'draft') {
+      if (e.code === 'Digit1' || e.code === 'ArrowLeft') pickDraft(0);
+      else if (e.code === 'Digit2' || e.code === 'ArrowUp' || e.code === 'Space' || e.code === 'Enter') pickDraft(1);
+      else if (e.code === 'Digit3' || e.code === 'ArrowRight') pickDraft(2);
+      return;
+    }
     if (state !== 'playing') { if (e.code === 'Space' || e.code === 'Enter') startGame(); return; }
     if (e.code === 'ArrowLeft') moveLane(-1); else if (e.code === 'ArrowRight') moveLane(1);
     else if (e.code === 'ArrowUp' || e.code === 'Space') jump(); else if (e.code === 'ArrowDown') duck();
@@ -381,8 +428,9 @@ function moveObstacles(dt) {
     // through it, not side-stepped) the instant it passes — pays out and chains.
     if (!o.userData.scored && prevZ < player.position.z && o.position.z >= player.position.z && dx < halfW + NEARMISS_MARGIN) {
       o.userData.scored = true;
-      const nm = Math.round(NEARMISS_BONUS * mods.nearMissMult);
-      bumpCombo(); emote(); rollPoints += nm; popScore(nm, comboMult(combo)); buzz(8);
+      bumpCombo(); emote();
+      const nm = Math.round(NEARMISS_BONUS * comboMult(combo) * mods.nearMissMult);   // skim pays more the hotter your combo
+      rollPoints += nm; popScore(nm, comboMult(combo)); buzz(8);
       particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.9, 0)), { count: 7, color: 0xeaffff, speed: 2.4, up: 2, life: .4, grav: 4, size: 0.4 });
     }
     const off = trackOffset(o.position.z, distance); o.position.x = lx + off.x; o.position.y = off.y;
@@ -542,10 +590,16 @@ function onResize() { camera.aspect = innerWidth / innerHeight; camera.updatePro
 /* ---------------- levels / biomes ---------------- */
 function onLevelUp() {
   const b = biomeOf(level);
-  showBanner(`Lvl ${level} · ${b.name}`); sfxLevel(); buzz([15, 30, 15]);
+  // Front-load the first pick (so a build comes online early), then draft every
+  // DRAFT_EVERY-th level-up: with DRAFT_EVERY=2 that's level-ups 1,3,5 (levels 2,4,6).
+  levelUps++;
+  const willDraft = (levelUps === 1 || levelUps % DRAFT_EVERY === 1);
+  if (!willDraft) showBanner(`Lvl ${level} · ${b.name}`);   // the draft card owns this moment instead
+  sfxLevel(); buzz([15, 30, 15]);
   spin = Math.PI * 2; squash = -0.25;     // a celebratory twirl + little stretch-up
   applyBiome(level, false);
   particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.8, 0)), { count: 18, color: 0xfff0a0, speed: 4, up: 4, life: .7, grav: 8 });
+  if (willDraft) openDraft();
 }
 function applyBiome(lv, instant) {
   const b = biomeOf(lv);
@@ -691,6 +745,7 @@ function buildDebugApi() {
       rollCount, rollPoints, combo, comboMult: comboMult(combo), comboMax,
       shields, invuln: +invuln.toFixed(2), magnetR, rollValue, extraJumps, jumpsLeft,
       perks: perks.map(p => ({ id: p.id, stacks: p.stacks })), mods, levelUps,
+      draft: draftCards.map(p => p.id),
       power, powerT: +powerT.toFixed(2),
       emote: +emoteT.toFixed(2), spin: +spin.toFixed(2),
       laneIdx, targetX,
@@ -749,7 +804,7 @@ function buildDebugApi() {
       world: ['spawn(kind, lane?, z?)', 'clearField()', `kinds: ${OBSTACLE_KINDS.join('|')}|gate|hurdle|roll|powerup[:magnet|x2|ghost]`],
       input: ['left()', 'right()', 'lane(i)', 'jump()', 'duck()'],
       shop: ['wallet()', 'fund(n)', 'buy(id)', 'effects()'],
-      perks: ['perk(id)', `ids: ${PERKS.map(p => p.id).join('|')}`],
+      perks: ['perk(id)', 'draft()', 'openDraft()', 'pick(i)', `ids: ${PERKS.map(p => p.id).join('|')}`],
       cosmetics: ['skin()', 'pickSkin(id)', 'unlockAch(id)'],
     }),
     // ---- lifecycle ----
@@ -784,6 +839,9 @@ function buildDebugApi() {
     buy: (id) => { const ok = buy(id); renderShop(); return ok; }, effects,
     // ---- perks (roguelite draft) ----
     perk: (id) => { applyPerk(id); return snapshot(); },
+    draft: () => ({ state, choices: draftCards.map(p => p.id) }),
+    openDraft: () => { openDraft(); return snapshot(); },
+    pick: (i) => { pickDraft(i); return snapshot(); },
     // ---- cosmetics (skins) ----
     // skin() reads the saved selection + the colours actually on the live mats.
     // pickSkin() mirrors the menu click (gate on unlock, persist, recolour);
