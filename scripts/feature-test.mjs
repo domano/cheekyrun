@@ -238,6 +238,26 @@ const SCENARIOS = [
     },
   },
   {
+    name: 'malformed-save-still-boots',
+    fn: (c, assert) => {
+      // Regression: a legacy/corrupt save whose map fields aren't plain objects
+      // (here `owned` as a string) once threw in migrateSave() at IMPORT time —
+      // strict-mode `delete` on a string index — taking the whole module graph
+      // down before init()/animate() ran. Symptom: menu HTML with no 3D scene,
+      // empty shop, dead buttons. Such a save must now load cleanly.
+      localStorage.setItem('cheekyrun.save.v1', JSON.stringify({
+        owned: 'abc', wallet: 70, meta: 'nope', cosmetics: 'classic', achievements: 5,
+      }));
+      let s;
+      try { s = c.reloadSave(); } catch (e) { assert(false, 'loading a malformed save threw: ' + e.message); return; }
+      assert(typeof s === 'object', 'a malformed save loads without throwing');
+      assert(c.effects().shields === 0, 'string `owned` is coerced to a clean map — no phantom tiers');
+      const r = c.start();
+      assert(r.state === 'playing', 'a run still starts after loading the malformed save');
+      assert(r.gearVisible.shield === false, 'no phantom gear is worn from the junk save');
+    },
+  },
+  {
     name: 'powerup-visual',
     fn: (c, assert) => {
       c.start();
