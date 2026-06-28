@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { LANES, SPAWN_Z, DESPAWN_Z, INK, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE_RAMP, GATE_COOLDOWN, COMBO_WINDOW, comboMult, NEARMISS_MARGIN, NEARMISS_BONUS, POWERUP_DURATION, POWERUP_CHANCE, POWERUP_MIN_DIFF, POWERUP_COOLDOWN, POWERUPS, POWERUP_KINDS, DASH_SPEED_MULT, DRAFT_EVERY, DRAFT_CHOICES, mulberry32, dailyKey, dailySeed, $, buzz, shuffle } from './config.js';
+import { LANES, SPAWN_Z, DESPAWN_Z, INK, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE_RAMP, GATE_COOLDOWN, COMBO_WINDOW, comboMult, NEARMISS_MARGIN, NEARMISS_BONUS, POWERUP_DURATION, POWERUP_CHANCE, POWERUP_MIN_DIFF, POWERUP_COOLDOWN, POWERUPS, POWERUP_KINDS, DASH_SPEED_MULT, DRAFT_EVERY, DRAFT_CHOICES, DRAFT_ARM, DRAFT_GRACE, mulberry32, dailyKey, dailySeed, $, buzz, shuffle } from './config.js';
 import { makeGradient, toon } from './materials.js';
 import { makeObstacle, makeHurdle, makeGate, makeRoll, makePowerup, makeTree, makeBush, makeFlower, makeCloud, OBSTACLE_KINDS } from './props.js';
 import { createParticles } from './particles.js';
@@ -45,7 +45,7 @@ const speedLines = $('speedlines');
 let level, shields, invuln, magnetR, rollValue, extraJumps;
 // Roguelite draft: perks[] picked this run ({id,stacks}); mods derives the run
 // modifiers from them; levelUps counts level-up events to time the every-2nd draft.
-let perks = [], mods = freshMods(), levelUps = 0, draftCards = [];
+let perks = [], mods = freshMods(), levelUps = 0, draftCards = [], draftArm = 0;
 
 // Biome colour tween state — current values lerp toward the target each frame.
 const bCur = { fog: new THREE.Color(), ground: new THREE.Color(), path: new THREE.Color(), disc: new THREE.Color(), hills: [new THREE.Color(), new THREE.Color(), new THREE.Color()] };
@@ -229,23 +229,30 @@ function eligiblePool() { return daily ? DEFAULT_POOL : unlockedPerkIds(); }
 function openDraft() {
   draftCards = draftChoices(eligiblePool(), perks, [], rng, DRAFT_CHOICES);
   if (!draftCards.length) return;
-  state = 'draft'; renderDraft(); $('draft').classList.remove('hide'); sfxLevel();
+  // Lock the cards briefly so the input the player was mid-pressing (a jump or
+  // lane swap) can't land as an accidental pick the instant the draft appears.
+  draftArm = DRAFT_ARM;
+  state = 'draft'; renderDraft(); $('draft').classList.remove('hide'); $('draft').classList.add('arming'); sfxLevel();
 }
 function pickDraft(i) {
+  if (draftArm > 0) { buzz(8); return; }   // cards still locked — ignore the stray input
   const card = draftCards[i]; if (!card) return;
   applyPerk(card.id); showBanner(`${card.icon} ${card.name}!`); sfxCoin(); buzz(18);
-  draftCards = []; $('draft').classList.add('hide');
+  draftCards = []; $('draft').classList.add('hide'); $('draft').classList.remove('arming');
+  // A grace window on resume: the road was frozen, so give the player a moment to
+  // read it and dodge before collisions re-arm (reuses the shield-style invuln).
+  invuln = Math.max(invuln, DRAFT_GRACE);
   state = 'playing'; clock.getDelta();   // drop the wall-clock gap so dt doesn't spike on resume
 }
 // Reroll the offered cards (spends a banked reroll charge).
 function rerollDraft() {
-  if (state !== 'draft' || !useReroll()) { buzz(25); return; }
+  if (state !== 'draft' || draftArm > 0 || !useReroll()) { buzz(25); return; }
   draftCards = draftChoices(eligiblePool(), perks, [], rng, DRAFT_CHOICES);
   renderDraft(); sfxLane(); buzz(12);
 }
 // Banish a card's perk from the pool for good (spends a banish token), then refill.
 function banishCard(i) {
-  const card = draftCards[i]; if (!card || state !== 'draft') return;
+  const card = draftCards[i]; if (!card || state !== 'draft' || draftArm > 0) return;
   if (!useBanish()) { buzz(25); return; }
   banishPerk(card.id); sfxComboBreak();
   draftCards = draftChoices(eligiblePool(), perks, [], rng, DRAFT_CHOICES);
@@ -294,7 +301,7 @@ function resetGame() {
   const eff = daily ? { shields: 0, magnet: 0, rollValue: 15, extraJumps: 0, headstart: 0 } : effects();
   shields = eff.shields; invuln = 0; magnetR = eff.magnet; rollValue = eff.rollValue; extraJumps = eff.extraJumps;
   level = 1 + eff.headstart;
-  perks = []; levelUps = 0; recomputeRunMods();   // fresh run: no perks drafted yet
+  perks = []; levelUps = 0; draftArm = 0; recomputeRunMods();   // fresh run: no perks drafted yet
   const boon = !daily && getBoon();               // a chosen starting boon begins drafted (daily is boon-free)
   if (boon && perkById(boon)) applyPerk(boon);
   speed = 12.5; distance = (level - 1) * LEVEL_DIST; rollCount = 0; rollPoints = 0; rowTimer = 1.8; sceneAcc = 0; dustAcc = 0;
@@ -414,6 +421,8 @@ function animate() {
 // fixed dt N times and the run advances identically every time.
 function tick(dt) {
   simTime += dt; const t = simTime;
+  // Tick down the draft's input lock even while frozen, then unlock the cards.
+  if (state === 'draft' && draftArm > 0) { draftArm = Math.max(0, draftArm - dt); if (!draftArm) $('draft').classList.remove('arming'); }
   if (state === 'playing') {
     elapsed += dt;
     invuln = Math.max(0, invuln - dt);
@@ -810,7 +819,7 @@ function buildDebugApi() {
       rollCount, rollPoints, combo, comboMult: cmult(combo), comboMax,
       shields, invuln: +invuln.toFixed(2), magnetR, rollValue, extraJumps, jumpsLeft,
       perks: perks.map(p => ({ id: p.id, stacks: p.stacks })), mods, levelUps,
-      draft: draftCards.map(p => p.id),
+      draft: draftCards.map(p => p.id), draftArm: +draftArm.toFixed(2),
       meta: { rerolls: getRerolls(), banishes: getBanishes(), boon: getBoon(), eligible: eligiblePool() },
       power, powerT: +powerT.toFixed(2),
       emote: +emoteT.toFixed(2), spin: +spin.toFixed(2),
@@ -853,6 +862,7 @@ function buildDebugApi() {
     powerT: v => { powerT = v; }, safeLane: v => { safeLane = v; }, forcedGap: v => { forcedGap = v; },
     perks: v => { perks = (v || []).map(x => typeof x === 'string' ? { id: x, stacks: 1 } : { id: x.id, stacks: x.stacks || 1 }); recomputeRunMods(); },
     levelUps: v => { levelUps = v; },
+    draftArm: v => { draftArm = v; if (!draftArm) $('draft').classList.remove('arming'); },
   };
   function set(o = {}) {
     for (const k in o) { if (SETTERS[k]) SETTERS[k](o[k]); }
