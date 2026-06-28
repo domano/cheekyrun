@@ -15,6 +15,8 @@ import { ACHIEVEMENTS, checkAchievements } from './achievements.js';
 import { selectedSkin, selectSkin, getDailyBest, setDailyBest } from './save.js';
 import { SKINS, skinById, skinUnlocked, buySkin, applySkin } from './cosmetics.js';
 import { installDebug } from './debug.js';
+import { initHud, layoutHud, renderHud, setActive as setHudActive, hudActive, hudLayout, setScore, setLevel, setRolls, setShields, setCombo, setPower } from './hud3d.js';
+import { initMenu, enterMenu, exitMenu, updateMenu, setMenuBiome, menuVisible, MENU_CAM } from './menu3d.js';
 import {
   initAudio, ensureAudio, toggleSound,
   sfxLane, sfxJump, sfxDuck, sfxCoin, sfxCrash, sfxStart, sfxOver, sfxLevel, sfxShield, sfxComboBreak,
@@ -26,6 +28,7 @@ let gearTiers = {}, fartCount = 0;   // worn upgrade tiers (for visuals/tests) +
 let obstacles = [], rolls = [], pickups = [], scenery = [], stripes = [], clouds = [];
 let groundMat, pathMat, discMat, hillMats = [], roadGround, roadPath;
 let state = 'menu';
+let lastState = null;   // tracks state transitions to fire menu enter/exit
 let speed, distance, rollCount, rollPoints, rowTimer, sceneAcc, dustAcc, elapsed, difficulty, safeLane, forcedGap;
 let laneIdx, targetX, vy, grounded, jumpsLeft, banked, groundY, duckTimer, duckAmt, shakeT;
 let combo, comboTimer, comboMax;
@@ -127,6 +130,10 @@ function init() {
   $('dailyBtn').onclick = () => startGame(true);
   $('muteBtn').onclick = toggleSound;
   renderShop(); renderStats(); renderAchievements(); renderCosmetics(); renderDaily();
+  // 3D HUD overlay + the menu hero diorama (both reuse the existing scene/player).
+  initHud(); layoutHud(innerWidth, innerHeight);
+  initMenu({ scene, player, particles });
+  enterMenu(); lastState = 'menu';
   installDebug(buildDebugApi);
 }
 
@@ -331,12 +338,13 @@ function gameOver() {
   setTimeout(() => { $('hud').classList.add('hide'); $('gameover').classList.remove('hide'); }, 420);
 }
 const score = () => Math.floor(distance) + rollPoints;
-function updateHud() { $('score').textContent = score(); $('rolls').textContent = rollCount; }
-function updateLevelHud() { $('level').textContent = level; $('lvlfill').style.width = (levelProgress(distance) * 100).toFixed(1) + '%'; }
+function updateHud() { $('score').textContent = score(); $('rolls').textContent = rollCount; setScore(score()); setRolls(rollCount); }
+function updateLevelHud() { $('level').textContent = level; $('lvlfill').style.width = (levelProgress(distance) * 100).toFixed(1) + '%'; setLevel(level, levelProgress(distance)); }
 function updateShieldHud() {
   const box = $('shieldHud');
   if (shields > 0) { box.classList.remove('hide'); $('shields').textContent = shields; }
   else box.classList.add('hide');
+  setShields(shields);
 }
 function popScore(v, mult) { const e = $('scorePop'); e.textContent = '+' + v + (mult > 1 ? ' x' + mult : ''); e.style.opacity = 1; clearTimeout(popScore._t); popScore._t = setTimeout(() => e.style.opacity = 0, 260); }
 
@@ -359,6 +367,7 @@ function updateComboHud(pulse) {
     box.classList.remove('hide'); $('comboMult').textContent = cmult(combo); $('comboCount').textContent = combo;
     if (pulse) { box.classList.remove('pulse'); void box.offsetWidth; box.classList.add('pulse'); }
   } else box.classList.add('hide');
+  setCombo(combo, cmult(combo), combo >= 2);
 }
 
 /* ---------------- controls ---------------- */
@@ -414,6 +423,8 @@ function animate() {
 // fixed dt N times and the run advances identically every time.
 function tick(dt) {
   simTime += dt; const t = simTime;
+  if (state !== lastState) { onStateChange(state); lastState = state; }
+  setHudActive(state === 'playing');
   if (state === 'playing') {
     elapsed += dt;
     invuln = Math.max(0, invuln - dt);
@@ -441,8 +452,15 @@ function tick(dt) {
   } else if (speedLines.style.opacity !== '0') speedLines.style.opacity = 0;
   moveScenery(dt); scrollStripes(dt); driftClouds(dt); tweenBiome(dt);
   deformRoad(roadPath, distance); deformRoad(roadGround, distance);
-  updatePlayer(dt, t); particles.update(dt); updateCamera(dt, t);
+  updatePlayer(dt, t); if (state === 'menu') updateMenu(dt, t, camera);
+  particles.update(dt); updateCamera(dt, t);
   renderer.render(scene, camera);
+  renderHud(renderer, dt);
+}
+// Show the menu hero diorama only on the menu; hide it once a run starts or ends.
+function onStateChange(s) {
+  if (s === 'menu') { setMenuBiome(biomeOf(1)); enterMenu(); }
+  else exitMenu();
 }
 const hitColor = (o) => o.userData.color || 0xff8a6a;
 function moveObstacles(dt) {
@@ -538,6 +556,7 @@ function updatePowerHud() {
     box.classList.remove('hide'); $('powerIcon').textContent = POWERUPS[power].icon;
     $('powerFill').style.width = Math.max(0, powerT / POWERUP_DURATION * 100) + '%';
   } else box.classList.add('hide');
+  setPower(power, power ? Math.max(0, powerT / POWERUP_DURATION) : 0);
 }
 function moveScenery(dt) {
   const v = (state === 'playing' ? speed : 5) * dt;
@@ -605,6 +624,15 @@ function updatePlayer(dt, t) {
   shadowBlob.material.opacity = Math.max(0.06, 0.26 - groundY * 0.05);
 }
 function updateCamera(dt, t) {
+  // Menu framing: a tighter, presentation-style camera in front of the hero,
+  // tweened to from wherever the camera was (gameplay or boot).
+  if (state === 'menu') {
+    const k = Math.min(1, dt * 4);
+    camera.position.lerp(MENU_CAM.pos, k);
+    if (Math.abs(camera.fov - MENU_CAM.fov) > 0.05) { camera.fov += (MENU_CAM.fov - camera.fov) * k; camera.updateProjectionMatrix(); }
+    camera.lookAt(MENU_CAM.look);
+    return;
+  }
   // Lean into the curve and ride the hill: aim a little down-track so the camera
   // turns to follow the bend and pitches with the rise/fall ahead.
   const look = trackOffset(-14, distance);
@@ -623,7 +651,7 @@ function scrollStripes(dt) {
   });
 }
 function driftClouds(dt) { clouds.forEach(c => { c.position.z += (state === 'playing' ? speed * 0.25 : 1.5) * dt; if (c.position.z > 16) { c.position.z = -60; c.position.x = (Math.random() - 0.5) * 30; } }); }
-function onResize() { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); }
+function onResize() { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); layoutHud(innerWidth, innerHeight); }
 
 /* ---------------- levels / biomes ---------------- */
 function onLevelUp() {
@@ -821,6 +849,7 @@ function buildDebugApi() {
       gearVisible: gear ? { shield: gear.shield.visible, spring: gear.spring.visible, magnet: gear.magnet.visible, fortune: gear.fortune.visible, headstart: gear.headstart.visible, shieldPips: gear.shieldPips.filter(p => p.visible).length } : {},
       counts: { obstacles: obstacles.length, rolls: rolls.length, pickups: pickups.length, scenery: scenery.length },
       wallet: getWallet(), daily,
+      hudActive: hudActive(), menuVisible: menuVisible(), hudLayout: hudLayout(),
     };
   }
 

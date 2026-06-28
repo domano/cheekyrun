@@ -1,5 +1,14 @@
-:root{ --pink:#ff5f93; --plum:#2a1b2e; --ink:#241019; }
+:root{ --pink:#ff5f93; --plum:#2a1b2e; --ink:#241019;
+  /* shared toon UI tokens (mirrored in config.js HUD for the WebGL plates) */
+  --cream:#fff7f1; --gold:#ffe9a8; --gold-ink:#ffae00; --good:#bdf0c4; --bad:#ffd0d0; --curse:#9c2b2b;
+  --menu-tray:rgba(255,247,241,.96);
+  --shadow-sm:3px 3px 0 var(--ink); --shadow-md:4px 4px 0 var(--ink);
+  --shadow-lg:8px 8px 0 var(--ink); --shadow-xl:10px 10px 0 var(--ink);
+  --r-plate:14px; --r-card:22px;
+}
 *{margin:0;padding:0;box-sizing:border-box}
+/* visually-hidden but accessible (the 3D wordmark carries the visual title) */
+.sr-only{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 html,body{height:100%;overflow:hidden;
   background:linear-gradient(#8fd3ff 0%,#bfe4ff 28%,#ffd2e2 66%,#ffe2c4 100%);
   font-family:"Trebuchet MS","Segoe UI",system-ui,sans-serif;color:var(--plum);
@@ -13,8 +22,12 @@ canvas{display:block}
 #fx::before{content:"";position:absolute;inset:0;opacity:.05;
   background-image:radial-gradient(rgba(20,5,15,.95) 1px,transparent 1.5px);background-size:5px 5px}
 
-#hud{position:fixed;top:env(safe-area-inset-top,14px);left:0;right:0;z-index:10;
-  display:flex;justify-content:space-between;padding:16px 20px;pointer-events:none;font-weight:800}
+/* The in-run HUD is now rendered as a 3D overlay (src/hud3d.js). The DOM #hud
+   stays as the values the smoke test reads (#score/#level/#rolls), parked
+   off-screen; #comboHud/#powerHud are likewise superseded by the 3D plates. */
+#hud{position:fixed;top:0;left:-99999px;right:auto;z-index:10;
+  display:flex;padding:16px 20px;pointer-events:none;font-weight:800}
+#comboHud,#powerHud{left:-99999px!important;right:auto}
 .pill{background:#fff;border:3px solid var(--ink);border-radius:999px;padding:7px 16px;
   box-shadow:4px 4px 0 var(--ink);display:flex;align-items:center;gap:8px;font-size:18px}
 .pill small{font-weight:800;opacity:.5;font-size:11px;text-transform:uppercase;letter-spacing:1.5px}
@@ -92,16 +105,16 @@ canvas{display:block}
 /* ---------- full-screen main menu ---------- */
 /* The menu fills the viewport and scrolls, with the live 3D scene playing
    behind a soft top-to-bottom scrim. Game-over keeps the centered .card. */
+/* The top half shows the live 3D hero diorama (menu3d.js); only the lower tray
+   gets a soft cream wash so the DOM controls stay legible over it. */
 #overlay.menu{display:block;padding:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;
-  background:linear-gradient(180deg,rgba(20,8,18,.42) 0%,rgba(20,8,18,.12) 24%,rgba(20,8,18,.16) 60%,rgba(20,8,18,.46) 100%)}
+  background:linear-gradient(180deg,rgba(255,247,241,0) 0%,rgba(255,247,241,0) 52%,var(--menu-tray) 68%,var(--menu-tray) 100%)}
 .menu-inner{min-height:100%;width:100%;max-width:760px;margin:0 auto;
   display:flex;flex-direction:column;align-items:center;gap:20px;
-  padding:calc(env(safe-area-inset-top,0px) + 66px) 20px calc(env(safe-area-inset-bottom,0px) + 30px)}
+  padding:calc(env(safe-area-inset-top,0px) + 56vh) 20px calc(env(safe-area-inset-bottom,0px) + 30px)}
 
 .menu-hero{display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center}
-.menu-hero .float{font-size:62px}
-.menu-hero .title{font-size:clamp(48px,14vw,76px);filter:drop-shadow(4px 5px 0 rgba(20,8,18,.35))}
-.menu-hero .tag{color:#fff;opacity:.95;font-size:15px;text-shadow:0 2px 0 rgba(20,8,18,.55)}
+.menu-hero .tag{color:var(--plum);opacity:.85;font-size:15px;font-weight:800}
 
 .menu-cta{display:flex;flex-direction:column;align-items:center;gap:11px;width:100%;max-width:330px}
 .menu-cta .btn{width:100%}
@@ -291,3 +304,50 @@ canvas{display:block}
 .float{animation:bob 2.2s ease-in-out infinite;font-size:54px}
 @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
 @media (prefers-reduced-motion:reduce){.float{animation:none}}
+
+/* ---------- bespoke toon polish: label tabs, result card, ribbons ---------- */
+/* Section headers become a sticker "label tab": one motif unifies every panel
+   (shop / skins / achievements / draft) so they read as the same toy. */
+.shophead > span:first-child,.drafthead .dh-title{
+  display:inline-flex;align-items:center;gap:6px;text-transform:uppercase;letter-spacing:.4px;
+  background:var(--pink);color:#fff;font-weight:900;font-size:13px;
+  border:2.5px solid var(--ink);border-radius:10px;padding:4px 12px;box-shadow:var(--shadow-sm);
+  -webkit-text-stroke:.3px var(--ink)}
+.shophead .wallet{box-shadow:var(--shadow-sm)}
+/* the draft header is a single title-case tab with the subtitle tucked beneath */
+.drafthead{align-items:center;text-align:center;gap:6px}
+.drafthead .dh-title{text-transform:none;font-size:14px}
+
+/* warm the RARE perk tint so it sits in the peachy palette (was a cold blue) */
+.perkcard.rare{background:#efe6ff}
+.perkcard.rare .pk-disc{background:#e7d9ff}
+.perkcard.rare .pk-rar{background:#d8c4ff;border-color:#6a3fa0}
+#perktray .ptk.rare{background:#efe6ff}
+
+/* Game-over: a collectible result card. A tilted "Wiped out!" stamp, the score
+   in its own inset plate, and the banked rolls as a popping gold pill. */
+.gocard .go-badge{font-size:46px;line-height:1;transform:rotate(-4deg);margin:-4px 0 2px;
+  filter:drop-shadow(2px 3px 0 rgba(20,8,18,.28))}
+.go-stamp{display:inline-block;transform:rotate(-3deg);margin:2px 0 16px;
+  background:#fff;border:3.5px solid var(--ink);border-radius:14px;padding:7px 24px;box-shadow:var(--shadow-md)}
+.go-stamp .title{font-size:34px;-webkit-text-stroke:2px var(--ink)}
+.resultplate{background:#fff;border:3px solid var(--ink);border-radius:16px;box-shadow:var(--shadow-sm);
+  padding:12px 18px 12px;margin:0 auto 14px;max-width:250px}
+.resultplate .final{margin:0}
+.resultplate .best{margin:4px 0 0;margin-bottom:0}
+.banked{display:inline-block;background:var(--gold);color:var(--gold-ink);
+  border:2.5px solid var(--ink);border-radius:999px;padding:5px 15px;box-shadow:var(--shadow-sm);
+  font-size:14px;font-weight:900;-webkit-text-stroke:.4px var(--ink);margin:0 0 16px;animation:bankpop .36s ease-out both}
+@keyframes bankpop{0%{transform:scale(.7);opacity:0}60%{transform:scale(1.12);opacity:1}100%{transform:scale(1)}}
+
+/* Perk-draft cards: a corner rarity ribbon (TCG feel) + a staggered entrance. */
+.perkcard .pk-rar{position:absolute;bottom:10px;right:-2px;transform:rotate(-6deg);
+  border-radius:6px 0 6px 6px;box-shadow:1.5px 1.5px 0 var(--ink)}
+.draftgrid .perkcard{animation:perkin .3s ease-out both}
+.draftgrid .perkcard:nth-child(2){animation-delay:.06s}
+.draftgrid .perkcard:nth-child(3){animation-delay:.12s}
+@keyframes perkin{from{opacity:0;transform:translateY(10px) rotate(-2deg)}to{opacity:1;transform:none}}
+
+@media (prefers-reduced-motion:reduce){
+  .banked,.draftgrid .perkcard{animation:none}
+}

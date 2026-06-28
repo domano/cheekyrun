@@ -500,6 +500,31 @@ const SCENARIOS = [
     },
   },
   {
+    name: 'hud-menu-state',
+    fn: (c, assert) => {
+      c.fresh(); c.step(1);                       // settle the state transition
+      let s = c.state();
+      assert(s.state === 'menu', 'boots on the menu');
+      assert(s.menuVisible === true, 'the 3D menu hero shows on the menu');
+      assert(s.hudActive === false, 'the in-run HUD overlay is off on the menu');
+      c.start(); c.step(1); s = c.state();
+      assert(s.state === 'playing' && s.hudActive === true, 'starting a run lights the HUD overlay');
+      assert(s.menuVisible === false, 'and hides the menu hero');
+    },
+  },
+  {
+    name: 'hud-dom-mirrors',
+    fn: (c, assert) => {
+      // The 3D HUD is the visual, but the DOM #score/#level/#rolls remain the
+      // source of truth the smoke test reads — they must stay in sync.
+      c.start(); c.set({ shields: 2 }); const s = c.step(120);
+      const dom = (id) => document.getElementById(id).textContent;
+      assert(dom('score') === String(s.score), '#score mirror matches the live score');
+      assert(dom('level') === String(s.level), '#level mirror matches the live level');
+      assert(dom('rolls') === String(s.rollCount), '#rolls mirror matches the roll count');
+    },
+  },
+  {
     name: 'daily-ignores-perks-and-boon',
     fn: (c, assert) => {
       c.boon('lucky'); c.fund(9999); c.buyMeta('unlock:doubledown');

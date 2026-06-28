@@ -32,8 +32,7 @@
   <div id="overlay" class="scrim menu">
     <div class="menu-inner">
       <header class="menu-hero">
-        <div class="float">🍑👂</div>
-        <h1 class="title">Cheeky Run</h1>
+        <h1 class="title sr-only">Cheeky Run</h1>
         <div class="tag">a butt with ears, on the run</div>
       </header>
 
@@ -61,11 +60,13 @@
   </div>
 
   <div id="gameover" class="scrim hide">
-    <div class="card">
-      <div style="font-size:50px">😵🍑</div>
-      <div class="title" style="font-size:32px;margin-top:6px">Wiped out!</div>
-      <div class="final">Score <span id="finalScore">0</span></div>
-      <div class="best" id="bestLine">Best: 0</div>
+    <div class="card gocard">
+      <div class="go-badge">😵🍑</div>
+      <div class="go-stamp"><span class="title">Wiped out!</span></div>
+      <div class="resultplate">
+        <div class="final">Score <span id="finalScore">0</span></div>
+        <div class="best" id="bestLine">Best: 0</div>
+      </div>
       <div class="banked">🧻 +<span id="earned">0</span> banked</div>
       <button class="btn" id="againBtn">Again!</button>
       <div class="stats"></div>

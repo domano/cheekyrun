@@ -5,6 +5,16 @@ export const SPAWN_Z = -64;
 export const DESPAWN_Z = 12;
 export const INK = 0x241019;
 
+// Shared toon UI tokens, mirrored from style.css `:root` so the WebGL HUD plates
+// and the DOM panels speak one visual language (cream fill, thick ink border,
+// hard offset shadow). Used by textTexture.js / hud3d.js / menu3d.js.
+export const HUD = {
+  ink: '#241019', pink: '#ff5f93', plum: '#2a1b2e',
+  cream: '#fff7f1', gold: '#ffe9a8', good: '#bdf0c4', bad: '#ffd0d0',
+  font: '900 28px "Trebuchet MS","Segoe UI",system-ui,sans-serif',
+  borderW: 3, radius: 14, shadow: [4, 4],
+};
+
 // Full-width "gate" rows block every lane, so the only way past is the right
 // action — jump a low hurdle or slide under a high bar. Side-stepping can't
 // save you. These knobs tune how soon/often they appear.
