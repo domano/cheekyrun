@@ -129,9 +129,16 @@ export function makePowerup(color) {
   const g = new THREE.Group();
   const gem = new THREE.Mesh(new THREE.IcosahedronGeometry(0.46, 0), toon(color, { emissive: color, flat: true }));
   gem.castShadow = true; ink(gem, 1.1);
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.06, 8, 20), toon(0xffffff, { emissive: 0xbbbbbb }));
-  ring.rotation.x = Math.PI / 2; g.add(gem, ring);
-  g.position.y = 1.0; g.userData.gem = gem;
+  // Ring tinted a lighter shade of the gem colour (not white) so every kind —
+  // even the pale ghost lavender — reads as one solid coloured pickup.
+  const ringCol = new THREE.Color(color).lerp(new THREE.Color(0xffffff), 0.45);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.075, 8, 22), toon(ringCol.getHex(), { emissive: ringCol.getHex() }));
+  ring.rotation.x = Math.PI / 2;
+  // A tight 4-point sparkle behind the gem so it catches the eye at distance.
+  const sparkle = new THREE.Mesh(new THREE.CircleGeometry(0.66, 4), new THREE.MeshBasicMaterial({ color: ringCol.getHex(), transparent: true, opacity: 0.6, depthWrite: false, blending: THREE.AdditiveBlending }));
+  sparkle.position.z = -0.15; sparkle.rotation.z = Math.PI / 4;
+  g.add(sparkle, ring, gem);
+  g.position.y = 1.0; g.userData.gem = gem; g.userData.sparkle = sparkle;
   return g;
 }
 

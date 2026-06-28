@@ -36,6 +36,7 @@ let emoteT, spin;   // emoteT: brief happy-squish timer (rolls/near-miss). spin:
 // they're initialised before the top-level animate() call (avoids a TDZ throw).
 let simTime = 0, paused = false;
 let power, powerT, powerCD, gotPower;   // active power-up kind, remaining time, spawn cooldown (rows), grabbed-any flag
+let auraSparkT = 0;                      // throttle for the active-power-up sparkle drift
 let rng = Math.random, daily = false, dailyDay = '';   // daily challenge: seeded RNG + today's key
 const speedLines = $('speedlines');
 // Level + upgrade run state (set from the save at each run start).
@@ -396,6 +397,7 @@ function movePickups(dt) {
   for (let i = pickups.length - 1; i >= 0; i--) {
     const o = pickups[i]; o.position.z += speed * dt; o.rotation.y += dt * 2.5;
     if (o.userData.gem) o.userData.gem.rotation.y += dt * 4;
+    if (o.userData.sparkle) { o.userData.sparkle.rotation.y -= dt * 2.5; o.userData.sparkle.rotation.z += dt * 1.2; }   // hold facing the camera, twinkle slowly
     const lx = o.userData.lx;
     const dz = Math.abs(o.position.z - player.position.z), dx = Math.abs(lx - player.position.x);
     if (dz < 0.95 && dx < 1.0) { activatePower(o.userData.kind, o.position.clone()); scene.remove(o); pickups.splice(i, 1); continue; }
@@ -412,10 +414,10 @@ function activatePower(kind, pos) {
   particles.emit(pos.add(new THREE.Vector3(0, 0.3, 0)), { count: 18, color: p.color, speed: 4, up: 4, life: .6, grav: 6 });
   updatePowerHud(); updatePowerVisual();
 }
-// Mirror the active power-up onto the character: a halo ring in the power's
-// colour, plus a translucent body while Ghost is up.
+// Mirror the active power-up onto the character: a glowing ground ring in the
+// power's colour, plus a translucent body while Ghost is up.
 function updatePowerVisual() {
-  if (aura) { aura.visible = !!power; if (power) aura.material.color.setHex(POWERUPS[power].color); }
+  if (aura) { aura.visible = !!power; if (power) { aura.material.color.setHex(POWERUPS[power].color); aura.userData.edge.material.color.setHex(POWERUPS[power].color); } }
   const ghost = power === 'ghost';
   [playerMats.skin, playerMats.inner, playerMats.blush, playerMats.tail].forEach(m => {
     m.transparent = ghost; m.opacity = ghost ? 0.45 : 1; m.depthWrite = !ghost;
@@ -473,7 +475,17 @@ function updatePlayer(dt, t) {
   });
   feet.forEach((f, i) => { const ph = i ? Math.PI : 0; f.position.y = 0.1 + ((running && grounded && duckTimer <= 0) ? Math.max(0, Math.sin(t * freq + ph)) * 0.16 : 0); });
   if (tail) tail.position.x = Math.sin(t * 10) * 0.05;
-  if (aura && aura.visible) { aura.rotation.z += dt * 3.2; aura.position.y = 0.6 + Math.sin(t * 6) * 0.05; }
+  if (aura && aura.visible) {
+    const pulse = 1 + Math.sin(t * 5) * 0.06; aura.scale.set(pulse, pulse, 1);
+    aura.material.opacity = 0.4 + Math.sin(t * 5) * 0.12; aura.rotation.z += dt * 0.8;
+    auraSparkT -= dt;
+    if (auraSparkT <= 0 && state === 'playing') {                    // drift cosy sparkles up around the body
+      auraSparkT = 0.22;
+      const a = Math.random() * Math.PI * 2, r = 0.7 + Math.random() * 0.4;
+      particles.emit(new THREE.Vector3(player.position.x + Math.cos(a) * r, 0.1, player.position.z + Math.sin(a) * r), { count: 1, color: POWERUPS[power].color, speed: 0.3, up: 2.4, life: .7, grav: -1.5, size: 0.4 });
+    }
+  }
+  if (gear && gear.shield.visible) gear.shield.rotation.y += dt * 0.7;   // orbit the tier pips
   if (gear && gear.headstart.visible) gear.flame.scale.y = 0.8 + Math.abs(Math.sin(t * 22)) * 0.5;
   squash -= squash * Math.min(1, dt * 12);   // ease the squash/stretch impulse back to 0
   const baseSq = (grounded && duckTimer <= 0) ? 1 - bob * 0.4 : 1;
@@ -661,6 +673,7 @@ function buildDebugApi() {
       track: trackSnapshot(),
       player: { x: +player.position.x.toFixed(3), groundY: +groundY.toFixed(3), grounded, ducking: duckTimer > 0 },
       gearTiers, auraVisible: !!(aura && aura.visible), fartCount,
+      gearVisible: gear ? { shield: gear.shield.visible, spring: gear.spring.visible, magnet: gear.magnet.visible, fortune: gear.fortune.visible, headstart: gear.headstart.visible, shieldPips: gear.shieldPips.filter(p => p.visible).length } : {},
       counts: { obstacles: obstacles.length, rolls: rolls.length, pickups: pickups.length, scenery: scenery.length },
       wallet: getWallet(), daily,
     };
