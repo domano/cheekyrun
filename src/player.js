@@ -37,9 +37,11 @@ export function buildPlayer(scene) {
   return { player, ears, feet, tail, gear, aura, mats: { skin, inner, blush: blushM, tail: tailM } };
 }
 
-// Worn upgrade cosmetics — one prop per shop upgrade. All start hidden; the game
-// reveals and scales them per owned tier via applyGear(), so the more you own
-// the more pronounced the character looks.
+// Worn cosmetics — one prop per loadout slot. Cushion/Head Start track the
+// permanent upgrades you own; magnet/springs/clover track the drafted perks
+// (vacuum/hops/lucky) since those reframed into the roguelite layer. All start
+// hidden; the game reveals and scales them via applyGear(), so the more you've
+// banked or drafted the more pronounced the character looks.
 function buildGear(player) {
   const gear = {};
 
@@ -138,9 +140,10 @@ function buildAura(player) {
   return aura;
 }
 
-// Reveal each worn upgrade prop for the owned tiers, e.g.
-// { shield: 2, spring: 1, magnet: 4, fortune: 3, headstart: 1 }. Anything at
-// tier 0 (or absent) is hidden — so a daily run with no upgrades shows nothing.
+// Reveal each worn prop for its tier/stack count, e.g.
+// { shield: 2, spring: 1, magnet: 4, fortune: 3, headstart: 1 } — shield/headstart
+// from owned upgrades, magnet/spring/fortune from drafted perk stacks. Anything at
+// 0 (or absent) is hidden — so a fresh run with no upgrades or perks shows nothing.
 // Props stay a fixed, modest size; tier shows through small details, not bulk,
 // so the silhouette stays clean even with everything equipped.
 export function applyGear(gear, t = {}) {
