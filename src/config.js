@@ -19,7 +19,8 @@ export const GATE_COOLDOWN = 2;       // normal rows guaranteed between gates
 export const COMBO_WINDOW = 2.6;      // seconds a combo survives idle
 export const COMBO_STEP = 4;          // hits between each +1 to the multiplier
 export const COMBO_MAX = 5;           // multiplier ceiling
-export const comboMult = (c) => Math.min(COMBO_MAX, 1 + Math.floor(c / COMBO_STEP));
+// `extra` raises the multiplier ceiling (the Hot Streak perk feeds it mods.comboCeil).
+export const comboMult = (c, extra = 0) => Math.min(COMBO_MAX + extra, 1 + Math.floor(c / COMBO_STEP));
 
 // Near-miss: clearing an obstacle this close (lane units beyond its half-width)
 // without touching it pays a small bonus and feeds the combo.

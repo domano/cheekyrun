@@ -168,6 +168,19 @@ canvas{display:block}
 .up.maxed{cursor:default;opacity:.85}
 .up.maxed .upc{background:#bdf0c4}
 
+/* in-run perk tray — the drafted build, as a little icon strip */
+#perktray{position:fixed;left:calc(env(safe-area-inset-left,0px) + 16px);bottom:calc(env(safe-area-inset-bottom,0px) + 16px);z-index:12;
+  display:flex;flex-wrap:wrap;gap:6px;max-width:42vw;pointer-events:none}
+#perktray .ptk{position:relative;width:34px;height:34px;border-radius:50%;border:2.5px solid var(--ink);
+  background:#fff;box-shadow:2px 2px 0 var(--ink);display:flex;align-items:center;justify-content:center;font-size:18px}
+#perktray .ptk.rare{background:#eaf3ff}
+#perktray .ptk.epic{background:#f3eaff}
+#perktray .ptk.curse{background:#ffecea;border-color:#9c2b2b;box-shadow:2px 2px 0 #9c2b2b}
+#perktray .ptk b{position:absolute;right:-5px;bottom:-5px;min-width:16px;height:16px;border-radius:999px;
+  background:var(--pink);color:#fff;border:2px solid var(--ink);font-size:10px;font-weight:900;
+  display:flex;align-items:center;justify-content:center;padding:0 2px}
+#perktray .ptk.curse b{background:#9c2b2b}
+
 /* ---------- roguelite perk draft ---------- */
 #draft{background:rgba(36,16,25,.55);animation:draftdim .12s ease-out}
 @keyframes draftdim{from{background:rgba(36,16,25,0)}to{background:rgba(36,16,25,.55)}}

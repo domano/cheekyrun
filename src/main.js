@@ -199,6 +199,8 @@ function spawnScenery() {
 // Re-derive the run modifiers from the perks picked so far. perks[] is the source
 // of truth; mods is a pure fold of it, so stacking is just stacks++ then recompute.
 function recomputeRunMods() { mods = applyPerks(perks); }
+// Combo multiplier for the live run, including any Hot Streak ceiling bump.
+const cmult = (c) => comboMult(c, mods.comboCeil);
 // Add one stack of a perk to this run. Shield grants are a one-shot (applied here,
 // not in recompute) so a shield spent mid-run isn't refunded by the next pick.
 function applyPerk(id) {
@@ -207,8 +209,16 @@ function applyPerk(id) {
   if (cur) { if (cur.stacks >= def.stack) return false; cur.stacks++; }
   else perks.push({ id, stacks: 1 });
   if (def.shieldGrant) { shields += def.shieldGrant; updateShieldHud(); }
-  recomputeRunMods();
+  recomputeRunMods(); renderPerkTray();
   return true;
+}
+// The run's drafted perks as a little icon strip on the HUD (stacks show a count).
+function renderPerkTray() {
+  const box = $('perktray');
+  if (!perks.length) { box.classList.add('hide'); box.innerHTML = ''; return; }
+  box.classList.remove('hide');
+  box.innerHTML = perks.map(p => { const d = perkById(p.id);
+    return `<span class="ptk ${d.rarity}" title="${d.name}">${d.icon}${p.stacks > 1 ? `<b>${p.stacks}</b>` : ''}</span>`; }).join('');
 }
 // Which perks a draft can offer. A daily run uses the fixed DEFAULT_POOL (so
 // everyone sees the same seeded choices); a normal run uses the meta-unlocked
@@ -295,7 +305,7 @@ function resetGame() {
   applySkin(playerMats, selectedSkin());
   // Show the upgrades you own on the character (none in a daily — it's gear-free).
   gearTiers = daily ? {} : { magnet: tierOf('magnet'), shield: tierOf('shield'), fortune: tierOf('fortune'), spring: tierOf('spring'), headstart: tierOf('headstart') };
-  applyGear(gear, gearTiers); fartCount = 0; updatePowerVisual();
+  applyGear(gear, gearTiers); fartCount = 0; updatePowerVisual(); renderPerkTray();
   applyBiome(level, true);
 }
 function startGame(isDaily = false) {
@@ -317,6 +327,7 @@ function gameOver() {
   $('finalScore').textContent = score(); $('bestLine').textContent = 'Best: ' + getBest();
   $('earned').textContent = rollCount; renderShop(); renderStats(); renderAchievements(); renderCosmetics();
   if (unlocked.length) queueAchToasts(unlocked);
+  $('perktray').classList.add('hide');
   setTimeout(() => { $('hud').classList.add('hide'); $('gameover').classList.remove('hide'); }, 420);
 }
 const score = () => Math.floor(distance) + rollPoints;
@@ -345,7 +356,7 @@ function breakCombo() {
 function updateComboHud(pulse) {
   const box = $('comboHud');
   if (combo >= 2) {
-    box.classList.remove('hide'); $('comboMult').textContent = comboMult(combo); $('comboCount').textContent = combo;
+    box.classList.remove('hide'); $('comboMult').textContent = cmult(combo); $('comboCount').textContent = combo;
     if (pulse) { box.classList.remove('pulse'); void box.offsetWidth; box.classList.add('pulse'); }
   } else box.classList.add('hide');
 }
@@ -426,7 +437,7 @@ function tick(dt) {
     }
     updateHud(); updateLevelHud();
     // speed lines ramp in with combo and raw pace, as a high-intensity reward
-    speedLines.style.opacity = Math.min(0.6, Math.max(0, comboMult(combo) - 1) * 0.15 + Math.max(0, speed - 22) * 0.012);
+    speedLines.style.opacity = Math.min(0.6, Math.max(0, cmult(combo) - 1) * 0.15 + Math.max(0, speed - 22) * 0.012);
   } else if (speedLines.style.opacity !== '0') speedLines.style.opacity = 0;
   moveScenery(dt); scrollStripes(dt); driftClouds(dt); tweenBiome(dt);
   deformRoad(roadPath, distance); deformRoad(roadGround, distance);
@@ -456,8 +467,8 @@ function moveObstacles(dt) {
     if (!o.userData.scored && prevZ < player.position.z && o.position.z >= player.position.z && dx < halfW + NEARMISS_MARGIN) {
       o.userData.scored = true;
       bumpCombo(); emote();
-      const nm = Math.round(NEARMISS_BONUS * comboMult(combo) * mods.nearMissMult);   // skim pays more the hotter your combo
-      rollPoints += nm; popScore(nm, comboMult(combo)); buzz(8);
+      const nm = Math.round(NEARMISS_BONUS * cmult(combo) * mods.nearMissMult);   // skim pays more the hotter your combo
+      rollPoints += nm; popScore(nm, cmult(combo)); buzz(8);
       particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.9, 0)), { count: 7, color: 0xeaffff, speed: 2.4, up: 2, life: .4, grav: 4, size: 0.4 });
     }
     const off = trackOffset(o.position.z, distance); o.position.x = lx + off.x; o.position.y = off.y;
@@ -481,7 +492,7 @@ function moveRolls(dt) {
     const dz = Math.abs(o.position.z - player.position.z), dx = Math.abs(lx - player.position.x);
     if (dz < 0.9 && dx < 0.95) {
       bumpCombo(); emote();
-      const mult = comboMult(combo) * (power === 'x2' ? 2 : 1) * mods.rollX, gained = Math.round(rollValue * mult * mods.rollMult);
+      const mult = cmult(combo) * (power === 'x2' ? 2 : 1) * mods.rollX, gained = Math.round(rollValue * mult * mods.rollMult);
       rollCount++; rollPoints += gained; popScore(gained, mult); buzz(18); sfxCoin();
       if (mods.jumpOnRoll && !grounded) jumpsLeft = Math.min(jumpsLeft + 1, 2 + extraJumps + mods.extraJumpsBonus);
       particles.emit(o.position.clone(), { count: 12, color: 0xffd56b, speed: 3, up: 3, life: .5, grav: 9, size: 0.5 }); scene.remove(o); rolls.splice(i, 1); continue;
@@ -796,7 +807,7 @@ function buildDebugApi() {
       distance: +distance.toFixed(2), speed: +speed.toFixed(2), difficulty: +difficulty.toFixed(3), elapsed: +elapsed.toFixed(2),
       level, biome: biomeOf(level).name, levelProgress: +levelProgress(distance).toFixed(3),
       biomeObstacles: [...obstacleSet(level).jump, obstacleSet(level).duck],
-      rollCount, rollPoints, combo, comboMult: comboMult(combo), comboMax,
+      rollCount, rollPoints, combo, comboMult: cmult(combo), comboMax,
       shields, invuln: +invuln.toFixed(2), magnetR, rollValue, extraJumps, jumpsLeft,
       perks: perks.map(p => ({ id: p.id, stacks: p.stacks })), mods, levelUps,
       draft: draftCards.map(p => p.id),
@@ -900,6 +911,7 @@ function buildDebugApi() {
     pick: (i) => { pickDraft(i); return snapshot(); },
     reroll: () => { rerollDraft(); return snapshot(); },
     banish: (i) => { banishCard(i); return snapshot(); },
+    spawnRow: () => { spawnRow(); return snapshot(); },   // force one obstacle/roll row (no render — cheap for tests)
     // ---- meta (roguelite lab) ----
     buyMeta: (id) => { const ok = buyMeta(id); renderShop(); return ok; },
     boon: (id) => { setBoon(id || null); renderShop(); return getBoon(); },

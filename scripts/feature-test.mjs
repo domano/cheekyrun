@@ -344,6 +344,7 @@ const SCENARIOS = [
       const s1 = c.perk('glasscannon');
       assert(s1.mods.rollX === 2, 'Glass Cannon doubles roll value');
       assert(s1.mods.noShields === true, 'Glass Cannon disables cushions');
+      assert(Math.abs(s1.mods.obstacleMult - 1.25) < 1e-9, 'Glass Cannon also raises the hazard rate (a real cost even with no shields)');
       c.spawn('cactus', 1, -4);
       const s = c.step(60);
       assert(s.state === 'over', 'with cushions disabled, a hit ends the run despite owning shields');
@@ -440,6 +441,62 @@ const SCENARIOS = [
       const s = c.start();
       assert(s.perks.length === 1 && s.perks[0].id === 'lucky', 'the run begins with the boon perk');
       assert(s.mods.rollMult === 1.18, 'the boon effect is live from the first frame');
+    },
+  },
+  {
+    name: 'perk-overdrive',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 });
+      assert(c.state().mods.speedMult === 1, 'speed starts unmodified');
+      c.perk('overdrive');
+      assert(Math.abs(c.state().mods.speedMult - 1.18) < 1e-9, 'Overdrive raises speedMult');
+      const a = c.step(1).speed; c.perk('overdrive');
+      const b = c.step(1).speed;
+      assert(b > a, 'a second Overdrive stack rips even faster');
+    },
+  },
+  {
+    name: 'perk-hotstreak',
+    fn: (c, assert) => {
+      c.start(); c.set({ combo: 40 });
+      const base = c.state().comboMult;                 // capped at COMBO_MAX (5)
+      c.perk('hotstreak');
+      assert(c.state().comboMult === base + 2, 'Hot Streak lifts the combo ceiling by 2');
+    },
+  },
+  {
+    name: 'curse-featherweight',
+    fn: (c, assert) => {
+      c.start();
+      c.perk('featherweight');
+      const m = c.state().mods;
+      assert(Math.abs(m.floatMult - 0.45) < 1e-9, 'Featherweight floats you down softly');
+      assert(m.extraJumpsBonus === -1, 'but costs you a mid-air jump');
+    },
+  },
+  {
+    name: 'greed-spawn-density',
+    fn: (c, assert) => {
+      // Force a fixed, seeded sequence of rows (no rendering) and count the rolls
+      // that land — Greedy Gut's rollSpawnMult should produce more over the run.
+      const rolls = (greed) => {
+        c.start({ magnetR: 0 }); c.seed(99); c.set({ difficulty: 0.5 }); c.clearField();
+        if (greed) c.perk('greedygut');
+        for (let k = 0; k < 40; k++) c.spawnRow();
+        return c.state().counts.rolls;
+      };
+      const base = rolls(false), greedy = rolls(true);
+      assert(base > 0, 'rolls spawn in a normal run');
+      assert(greedy > base, `Greedy Gut spawns more rolls over the run (base ${base}, greedy ${greedy})`);
+    },
+  },
+  {
+    name: 'daily-seeded-draft',
+    fn: (c, assert) => {
+      c.startDaily(); c.openDraft(); const a = c.draft().choices;
+      c.startDaily(); c.openDraft(); const b = c.draft().choices;
+      assert(a.length === 3, 'a daily draft offers three');
+      assert(a.join(',') === b.join(','), 'a daily run is fully seeded — identical draft each time');
     },
   },
   {
