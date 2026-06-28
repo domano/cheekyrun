@@ -18,13 +18,31 @@ npm install      # install dependencies
 npm run dev      # dev server with hot reload (http://localhost:5173)
 npm run build    # production build into dist/
 npm run preview  # serve the production build (http://localhost:4173)
+npm run smoke    # browser smoke test: build, drive a run, assert no errors
 ```
 
-There is no lint or unit-test setup. To sanity-check a change, run
-`npm run build` (it must succeed) and, when behaviour matters, drive the
-preview build with Playwright — Chromium is available at
-`/opt/pw-browsers/chromium`. A headless smoke test that loads the page, starts
-a run, and asserts no console/page errors catches most regressions.
+## Testing every change
+
+There is no lint or unit-test setup. Behaviour is verified by driving the real
+preview build in a browser with [`agent-browser`](https://www.npmjs.com/package/agent-browser)
+(a devDependency). **After every change, before committing:**
+
+1. `npm run build` — it must succeed.
+2. `npm run smoke` — it must pass. This builds, serves the preview, loads the
+   page, starts a run, sends inputs (lane / jump / duck), and fails on any
+   console error or if the score never advances. Screenshot lands at
+   `/tmp/cheekyrun-smoke.png`. Script: `scripts/smoke-test.sh`.
+
+For changes the smoke test doesn't cover well (a new biome, shop item, control
+tweak, or anything visual), also drive the game by hand and **Read the
+screenshot** to eyeball it. The full playbook — starting a run, lane/jump/duck
+key mappings, reading the HUD, opening the shop, screenshots — lives in the
+**`test-game` skill** (`.claude/skills/test-game/SKILL.md`); invoke `/test-game`
+or follow it directly.
+
+`agent-browser` needs a Chromium: in the agent sandbox it's pre-installed at
+`/opt/pw-browsers/chromium` (the smoke script points to it automatically); on a
+dev machine run `npx agent-browser install` once.
 
 ## Architecture
 
