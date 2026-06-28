@@ -267,6 +267,33 @@ const SCENARIOS = [
       assert(c.state().fartCount === 2, 'sliding puffs a fart cloud');
     },
   },
+  {
+    name: 'boost-powerup',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.clearField();
+      c.spawn('powerup:dash', 1, -4);
+      let s = c.step(60);
+      assert(s.power === 'dash', 'grabbing the gem activates Boost');
+      assert(s.invuln > 0, 'Boost makes you invulnerable while it lasts');
+      c.spawn('cactus', 1, -4);                  // dead ahead — would normally crash
+      s = c.step(40);
+      assert(s.state === 'playing', 'Boost phases straight through obstacles');
+    },
+  },
+  {
+    name: 'emote-and-cheer',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.clearField();
+      c.spawn('roll', 1, -4);
+      let s = c.step(30);                         // long enough to grab, short enough that the squish hasn't decayed
+      assert(s.rollCount === 1, 'roll collected');
+      assert(s.emote > 0, 'grabbing a roll triggers a happy squish');
+      c.start(); c.set({ distance: 248 });        // just shy of the level-2 boundary
+      s = c.step(20);                             // cross it, then check the twirl is underway
+      assert(s.level === 2, 'crossed into level 2');
+      assert(s.spin > 0, 'leveling up kicks off a celebratory twirl');
+    },
+  },
 ];
 
 /* ------------------------------- runner ------------------------------- */

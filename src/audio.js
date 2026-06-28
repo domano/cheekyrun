@@ -102,3 +102,5 @@ export function sfxStart() { if (!A()) return; const t = actx.currentTime;[60, 6
 export function sfxOver() { if (!A()) return; const t = actx.currentTime;[72, 69, 65, 60].forEach((n, i) => osc(t + i * 0.13, m2f(n), 0.2, 'square', 0.16)); }
 export function sfxLevel() { if (!A()) return; const t = actx.currentTime;[72, 76, 79, 84].forEach((n, i) => osc(t + i * 0.08, m2f(n), 0.18, 'square', 0.18)); }
 export function sfxShield() { if (!A()) return; const t = actx.currentTime; osc(t, 300, 0.22, 'sawtooth', 0.2, sfxGain, 900); osc(t + 0.04, m2f(79), 0.16, 'square', 0.14); }
+// A soft, quiet two-note slide down — the "aw, lost the combo" cue.
+export function sfxComboBreak() { if (!A()) return; const t = actx.currentTime; osc(t, m2f(67), 0.12, 'triangle', 0.1, sfxGain, m2f(60)); osc(t + 0.08, m2f(60), 0.16, 'triangle', 0.09, sfxGain, m2f(55)); }

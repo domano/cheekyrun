@@ -18,10 +18,10 @@ canvas{display:block}
 .pill{background:#fff;border:3px solid var(--ink);border-radius:999px;padding:7px 16px;
   box-shadow:4px 4px 0 var(--ink);display:flex;align-items:center;gap:8px;font-size:18px}
 .pill small{font-weight:800;opacity:.5;font-size:11px;text-transform:uppercase;letter-spacing:1.5px}
-#muteBtn{position:fixed;top:calc(env(safe-area-inset-top,14px) + 14px);left:50%;transform:translateX(-50%);z-index:35;
-  width:46px;height:46px;border-radius:50%;background:#fff;border:3px solid var(--ink);box-shadow:3px 3px 0 var(--ink);
-  font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;line-height:1}
-#muteBtn:active{transform:translateX(-50%) translate(2px,2px);box-shadow:1px 1px 0 var(--ink)}
+#muteBtn{position:fixed;top:calc(env(safe-area-inset-top,14px) + 62px);right:20px;z-index:35;
+  width:42px;height:42px;border-radius:50%;background:#fff;border:3px solid var(--ink);box-shadow:3px 3px 0 var(--ink);
+  font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;line-height:1}
+#muteBtn:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--ink)}
 #rollpill #shieldHud{display:inline-flex;align-items:center;gap:3px;margin-right:6px}
 #levelbox{display:flex;flex-direction:column;align-items:center;gap:5px;pointer-events:none}
 .lvlpill{padding:6px 14px;font-size:16px}
@@ -38,7 +38,9 @@ canvas{display:block}
 #comboHud small{font-size:11px;opacity:.6;text-transform:uppercase;letter-spacing:1px}
 #comboHud.pulse{animation:combopop .26s ease-out}
 @keyframes combopop{0%{transform:translateX(-50%) scale(1)}40%{transform:translateX(-50%) scale(1.22)}100%{transform:translateX(-50%) scale(1)}}
-@media (prefers-reduced-motion:reduce){#comboHud.pulse{animation:none}}
+#comboHud.lose{animation:combolose .3s ease-in forwards}
+@keyframes combolose{0%{transform:translateX(-50%) scale(1);opacity:1;filter:none}100%{transform:translateX(-50%) scale(.7) translateY(8px);opacity:0;filter:grayscale(1)}}
+@media (prefers-reduced-motion:reduce){#comboHud.pulse,#comboHud.lose{animation:none}}
 
 /* active power-up chip with a draining timer bar, under the combo chip */
 #powerHud{position:fixed;left:50%;top:calc(env(safe-area-inset-top,14px) + 116px);transform:translateX(-50%);z-index:15;
