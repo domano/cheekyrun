@@ -6,7 +6,7 @@ import { createParticles } from './particles.js';
 import { buildPlayer } from './player.js';
 import { LEVEL_DIST, biomeOf, levelFromDistance, levelProgress } from './levels.js';
 import { UPGRADES, effects, tierOf, nextCost, buy, getWallet, addRolls } from './upgrades.js';
-import { getBest, setBest, getStats, bumpStats } from './save.js';
+import { getBest, setBest, getStats, bumpStats, resetSave } from './save.js';
 import { hasAch } from './save.js';
 import { ACHIEVEMENTS, checkAchievements } from './achievements.js';
 import { selectedSkin, selectSkin, getDailyBest, setDailyBest } from './save.js';
@@ -606,7 +606,7 @@ function buildDebugApi() {
     state: snapshot,
     help: () => ({
       inspect: ['state()'],
-      lifecycle: ['start(overrides?)', 'reset()', 'over()'],
+      lifecycle: ['start(overrides?)', 'reset()', 'fresh()', 'over()'],
       time: ['pause()', 'resume()', 'step(frames=1, dt=1/60)', 'seed(n)'],
       teleport: ['set({level,speed,shields,power,...})', `keys: ${Object.keys(SETTERS).join(', ')}`],
       world: ['spawn(kind, lane?, z?)', 'clearField()', "kinds: cactus|rock|bar|gate|hurdle|roll|powerup[:magnet|x2|ghost]"],
@@ -616,6 +616,12 @@ function buildDebugApi() {
     // ---- lifecycle ----
     start: (overrides) => { startGame(false); if (overrides) set(overrides); return snapshot(); },
     reset: () => { resetGame(); refreshHud(); return snapshot(); },
+    // Wipe save + return to a clean menu — isolates a feature scenario without
+    // a full page reload (which would re-init Three.js/WebGL every time). Stays
+    // paused: the harness drives time via step(), so the rAF loop never renders
+    // (continuous software-WebGL rendering otherwise pegs the CPU and starves
+    // the test driver, making every CLI round-trip crawl).
+    fresh: () => { resetSave(); resetGame(); state = 'menu'; paused = true; refreshHud(); renderShop(); return snapshot(); },
     over: () => { if (state === 'playing') gameOver(); return snapshot(); },
     // ---- deterministic time ----
     pause: () => { paused = true; return snapshot(); },
