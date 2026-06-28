@@ -20,6 +20,7 @@ export function makeObstacle(kind) {
     g.add(body, aL, aR);
   }
   g.userData.kind = kind;
+  g.userData.color = kind === 'bar' ? 0xff5151 : kind === 'rock' ? 0x99a3ad : 0x44b566;
   return g;
 }
 
@@ -30,7 +31,7 @@ export function makeHurdle() {
   const bar = new THREE.Mesh(new THREE.BoxGeometry(6.8, 0.55, 0.4), m); bar.position.y = 0.5; bar.castShadow = true; ink(bar, 1.04); g.add(bar);
   const legM = toon(0xe0d3c0);
   [-3.1, 0, 3.1].forEach(x => { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.5, 8), legM); p.position.set(x, 0.25, 0); p.castShadow = true; ink(p, 1.1); g.add(p); });
-  g.userData.kind = 'hurdle';
+  g.userData.kind = 'hurdle'; g.userData.color = 0xffb13b;
   return g;
 }
 
@@ -40,7 +41,7 @@ export function makeGate() {
   const bar = new THREE.Mesh(new THREE.BoxGeometry(6.8, 0.45, 0.4), toon(0xff5151)); bar.position.y = 1.55; bar.castShadow = true; ink(bar, 1.04); g.add(bar);
   const postM = toon(0xe0d3c0);
   [-3.2, 3.2].forEach(x => { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 1.7, 8), postM); p.position.set(x, 0.85, 0); p.castShadow = true; ink(p, 1.08); g.add(p); });
-  g.userData.kind = 'gate';
+  g.userData.kind = 'gate'; g.userData.color = 0xff5151;
   return g;
 }
 
@@ -50,6 +51,18 @@ export function makeRoll() {
   const hole = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.55, 16), toon(0xd9b48a));
   paper.rotation.x = Math.PI / 2; hole.rotation.x = Math.PI / 2; paper.castShadow = true; ink(paper, 1.07);
   g.add(paper, hole); g.position.y = 0.95;
+  return g;
+}
+
+// A rare floating bonus — a glowing gem that grants a brief power-up. The colour
+// is set by the caller per kind; strong emissive makes it pop against any biome.
+export function makePowerup(color) {
+  const g = new THREE.Group();
+  const gem = new THREE.Mesh(new THREE.IcosahedronGeometry(0.46, 0), toon(color, { emissive: color, flat: true }));
+  gem.castShadow = true; ink(gem, 1.1);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.06, 8, 20), toon(0xffffff, { emissive: 0xbbbbbb }));
+  ring.rotation.x = Math.PI / 2; g.add(gem, ring);
+  g.position.y = 1.0; g.userData.gem = gem;
   return g;
 }
 
