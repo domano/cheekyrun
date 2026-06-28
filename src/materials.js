@@ -5,7 +5,7 @@ import { INK } from './config.js';
 let gradMap, inkMat;
 
 export function makeGradient() {
-  const data = new Uint8Array([55, 120, 200, 255]); // 4 hard bands -> cel look
+  const data = new Uint8Array([90, 145, 200, 238]); // 4 hard bands -> cel look (top band held below pure white so lit surfaces keep their hue)
   gradMap = new THREE.DataTexture(data, data.length, 1, THREE.LuminanceFormat);
   gradMap.minFilter = gradMap.magFilter = THREE.NearestFilter;
   gradMap.generateMipmaps = false;

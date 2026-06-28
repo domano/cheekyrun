@@ -36,7 +36,10 @@ export const POWERUPS = {
   magnet: { icon: '🧲', color: 0x4fd0ff, label: 'Magnet' },
   x2:     { icon: '✨', color: 0xffd23f, label: '2× Score' },
   ghost:  { icon: '👻', color: 0xc9a7ff, label: 'Ghost' },
+  dash:   { icon: '🚀', color: 0xff7a3a, label: 'Boost' },
 };
+// How much faster the run rips while a Boost is active.
+export const DASH_SPEED_MULT = 1.5;
 export const POWERUP_KINDS = Object.keys(POWERUPS);
 
 // DOM lookup shorthand.
