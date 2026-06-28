@@ -5,9 +5,10 @@ import { makeObstacle, makeHurdle, makeGate, makeRoll, makePowerup, makeTree, ma
 import { createParticles } from './particles.js';
 import { buildPlayer, applyGear } from './player.js';
 import { LEVEL_DIST, biomeOf, obstacleSet, levelFromDistance, levelProgress } from './levels.js';
+import { trackOffset, deformRoad } from './track.js';
 import { UPGRADES, effects, tierOf, nextCost, buy, getWallet, addRolls } from './upgrades.js';
 import { getBest, setBest, getStats, bumpStats, resetSave } from './save.js';
-import { hasAch } from './save.js';
+import { hasAch, unlock } from './save.js';
 import { ACHIEVEMENTS, checkAchievements } from './achievements.js';
 import { selectedSkin, selectSkin, getDailyBest, setDailyBest } from './save.js';
 import { SKINS, skinById, skinUnlocked, buySkin, applySkin } from './cosmetics.js';
@@ -21,7 +22,7 @@ let scene, camera, renderer, clock;
 let player, shadowBlob, ears = [], feet = [], tail, particles, playerMats, gear, aura;
 let gearTiers = {}, fartCount = 0;   // worn upgrade tiers (for visuals/tests) + fart-puff counter
 let obstacles = [], rolls = [], pickups = [], scenery = [], stripes = [], clouds = [];
-let groundMat, pathMat, discMat, hillMats = [];
+let groundMat, pathMat, discMat, hillMats = [], roadGround, roadPath;
 let state = 'menu';
 let speed, distance, rollCount, rollPoints, rowTimer, sceneAcc, dustAcc, elapsed, difficulty, safeLane, forcedGap;
 let laneIdx, targetX, vy, grounded, jumpsLeft, banked, groundY, duckTimer, duckAmt, shakeT;
@@ -84,17 +85,23 @@ function init() {
     hill.position.set(x, -6, -52 - i * 3); hill.scale.set(1.6, 0.7, 1); scene.add(hill);
   });
 
+  // Lengthwise segments give the ground/path enough vertices to bend and roll
+  // along the track (deformRoad rewrites them each frame). base = pristine verts.
   groundMat = toon(0x95df7d);
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(60, 220), groundMat);
-  ground.rotation.x = -Math.PI / 2; ground.position.z = -50; ground.receiveShadow = true; scene.add(ground);
+  const groundGeo = new THREE.PlaneGeometry(60, 220, 1, 64);
+  roadGround = new THREE.Mesh(groundGeo, groundMat);
+  roadGround.rotation.x = -Math.PI / 2; roadGround.position.z = -50; roadGround.receiveShadow = true;
+  roadGround.userData.base = groundGeo.attributes.position.array.slice(); scene.add(roadGround);
   pathMat = toon(0xe7c49c);
-  const path = new THREE.Mesh(new THREE.PlaneGeometry(7.4, 220), pathMat);
-  path.rotation.x = -Math.PI / 2; path.position.set(0, 0.01, -50); path.receiveShadow = true; scene.add(path);
+  const pathGeo = new THREE.PlaneGeometry(7.4, 220, 1, 120);
+  roadPath = new THREE.Mesh(pathGeo, pathMat);
+  roadPath.rotation.x = -Math.PI / 2; roadPath.position.set(0, 0.01, -50); roadPath.receiveShadow = true;
+  roadPath.userData.base = pathGeo.attributes.position.array.slice(); scene.add(roadPath);
 
   const dashGeo = new THREE.PlaneGeometry(0.2, 1.7);
   const dashMat = new THREE.MeshBasicMaterial({ color: 0xfff4e6, transparent: true, opacity: .65 });
   for (let i = 0; i < 26; i++) [-1.15, 1.15].forEach(x => {
-    const d = new THREE.Mesh(dashGeo, dashMat); d.rotation.x = -Math.PI / 2; d.position.set(x, 0.02, -i * 3); scene.add(d); stripes.push(d);
+    const d = new THREE.Mesh(dashGeo, dashMat); d.rotation.x = -Math.PI / 2; d.position.set(x, 0.02, -i * 3); d.userData.bx = x; scene.add(d); stripes.push(d);
   });
 
   for (let i = 0; i < 8; i++) { const c = makeCloud(); scene.add(c); clouds.push(c); }
@@ -147,14 +154,14 @@ function spawnRow() {
   const kinds = d < 0.28 ? theme.jump : [...theme.jump, theme.duck];
   blocked.forEach(li => {
     const o = makeObstacle(kinds[(rng() * kinds.length) | 0]);
-    o.position.set(LANES[li], 0, SPAWN_Z); o.userData.lane = li; scene.add(o); obstacles.push(o);
+    o.position.set(LANES[li], 0, SPAWN_Z); o.userData.lane = li; o.userData.lx = LANES[li]; scene.add(o); obstacles.push(o);
   });
 
   // rolls only ever sit in open lanes
   const open = [nextSafe, ...others.slice(blockCount)];
   open.forEach(li => {
     const chance = li === nextSafe ? 0.4 : 0.5;
-    if (rng() < chance) { const r = makeRoll(); r.position.set(LANES[li], 0.95, SPAWN_Z); scene.add(r); rolls.push(r); }
+    if (rng() < chance) { const r = makeRoll(); r.position.set(LANES[li], 0.95, SPAWN_Z); r.userData.lx = LANES[li]; scene.add(r); rolls.push(r); }
   });
 
   // a rare power-up gem, spaced out by a cooldown so it feels like a treat
@@ -162,7 +169,7 @@ function spawnRow() {
   else if (difficulty > POWERUP_MIN_DIFF && rng() < POWERUP_CHANCE) {
     const li = open[(rng() * open.length) | 0];
     const kind = POWERUP_KINDS[(rng() * POWERUP_KINDS.length) | 0];
-    const p = makePowerup(POWERUPS[kind].color); p.position.set(LANES[li], 1.0, SPAWN_Z); p.userData.kind = kind;
+    const p = makePowerup(POWERUPS[kind].color); p.position.set(LANES[li], 1.0, SPAWN_Z); p.userData.kind = kind; p.userData.lx = LANES[li];
     scene.add(p); pickups.push(p); powerCD = POWERUP_COOLDOWN;
   }
 
@@ -172,14 +179,14 @@ function spawnGate() {
   // 50/50 slide-under vs jump-over; spans all lanes (halfW covers every lane).
   const slide = rng() < 0.5;
   const o = slide ? makeGate() : makeHurdle();
-  o.position.set(0, 0, SPAWN_Z); o.userData.halfW = 3.3; scene.add(o); obstacles.push(o);
+  o.position.set(0, 0, SPAWN_Z); o.userData.halfW = 3.3; o.userData.lx = 0; scene.add(o); obstacles.push(o);
   // A reward roll in a random lane for clearing it cleanly.
-  if (rng() < 0.7) { const r = makeRoll(); r.position.set(LANES[(rng() * 3) | 0], 0.95, SPAWN_Z); scene.add(r); rolls.push(r); }
+  if (rng() < 0.7) { const li = (rng() * 3) | 0; const r = makeRoll(); r.position.set(LANES[li], 0.95, SPAWN_Z); r.userData.lx = LANES[li]; scene.add(r); rolls.push(r); }
 }
 function spawnScenery() {
   const x = (Math.random() < 0.5 ? -1 : 1) * (4.4 + Math.random() * 3.5), roll = Math.random();
   const o = roll < 0.4 ? makeTree() : roll < 0.7 ? makeBush() : makeFlower();
-  o.position.set(x, 0, SPAWN_Z - Math.random() * 6); o.rotation.y = Math.random() * Math.PI; scene.add(o); scenery.push(o);
+  o.position.set(x, 0, SPAWN_Z - Math.random() * 6); o.rotation.y = Math.random() * Math.PI; o.userData.lx = x; scene.add(o); scenery.push(o);
 }
 
 /* ---------------- flow ---------------- */
@@ -326,6 +333,7 @@ function tick(dt) {
     speedLines.style.opacity = Math.min(0.6, Math.max(0, comboMult(combo) - 1) * 0.15 + Math.max(0, speed - 22) * 0.012);
   } else if (speedLines.style.opacity !== '0') speedLines.style.opacity = 0;
   moveScenery(dt); scrollStripes(dt); driftClouds(dt); tweenBiome(dt);
+  deformRoad(roadPath, distance); deformRoad(roadGround, distance);
   updatePlayer(dt, t); particles.update(dt); updateCamera(dt, t);
   renderer.render(scene, camera);
 }
@@ -333,8 +341,8 @@ const hitColor = (o) => o.userData.color || 0xff8a6a;
 function moveObstacles(dt) {
   for (let i = obstacles.length - 1; i >= 0; i--) {
     const o = obstacles[i]; const prevZ = o.position.z; o.position.z += speed * dt;
-    const halfW = o.userData.halfW || 0.95;
-    const dz = Math.abs(o.position.z - player.position.z), dx = Math.abs(o.position.x - player.position.x);
+    const lx = o.userData.lx, halfW = o.userData.halfW || 0.95;
+    const dz = Math.abs(o.position.z - player.position.z), dx = Math.abs(lx - player.position.x);
     if (dz < 0.8 && dx < halfW) {
       const safe = o.userData.duck ? (duckTimer > 0) : (groundY > 1.0);
       if (!safe && invuln <= 0) {
@@ -354,38 +362,45 @@ function moveObstacles(dt) {
       bumpCombo(); emote(); rollPoints += NEARMISS_BONUS; popScore(NEARMISS_BONUS, comboMult(combo)); buzz(8);
       particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.9, 0)), { count: 7, color: 0xeaffff, speed: 2.4, up: 2, life: .4, grav: 4, size: 0.4 });
     }
+    const off = trackOffset(o.position.z, distance); o.position.x = lx + off.x; o.position.y = off.y;
     if (o.position.z > DESPAWN_Z) { scene.remove(o); obstacles.splice(i, 1); }
   }
 }
 function moveRolls(dt) {
   for (let i = rolls.length - 1; i >= 0; i--) {
-    const o = rolls[i]; o.position.z += speed * dt; o.rotation.y += dt * 4; o.position.y = 0.95 + Math.sin(o.position.z * 0.6) * 0.06;
-    // Magnet: tug nearby rolls toward the player so they're easier to grab.
-    // The Magnet power-up temporarily widens the reach far past the upgrade.
+    const o = rolls[i]; o.position.z += speed * dt; o.rotation.y += dt * 4;
+    // Magnet: tug nearby rolls toward the player so they're easier to grab. Acts
+    // on the logical lane X (lx), not the curved render X, so it pulls true.
     const mr = power === 'magnet' ? Math.max(magnetR, 9) : magnetR;
     if (mr > 0) {
-      const mdx = player.position.x - o.position.x, mdz = player.position.z - o.position.z, md = Math.hypot(mdx, mdz);
+      const mdx = player.position.x - o.userData.lx, mdz = player.position.z - o.position.z, md = Math.hypot(mdx, mdz);
       if (md < mr && md > 0.001) {
         const pull = Math.min(1, dt * (5 + 9 * (1 - md / mr)));
-        o.position.x += mdx * pull; o.position.z += mdz * pull;
+        o.userData.lx += mdx * pull; o.position.z += mdz * pull;
       }
     }
-    const dz = Math.abs(o.position.z - player.position.z), dx = Math.abs(o.position.x - player.position.x);
+    const lx = o.userData.lx;
+    const dz = Math.abs(o.position.z - player.position.z), dx = Math.abs(lx - player.position.x);
     if (dz < 0.9 && dx < 0.95) {
       bumpCombo(); emote();
       const mult = comboMult(combo) * (power === 'x2' ? 2 : 1), gained = rollValue * mult;
       rollCount++; rollPoints += gained; popScore(gained, mult); buzz(18); sfxCoin();
       particles.emit(o.position.clone(), { count: 12, color: 0xffd56b, speed: 3, up: 3, life: .5, grav: 9, size: 0.5 }); scene.remove(o); rolls.splice(i, 1); continue;
     }
+    const off = trackOffset(o.position.z, distance);
+    o.position.x = lx + off.x; o.position.y = 0.95 + Math.sin(o.position.z * 0.6) * 0.06 + off.y;
     if (o.position.z > DESPAWN_Z) { scene.remove(o); rolls.splice(i, 1); }
   }
 }
 function movePickups(dt) {
   for (let i = pickups.length - 1; i >= 0; i--) {
     const o = pickups[i]; o.position.z += speed * dt; o.rotation.y += dt * 2.5;
-    o.position.y = 1.0 + Math.sin(o.position.z * 0.5) * 0.12; if (o.userData.gem) o.userData.gem.rotation.y += dt * 4;
-    const dz = Math.abs(o.position.z - player.position.z), dx = Math.abs(o.position.x - player.position.x);
+    if (o.userData.gem) o.userData.gem.rotation.y += dt * 4;
+    const lx = o.userData.lx;
+    const dz = Math.abs(o.position.z - player.position.z), dx = Math.abs(lx - player.position.x);
     if (dz < 0.95 && dx < 1.0) { activatePower(o.userData.kind, o.position.clone()); scene.remove(o); pickups.splice(i, 1); continue; }
+    const off = trackOffset(o.position.z, distance);
+    o.position.x = lx + off.x; o.position.y = 1.0 + Math.sin(o.position.z * 0.5) * 0.12 + off.y;
     if (o.position.z > DESPAWN_Z) { scene.remove(o); pickups.splice(i, 1); }
   }
 }
@@ -415,7 +430,11 @@ function updatePowerHud() {
 }
 function moveScenery(dt) {
   const v = (state === 'playing' ? speed : 5) * dt;
-  for (let i = scenery.length - 1; i >= 0; i--) { const o = scenery[i]; o.position.z += v; if (o.position.z > DESPAWN_Z) { scene.remove(o); scenery.splice(i, 1); } }
+  for (let i = scenery.length - 1; i >= 0; i--) {
+    const o = scenery[i]; o.position.z += v;
+    const off = trackOffset(o.position.z, distance); o.position.x = o.userData.lx + off.x; o.position.y = off.y;
+    if (o.position.z > DESPAWN_Z) { scene.remove(o); scenery.splice(i, 1); }
+  }
 }
 
 function updatePlayer(dt, t) {
@@ -465,14 +484,23 @@ function updatePlayer(dt, t) {
   shadowBlob.material.opacity = Math.max(0.06, 0.26 - groundY * 0.05);
 }
 function updateCamera(dt, t) {
-  camera.position.x += (player.position.x * 0.32 - camera.position.x) * Math.min(1, dt * 5);
+  // Lean into the curve and ride the hill: aim a little down-track so the camera
+  // turns to follow the bend and pitches with the rise/fall ahead.
+  const look = trackOffset(-14, distance);
+  camera.position.x += ((player.position.x * 0.32 + look.x * 0.28) - camera.position.x) * Math.min(1, dt * 5);
   const fov = 62 + Math.min(Math.max(speed - 12.5, 0), 16) * 0.5;
   if (Math.abs(camera.fov - fov) > 0.05) { camera.fov = fov; camera.updateProjectionMatrix(); }
   if (shakeT > 0) { shakeT -= dt; const s = shakeT * 1.2; camera.position.x += (Math.random() - 0.5) * s; camera.position.y = 5.4 + (Math.random() - 0.5) * s; }
   else camera.position.y += (5.4 - camera.position.y) * Math.min(1, dt * 8);
-  camera.lookAt(player.position.x * 0.25, 1.2, -8);
+  camera.lookAt(player.position.x * 0.25 + look.x * 0.7, 1.2 + look.y * 0.6, -8);
 }
-function scrollStripes(dt) { const v = (state === 'playing' ? speed : 6) * dt; stripes.forEach(d => { d.position.z += v; if (d.position.z > DESPAWN_Z) d.position.z -= 78; }); }
+function scrollStripes(dt) {
+  const v = (state === 'playing' ? speed : 6) * dt;
+  stripes.forEach(d => {
+    d.position.z += v; if (d.position.z > DESPAWN_Z) d.position.z -= 78;
+    const off = trackOffset(d.position.z, distance); d.position.x = d.userData.bx + off.x; d.position.y = 0.02 + off.y;
+  });
+}
 function driftClouds(dt) { clouds.forEach(c => { c.position.z += (state === 'playing' ? speed * 0.25 : 1.5) * dt; if (c.position.z > 16) { c.position.z = -60; c.position.x = (Math.random() - 0.5) * 30; } }); }
 function onResize() { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); }
 
@@ -611,6 +639,13 @@ function nextAchToast() {
 function buildDebugApi() {
   const refreshHud = () => { updateHud(); updateLevelHud(); updateShieldHud(); updateComboHud(false); updatePowerHud(); };
 
+  // Curve/hill warp readout: near (at the player) is always 0 so collisions stay
+  // fair; far (at the spawn line) shows how the road bends/rolls into the distance.
+  function trackSnapshot() {
+    const n = trackOffset(0, distance), f = trackOffset(SPAWN_Z, distance);
+    return { nearX: +n.x.toFixed(3), nearY: +n.y.toFixed(3), farX: +f.x.toFixed(3), farY: +f.y.toFixed(3) };
+  }
+
   // Full game state as a plain (JSON-serialisable) object.
   function snapshot() {
     return {
@@ -623,6 +658,7 @@ function buildDebugApi() {
       power, powerT: +powerT.toFixed(2),
       emote: +emoteT.toFixed(2), spin: +spin.toFixed(2),
       laneIdx, targetX,
+      track: trackSnapshot(),
       player: { x: +player.position.x.toFixed(3), groundY: +groundY.toFixed(3), grounded, ducking: duckTimer > 0 },
       gearTiers, auraVisible: !!(aura && aura.visible), fartCount,
       counts: { obstacles: obstacles.length, rolls: rolls.length, pickups: pickups.length, scenery: scenery.length },
@@ -634,15 +670,15 @@ function buildDebugApi() {
   // Defaults to the player's lane, just ahead — a few steps and it reaches them.
   function spawn(kind = 'cactus', lane = laneIdx, z = -8) {
     let o, arr;
-    if (kind === 'roll') { o = makeRoll(); o.position.set(LANES[lane], 0.95, z); arr = rolls; }
+    if (kind === 'roll') { o = makeRoll(); o.position.set(LANES[lane], 0.95, z); o.userData.lx = LANES[lane]; arr = rolls; }
     else if (kind === 'gate' || kind === 'hurdle') {
       o = kind === 'gate' ? makeGate() : makeHurdle();
-      o.position.set(0, 0, z); o.userData.halfW = 3.3; arr = obstacles;
+      o.position.set(0, 0, z); o.userData.halfW = 3.3; o.userData.lx = 0; arr = obstacles;
     } else if (kind.startsWith('powerup')) {
       const pk = kind.split(':')[1] || POWERUP_KINDS[0];
-      o = makePowerup(POWERUPS[pk].color); o.position.set(LANES[lane], 1.0, z); o.userData.kind = pk; arr = pickups;
+      o = makePowerup(POWERUPS[pk].color); o.position.set(LANES[lane], 1.0, z); o.userData.kind = pk; o.userData.lx = LANES[lane]; arr = pickups;
     } else {                                       // cactus | rock | bar
-      o = makeObstacle(kind); o.position.set(LANES[lane], 0, z); o.userData.lane = lane; arr = obstacles;
+      o = makeObstacle(kind); o.position.set(LANES[lane], 0, z); o.userData.lane = lane; o.userData.lx = LANES[lane]; arr = obstacles;
     }
     scene.add(o); arr.push(o); return kind;
   }
@@ -674,6 +710,7 @@ function buildDebugApi() {
       world: ['spawn(kind, lane?, z?)', 'clearField()', `kinds: ${OBSTACLE_KINDS.join('|')}|gate|hurdle|roll|powerup[:magnet|x2|ghost]`],
       input: ['left()', 'right()', 'lane(i)', 'jump()', 'duck()'],
       shop: ['wallet()', 'fund(n)', 'buy(id)', 'effects()'],
+      cosmetics: ['skin()', 'pickSkin(id)', 'unlockAch(id)'],
     }),
     // ---- lifecycle ----
     start: (overrides) => { startGame(false); if (overrides) set(overrides); return snapshot(); },
@@ -705,6 +742,15 @@ function buildDebugApi() {
     // ---- shop / meta ----
     wallet: getWallet, fund: (n) => { addRolls(n); renderShop(); return getWallet(); },
     buy: (id) => { const ok = buy(id); renderShop(); return ok; }, effects,
+    // ---- cosmetics (skins) ----
+    // skin() reads the saved selection + the colours actually on the live mats.
+    // pickSkin() mirrors the menu click (gate on unlock, persist, recolour);
+    // unlockAch() grants an achievement so achievement-only skins can be tested.
+    skin: () => ({ selected: selectedSkin(), applied: {
+      skin: playerMats.skin.color.getHex(), inner: playerMats.inner.color.getHex(), tail: playerMats.tail.color.getHex(),
+    } }),
+    pickSkin: (id) => { const s = skinById(id); if (skinUnlocked(s)) { selectSkin(id); applySkin(playerMats, id); } renderCosmetics(); return selectedSkin(); },
+    unlockAch: (id) => { unlock(id); renderCosmetics(); return hasAch(id); },
   };
   return api;
 }

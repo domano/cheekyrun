@@ -213,6 +213,50 @@ const SCENARIOS = [
     },
   },
   {
+    name: 'curves-and-hills',
+    fn: (c, assert) => {
+      c.start();
+      const a = c.set({ distance: 100 }).track;
+      assert(a.nearX === 0 && a.nearY === 0, 'no warp at the player, so collisions stay fair');
+      assert(a.farX !== 0 || a.farY !== 0, 'the road bends/rolls into the distance');
+      const b = c.set({ distance: 100 }).track;
+      assert(a.farX === b.farX && a.farY === b.farY, 'the warp is deterministic for a given distance');
+      const d = c.set({ distance: 220 }).track;
+      assert(d.farX !== a.farX || d.farY !== a.farY, 'the track keeps changing as you travel');
+      // Gameplay is unaffected: a roll far down the curving track is still grabbed,
+      // and an obstacle dead ahead still crashes you.
+      c.clearField(); c.set({ magnetR: 0 });
+      c.spawn('roll', 1, -9);
+      const s = c.step(90);
+      assert(s.rollCount === 1, 'a roll stays collectible despite the curving track');
+      c.clearField(); c.spawn('cactus', 1, -4);
+      assert(c.step(60).state === 'over', 'an obstacle in your lane still crashes you on a curve');
+    },
+  },
+  {
+    name: 'skin-selection-persists',
+    fn: (c, assert) => {
+      // Classic is the free default and is live on the character at boot.
+      assert(c.skin().selected === 'classic', 'a fresh save wears Classic');
+      assert(c.skin().applied.skin === 0xffbfa8, 'Classic colours are on the live mats');
+
+      // Achievement skins are locked until earned: selecting one is a no-op.
+      c.pickSkin('golden');
+      assert(c.skin().selected === 'classic', 'a locked achievement skin can not be selected');
+
+      // Earn the achievement, then select — it locks in and recolours the mats.
+      c.unlockAch('level10');
+      assert(c.pickSkin('golden') === 'golden', 'an unlocked achievement skin selects');
+      assert(c.skin().selected === 'golden', 'the selection is persisted, not just previewed');
+      assert(c.skin().applied.skin === 0xffd166, 'Golden colours are applied live');
+
+      // The regression: the skin must survive starting a run (resetGame re-applies).
+      c.start();
+      assert(c.skin().selected === 'golden', 'the skin stays selected after the run starts');
+      assert(c.skin().applied.skin === 0xffd166, 'Golden is re-applied on run start, not reset to Classic');
+    },
+  },
+  {
     name: 'fart-on-jump-and-slide',
     fn: (c, assert) => {
       c.start(); c.clearField();

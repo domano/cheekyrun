@@ -82,7 +82,9 @@ export const unlock = (id) => { if (!save.achievements[id]) { save.achievements[
 export const skinOwned = (id) => !!save.cosmetics.owned[id];
 export const selectedSkin = () => save.cosmetics.skin;
 export const ownSkin = (id) => { save.cosmetics.owned[id] = true; persist(); };
-export const selectSkin = (id) => { if (save.cosmetics.owned[id]) { save.cosmetics.skin = id; persist(); return true; } return false; };
+// Persist the active skin. Callers gate on cosmetics' skinUnlocked() first —
+// which also covers achievement skins (unlocked but never added to `owned`).
+export const selectSkin = (id) => { save.cosmetics.skin = id; persist(); };
 
 /* ----- daily challenge best (resets when the day changes) ----- */
 export function getDailyBest(day) { return save.dailyBest.day === day ? (save.dailyBest.score | 0) : 0; }
