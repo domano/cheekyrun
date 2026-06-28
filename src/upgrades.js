@@ -33,6 +33,19 @@ export const UPGRADES = [
 
 const byId = (id) => UPGRADES.find((u) => u.id === id);
 
+// Legacy-save cleanup. Pre-roguelite versions sold magnet/spring/fortune as
+// permanent upgrades; they're draftable perks now (vacuum/hops/lucky). Drop any
+// owned tier whose upgrade no longer exists so an old save stops banking dead
+// keys forward and stops wearing phantom gear it never "owns" anymore. Runs once
+// on import; returns the ids it pruned (handy for tests).
+export function migrateSave() {
+  const valid = new Set(UPGRADES.map((u) => u.id));
+  const pruned = Object.keys(save.owned).filter((id) => !valid.has(id));
+  if (pruned.length) { pruned.forEach((id) => delete save.owned[id]); persist(); }
+  return pruned;
+}
+migrateSave();
+
 export const tierOf = (id) => save.owned[id] | 0;
 
 // Cost to buy the next tier, or null if already maxed.

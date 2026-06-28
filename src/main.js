@@ -6,9 +6,9 @@ import { createParticles } from './particles.js';
 import { buildPlayer, applyGear } from './player.js';
 import { LEVEL_DIST, biomeOf, obstacleSet, levelFromDistance, levelProgress } from './levels.js';
 import { trackOffset, deformRoad } from './track.js';
-import { UPGRADES, effects, tierOf, nextCost, buy, getWallet, addRolls, DEFAULT_POOL, unlockedPerkIds, META, buyMeta } from './upgrades.js';
+import { UPGRADES, effects, tierOf, nextCost, buy, getWallet, addRolls, DEFAULT_POOL, unlockedPerkIds, META, buyMeta, migrateSave } from './upgrades.js';
 import { PERKS, freshMods, applyPerks, perkById, draftChoices } from './perks.js';
-import { getRerolls, useReroll, getBanishes, useBanish, getBoon, setBoon, banishPerk, poolHas } from './save.js';
+import { save, getRerolls, useReroll, getBanishes, useBanish, getBoon, setBoon, banishPerk, poolHas } from './save.js';
 import { getBest, setBest, getStats, bumpStats, resetSave } from './save.js';
 import { hasAch, unlock } from './save.js';
 import { ACHIEVEMENTS, checkAchievements } from './achievements.js';
@@ -199,6 +199,18 @@ function spawnScenery() {
 // Re-derive the run modifiers from the perks picked so far. perks[] is the source
 // of truth; mods is a pure fold of it, so stacking is just stacks++ then recompute.
 function recomputeRunMods() { mods = applyPerks(perks); }
+// Which drafted perk wears which cosmetic prop. The magnet/spring/clover used to
+// be permanent upgrades; they're perks now, so the gear follows the live draft.
+const PERK_GEAR = { vacuum: 'magnet', hops: 'spring', lucky: 'fortune' };
+// Worn props = the permanent upgrades you own (Cushion, Head Start; none in a
+// daily — it's gear-free) plus the per-run perks that map onto a prop, sized by
+// stacks. Rebuilt whenever ownership or the draft changes.
+function wornGear() {
+  const t = daily ? {} : { shield: tierOf('shield'), headstart: tierOf('headstart') };
+  for (const p of perks) { const g = PERK_GEAR[p.id]; if (g) t[g] = p.stacks; }
+  return t;
+}
+function refreshGear() { gearTiers = wornGear(); applyGear(gear, gearTiers); }
 // Combo multiplier for the live run, including any Hot Streak ceiling bump.
 const cmult = (c) => comboMult(c, mods.comboCeil);
 // Add one stack of a perk to this run. Shield grants are a one-shot (applied here,
@@ -209,7 +221,7 @@ function applyPerk(id) {
   if (cur) { if (cur.stacks >= def.stack) return false; cur.stacks++; }
   else perks.push({ id, stacks: 1 });
   if (def.shieldGrant) { shields += def.shieldGrant; updateShieldHud(); }
-  recomputeRunMods(); renderPerkTray();
+  recomputeRunMods(); renderPerkTray(); refreshGear();
   return true;
 }
 // The run's drafted perks as a little icon strip on the HUD (stacks show a count).
@@ -303,9 +315,7 @@ function resetGame() {
   combo = 0; comboTimer = 0; comboMax = 0; squash = 0; emoteT = 0; spin = 0; power = null; powerT = 0; powerCD = 6; gotPower = false;
   player.position.set(0, 0, 0); player.rotation.set(0, 0, 0); player.scale.set(1, 1, 1);
   applySkin(playerMats, selectedSkin());
-  // Show the upgrades you own on the character (none in a daily — it's gear-free).
-  gearTiers = daily ? {} : { magnet: tierOf('magnet'), shield: tierOf('shield'), fortune: tierOf('fortune'), spring: tierOf('spring'), headstart: tierOf('headstart') };
-  applyGear(gear, gearTiers); fartCount = 0; updatePowerVisual(); renderPerkTray();
+  refreshGear(); fartCount = 0; updatePowerVisual(); renderPerkTray();
   applyBiome(level, true);
 }
 function startGame(isDaily = false) {
@@ -851,7 +861,7 @@ function buildDebugApi() {
     combo: v => { combo = v; }, rollCount: v => { rollCount = v; }, rollPoints: v => { rollPoints = v; },
     power: v => { power = v; if (v && powerT <= 0) powerT = POWERUP_DURATION; if (v === 'ghost' || v === 'dash') invuln = Math.max(invuln, POWERUP_DURATION); },
     powerT: v => { powerT = v; }, safeLane: v => { safeLane = v; }, forcedGap: v => { forcedGap = v; },
-    perks: v => { perks = (v || []).map(x => typeof x === 'string' ? { id: x, stacks: 1 } : { id: x.id, stacks: x.stacks || 1 }); recomputeRunMods(); },
+    perks: v => { perks = (v || []).map(x => typeof x === 'string' ? { id: x, stacks: 1 } : { id: x.id, stacks: x.stacks || 1 }); recomputeRunMods(); refreshGear(); },
     levelUps: v => { levelUps = v; },
   };
   function set(o = {}) {
@@ -869,7 +879,7 @@ function buildDebugApi() {
       teleport: ['set({level,speed,shields,power,...})', `keys: ${Object.keys(SETTERS).join(', ')}`],
       world: ['spawn(kind, lane?, z?)', 'clearField()', `kinds: ${OBSTACLE_KINDS.join('|')}|gate|hurdle|roll|powerup[:magnet|x2|ghost]`],
       input: ['left()', 'right()', 'lane(i)', 'jump()', 'duck()'],
-      shop: ['wallet()', 'fund(n)', 'buy(id)', 'effects()'],
+      shop: ['wallet()', 'fund(n)', 'buy(id)', 'effects()', 'migrate(legacyOwned?)'],
       perks: ['perk(id)', 'draft()', 'openDraft()', 'pick(i)', 'reroll()', 'banish(i)', `ids: ${PERKS.map(p => p.id).join('|')}`],
       meta: ['buyMeta(id)', 'boon(id)', 'startDaily()', `items: ${META.map(m => m.id).join('|')}`],
       cosmetics: ['skin()', 'pickSkin(id)', 'unlockAch(id)'],
@@ -902,6 +912,10 @@ function buildDebugApi() {
     lane: (i) => { moveLane(i - laneIdx); return laneIdx; },
     jump: () => { jump(); return snapshot(); }, duck: () => { duck(); return snapshot(); },
     // ---- shop / meta ----
+    // migrate(legacy?) injects a pre-roguelite owned-tier blob (e.g. a save that
+    // still "owns" magnet/spring/fortune) then runs the cleanup, returning the
+    // pruned ids and the surviving owned map — so the legacy fix is testable.
+    migrate: (legacy) => { if (legacy) Object.assign(save.owned, legacy); const pruned = migrateSave(); renderShop(); return { pruned, owned: { ...save.owned } }; },
     wallet: getWallet, fund: (n) => { addRolls(n); renderShop(); return getWallet(); },
     buy: (id) => { const ok = buy(id); renderShop(); return ok; }, effects,
     // ---- perks (roguelite draft) ----

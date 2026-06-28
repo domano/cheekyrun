@@ -201,10 +201,40 @@ const SCENARIOS = [
       // the worn props actually toggle with ownership...
       assert(s.gearVisible.shield === true, 'the shield bubble is worn');
       assert(s.gearVisible.headstart === true, 'the rocket is worn');
-      // the reframed upgrades (now perks) wear no permanent gear
-      assert(s.gearVisible.magnet === false && s.gearVisible.spring === false && s.gearVisible.fortune === false, 'reframed upgrades wear no gear');
+      // the reframed upgrades are perks now: their props stay off until drafted.
+      assert(s.gearVisible.magnet === false && s.gearVisible.spring === false && s.gearVisible.fortune === false, 'undrafted perk gear is hidden');
       // ...and the shield's tier shows as orbiting pips, one per tier, not bulk.
       assert(s.gearVisible.shieldPips === 2, 'a tier-2 Cushion shows two tier pips');
+    },
+  },
+  {
+    name: 'perk-gear',
+    fn: (c, assert) => {
+      c.start();
+      assert(c.state().gearVisible.magnet === false, 'no magnet before drafting Vacuum');
+      let s = c.perk('vacuum');                    // 🧲 Vacuum → magnet prop
+      assert(s.gearVisible.magnet === true, 'drafting Vacuum wears the magnet');
+      s = c.perk('hops');                          // 🦿 Hops → springs prop
+      assert(s.gearVisible.spring === true, 'drafting Hops wears the springs');
+      s = c.perk('lucky');                         // 🍀 Lucky → clover prop
+      assert(s.gearVisible.fortune === true, 'drafting Lucky wears the clover');
+      // a fresh run drops the worn perk gear (perks are per-run, not banked).
+      const f = c.start();
+      assert(f.gearVisible.magnet === false && f.gearVisible.spring === false && f.gearVisible.fortune === false, 'perk gear resets each run');
+    },
+  },
+  {
+    name: 'legacy-save-migration',
+    fn: (c, assert) => {
+      // A pre-roguelite save still "owns" magnet/spring/fortune as upgrades.
+      const r = c.migrate({ magnet: 4, spring: 2, fortune: 3, shield: 1, headstart: 1 });
+      assert(r.pruned.sort().join(',') === 'fortune,magnet,spring', 'reframed upgrade tiers are pruned from the save');
+      assert(r.owned.shield === 1 && r.owned.headstart === 1, 'real upgrade tiers survive');
+      assert(r.owned.magnet === undefined, 'the dead magnet tier is gone');
+      // ...so the cleaned save wears no phantom perk gear at run start.
+      const s = c.start();
+      assert(s.gearVisible.magnet === false && s.gearVisible.spring === false && s.gearVisible.fortune === false, 'a migrated save wears no phantom gear');
+      assert(s.gearVisible.shield === true, 'the still-owned Cushion is still worn');
     },
   },
   {
