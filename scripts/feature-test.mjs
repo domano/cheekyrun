@@ -898,6 +898,146 @@ const SCENARIOS = [
       assert(fast > slow, 'a faster run lifts the music intensity');
     },
   },
+  {
+    // Un-capped difficulty: warm-up difficulty plateaus at ~70s, so `heat` keeps
+    // creeping with the level. A deep run packs denser rows at the SAME difficulty.
+    name: 'heat-escalates-density',
+    fn: (c, assert) => {
+      const dens = (lvl) => {
+        c.start({ magnetR: 0 }); c.seed(123); c.set({ level: lvl, difficulty: 0.5 }); c.clearField();
+        for (let k = 0; k < 80; k++) c.spawnRow();
+        return c.state().counts.obstacles;
+      };
+      const low = dens(1), high = dens(16);
+      assert(low > 0, 'obstacles spawn on the opening level');
+      assert(high > low, `a deep level packs more hazards at equal difficulty (lvl1 ${low}, lvl16 ${high})`);
+    },
+  },
+  {
+    // The combo multiplier ceiling was raised from 5 to 8 so the streak stays a chase.
+    name: 'combo-ceiling-raised',
+    fn: (c, assert) => {
+      c.start();
+      c.set({ combo: 16 }); assert(c.state().comboMult === 5, 'a 16-grab streak is x5 (the old cap)');
+      c.set({ combo: 20 }); assert(c.state().comboMult === 6, 'it now keeps climbing past the old ceiling');
+      c.set({ combo: 28 }); assert(c.state().comboMult === 8, 'the multiplier reaches the new x8 ceiling');
+    },
+  },
+  {
+    // Phoenix: a hot streak banks a once-per-run save that cheats one fatal hit.
+    name: 'phoenix-comeback',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.clearField();
+      assert(c.state().phoenix === false, 'no phoenix at run start');
+      c.set({ combo: 20 });
+      let s = c.step(1);
+      assert(s.phoenix === true, 'a hot enough streak arms the phoenix save');
+      c.spawn('cactus', 1, -4);                         // dead ahead — normally fatal
+      s = c.step(60);
+      assert(s.state === 'playing', 'the phoenix cheats the fatal hit instead of ending the run');
+      assert(s.phoenix === false && s.phoenixUsed === true, 'the save is spent — strictly once per run');
+      c.set({ invuln: 0 }); c.spawn('cactus', 1, -4);
+      s = c.step(60);
+      assert(s.state === 'over', 'with the phoenix spent, the next hit ends the run');
+    },
+  },
+  {
+    // Keystone perk Perfectionist: rolls stop feeding the combo (near-misses must),
+    // and near-misses pay triple — a dodge-focused build.
+    name: 'keystone-perfectionist',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.clearField();
+      const s1 = c.perk('perfectionist');
+      assert(s1.mods.rollsNoCombo === true, 'Perfectionist stops rolls feeding the combo');
+      assert(s1.mods.nearMissMult === 3, 'and triples near-miss pay');
+      c.spawn('roll', 1, -4);
+      const s = c.step(60);
+      assert(s.rollCount === 1, 'the roll is still collected');
+      assert(s.combo === 0, 'but it builds no combo (only dodges do)');
+    },
+  },
+  {
+    // Keystone perk Magpie: roll value snowballs with rolls already grabbed this run.
+    name: 'keystone-magpie',
+    fn: (c, assert) => {
+      const grab = (n) => {
+        c.start({ magnetR: 0 }); c.clearField(); const m = c.perk('magpie').mods;
+        if (!(m.greedScale > 0)) throw new Error('greedScale');
+        c.set({ rollCount: n }); c.spawn('roll', 1, -4);
+        return c.step(60).rollPoints;
+      };
+      const early = grab(0), late = grab(80);
+      assert(early > 0, 'an early roll pays out normally');
+      assert(late > early, `Magpie makes later rolls worth more (early ${early}, late ${late})`);
+    },
+  },
+  {
+    // Keystone curse All In: triple rolls, but no cushions and a denser hazard field.
+    name: 'curse-allin',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.set({ shields: 2 }); c.clearField();
+      const s1 = c.perk('allin');
+      assert(s1.mods.rollX === 3, 'All In triples roll value');
+      assert(s1.mods.noShields === true, 'All In runs you bare — cushions are disabled');
+      assert(Math.abs(s1.mods.obstacleMult - 1.4) < 1e-9, 'and packs the hazard field denser');
+      c.spawn('cactus', 1, -4);
+      assert(c.step(60).state === 'over', 'with cushions off a hit ends the run despite owning shields');
+    },
+  },
+  {
+    // Biomes are mechanically distinct now, not just recolored: each tweaks spawn
+    // character and its fog band (sight distance / mood).
+    name: 'biome-character',
+    fn: (c, assert) => {
+      c.start();                                        // Meadow
+      const meadow = c.state();
+      assert(meadow.biomePlay.gateBias === 1 && meadow.biomePlay.rollBias === 1, 'Meadow is the neutral baseline');
+      c.set({ level: 2 });                              // Sunset
+      assert(c.state().biomePlay.gateBias === 1.5, 'Sunset throws more full-width gates');
+      c.set({ level: 3 });                              // Twilight
+      const tw = c.state();
+      assert(tw.biomePlay.hazardBias === 1.25, 'Twilight packs more compound hazards');
+      assert(tw.fog.near < meadow.fog.near, 'Twilight pulls the fog in — hazards loom later');
+      c.set({ level: 4 });                              // Candyland
+      assert(c.state().biomePlay.rollBias === 1.4, 'Candyland showers rolls');
+    },
+  },
+  {
+    // A new personal best fires the level-up shockwave ring... actually, level-ups do:
+    // a big-moment beat the player can feel, not just a particle puff.
+    name: 'level-up-shockwave',
+    fn: (c, assert) => {
+      c.start(); c.set({ distance: 248 });
+      let s = c.step(20);                               // cross into level 2
+      assert(s.level === 2, 'crossed into level 2');
+      assert(s.ringT > 0, 'a level-up fires the expanding shockwave ring');
+    },
+  },
+  {
+    // Slow-mo on a hot near-miss now triggers from x2 (was x3), so it actually fires.
+    name: 'slowmo-on-hot-nearmiss',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.clearField(); c.set({ combo: 8 });   // multiplier x3 (>= the x2 gate)
+      c.spawn('cactus', 1, -5); c.jump();
+      let maxSlow = 0, s;
+      for (let i = 0; i < 70; i++) { s = c.step(1); maxSlow = Math.max(maxSlow, s.slowmoT); }
+      assert(s.state === 'playing', 'jumped clean over the obstacle');
+      assert(maxSlow > 0, 'a hot near-miss dilates time with the lowered threshold');
+    },
+  },
+  {
+    // Daily return streak: completing the daily on consecutive days builds a streak;
+    // a missed day resets it to 1. (Driven via explicit day keys so it's testable.)
+    name: 'daily-streak',
+    fn: (c, assert) => {
+      c.fresh();
+      assert(c.state().dailyStreak === 0, 'no streak before any daily');
+      assert(c.dailyResult('2026-03-01', 100).streak === 1, 'the first daily starts a 1-day streak');
+      assert(c.dailyResult('2026-03-02', 120).streak === 2, 'a next-day daily extends it');
+      assert(c.dailyResult('2026-03-03', 90).streak === 3, 'and again the day after');
+      assert(c.dailyResult('2026-03-06', 200).streak === 1, 'a skipped day resets the streak to 1');
+    },
+  },
 ];
 
 /* ------------------------------- runner ------------------------------- */

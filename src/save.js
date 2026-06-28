@@ -7,6 +7,8 @@
 // needed. Keep load() inside a try/catch returning full defaults; a throw here
 // would blank the page (and fail the smoke test).
 
+import { prevKey } from './config.js';
+
 const KEY = 'cheekyrun.save.v1';
 
 function defaults() {
@@ -17,7 +19,7 @@ function defaults() {
     stats: { runs: 0, dist: 0, rolls: 0, maxCombo: 0, maxLevel: 1 },
     achievements: {},                            // achievement id -> true
     cosmetics: { owned: { classic: true }, skin: 'classic' },
-    dailyBest: { day: '', score: 0 },
+    dailyBest: { day: '', score: 0, streak: 0, lastDay: '' },
     meta: { pool: {}, banished: {}, rerolls: 0, banishes: 0, boon: null },
   };
 }
@@ -118,10 +120,29 @@ export const useBanish = () => { if ((save.meta.banishes | 0) > 0) { save.meta.b
 export const getBoon = () => save.meta.boon;
 export const setBoon = (id) => { save.meta.boon = id; persist(); };
 
-/* ----- daily challenge best (resets when the day changes) ----- */
+/* ----- daily challenge best (resets when the day changes) + return streak ----- */
 export function getDailyBest(day) { return save.dailyBest.day === day ? (save.dailyBest.score | 0) : 0; }
+// How many days in a row the player has completed a daily. Reads 0 once a day has
+// been skipped (lastDay is neither today nor yesterday), so a stale streak from
+// last week never shows as "live".
+export function getDailyStreak(today) {
+  const db = save.dailyBest;
+  const last = db.lastDay || '';
+  if (!last) return 0;
+  if (today && last !== today && last !== prevKey(today)) return 0;   // a day was missed
+  return db.streak | 0;
+}
 export function setDailyBest(day, score) {
-  if (save.dailyBest.day !== day) save.dailyBest = { day, score: score | 0 };
-  else if ((score | 0) > (save.dailyBest.score | 0)) save.dailyBest.score = score | 0;
+  const db = save.dailyBest;
+  if (db.day !== day) {
+    // First completion of a new day: extend the streak if yesterday was played,
+    // otherwise it starts fresh at 1. Never punishes a gap beyond resetting.
+    db.streak = (db.lastDay === prevKey(day)) ? (db.streak | 0) + 1 : 1;
+    db.lastDay = day;
+    db.day = day;
+    db.score = score | 0;
+  } else if ((score | 0) > (db.score | 0)) {
+    db.score = score | 0;
+  }
   persist();
 }
