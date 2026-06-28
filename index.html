@@ -9,7 +9,9 @@
 </head>
 <body>
   <div id="game"></div>
+  <div id="speedlines"></div>
   <div id="fx"></div>
+  <div id="flash"></div>
 
   <div id="hud" class="hide">
     <div class="pill"><small>Score</small><span id="score">0</span></div>
@@ -19,7 +21,10 @@
     </div>
     <div class="pill" id="rollpill"><span id="shieldHud" class="hide">🛡️<span id="shields">0</span></span>🧻<span id="rolls">0</span></div>
   </div>
+  <div id="comboHud" class="hide">🔥<b>x<span id="comboMult">1</span></b><small><span id="comboCount">0</span> combo</small></div>
+  <div id="powerHud" class="hide"><span id="powerIcon">✨</span><div id="powerbar"><div id="powerFill"></div></div></div>
   <div id="banner"></div>
+  <div id="achToast"></div>
   <div id="scorePop">+15</div>
   <button id="muteBtn" title="Sound on/off">🔊</button>
 
@@ -35,7 +40,11 @@
         🧻 grab rolls &nbsp;·&nbsp; 🌵 dodge cacti
       </div><br>
       <button class="btn" id="startBtn">Let's go!</button>
+      <button class="btn ghost" id="dailyBtn">📅 Daily Challenge</button>
+      <div class="stats"></div>
       <div class="shop"></div>
+      <div class="cosmetics"></div>
+      <div class="achievements"></div>
     </div>
   </div>
 
@@ -47,7 +56,10 @@
       <div class="best" id="bestLine">Best: 0</div>
       <div class="banked">🧻 +<span id="earned">0</span> banked</div>
       <button class="btn" id="againBtn">Again!</button>
+      <div class="stats"></div>
       <div class="shop"></div>
+      <div class="cosmetics"></div>
+      <div class="achievements"></div>
     </div>
   </div>
 

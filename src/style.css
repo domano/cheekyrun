@@ -30,6 +30,41 @@ canvas{display:block}
 #scorePop{position:fixed;left:50%;top:33%;transform:translateX(-50%);z-index:15;font-weight:900;font-size:28px;
   color:#ffb300;-webkit-text-stroke:2px var(--ink);opacity:0;pointer-events:none;transition:opacity .15s}
 
+/* combo chip — sits under the score, fires a pop on each increment */
+#comboHud{position:fixed;left:50%;top:calc(env(safe-area-inset-top,14px) + 70px);transform:translateX(-50%);z-index:15;
+  pointer-events:none;display:flex;align-items:center;gap:7px;font-weight:900;
+  background:#fff;border:3px solid var(--ink);border-radius:999px;padding:5px 15px;box-shadow:4px 4px 0 var(--ink)}
+#comboHud b{color:var(--pink);font-size:20px;-webkit-text-stroke:.6px var(--ink)}
+#comboHud small{font-size:11px;opacity:.6;text-transform:uppercase;letter-spacing:1px}
+#comboHud.pulse{animation:combopop .26s ease-out}
+@keyframes combopop{0%{transform:translateX(-50%) scale(1)}40%{transform:translateX(-50%) scale(1.22)}100%{transform:translateX(-50%) scale(1)}}
+@media (prefers-reduced-motion:reduce){#comboHud.pulse{animation:none}}
+
+/* active power-up chip with a draining timer bar, under the combo chip */
+#powerHud{position:fixed;left:50%;top:calc(env(safe-area-inset-top,14px) + 116px);transform:translateX(-50%);z-index:15;
+  pointer-events:none;display:flex;align-items:center;gap:8px;
+  background:#fff;border:3px solid var(--ink);border-radius:999px;padding:5px 14px;box-shadow:4px 4px 0 var(--ink)}
+#powerHud span{font-size:20px;line-height:1}
+#powerbar{width:64px;height:7px;border:2.5px solid var(--ink);border-radius:999px;background:#fff;overflow:hidden}
+#powerFill{height:100%;width:100%;background:var(--pink);transition:width .1s linear}
+
+/* full-screen flash wash on big moments (crash, shield, power-up) */
+#flash{position:fixed;inset:0;z-index:25;pointer-events:none;opacity:0;background:#fff}
+#flash.go{animation:flashfade .32s ease-out}
+@keyframes flashfade{0%{opacity:.85}100%{opacity:0}}
+@media (prefers-reduced-motion:reduce){#flash.go{animation:flashstatic .32s steps(1)}}
+@keyframes flashstatic{0%,99%{opacity:.4}100%{opacity:0}}
+
+/* speed lines — radial streaks that fade in at high combo/speed */
+#speedlines{position:fixed;inset:0;z-index:5;pointer-events:none;opacity:0;transition:opacity .3s;
+  background:repeating-conic-gradient(from 0deg at 50% 50%,rgba(255,255,255,.5) 0deg 1deg,transparent 1deg 7deg);
+  -webkit-mask:radial-gradient(circle at 50% 50%,transparent 38%,#000 75%);mask:radial-gradient(circle at 50% 50%,transparent 38%,#000 75%)}
+@media (prefers-reduced-motion:reduce){#speedlines{display:none}}
+
+/* lifetime stats row on the menu / game-over cards */
+.stats{display:flex;flex-wrap:wrap;justify-content:center;gap:6px 12px;margin-top:16px;font-size:12.5px;font-weight:800;opacity:.78}
+.stats span{white-space:nowrap}
+
 /* level-up banner */
 #banner{position:fixed;left:50%;top:24%;transform:translate(-50%,-50%) scale(.6);z-index:20;pointer-events:none;
   font-weight:900;font-size:34px;letter-spacing:-.5px;color:#fff;background:var(--pink);
@@ -57,6 +92,7 @@ canvas{display:block}
 .btn{appearance:none;cursor:pointer;font:inherit;font-weight:900;font-size:18px;color:#fff;background:var(--pink);
   border:3px solid var(--ink);padding:13px 32px;border-radius:999px;box-shadow:5px 5px 0 var(--ink);transition:transform .07s,box-shadow .07s}
 .btn:active{transform:translate(3px,3px);box-shadow:2px 2px 0 var(--ink)}
+.btn.ghost{background:#fff;color:var(--plum);font-size:15px;padding:10px 24px;margin-top:10px}
 .final{font-size:16px;margin:6px 0 2px;font-weight:800}
 .final span{color:var(--pink);font-size:34px;-webkit-text-stroke:1.5px var(--ink)}
 .best{font-size:13px;opacity:.6;font-weight:800;margin-bottom:18px}
@@ -84,6 +120,40 @@ canvas{display:block}
 .up.poor .upc{background:#ffd0d0}
 .up.maxed{cursor:default;opacity:.85}
 .up.maxed .upc{background:#bdf0c4}
+/* skin picker */
+.cosmetics{margin-top:20px;border-top:3px dashed rgba(36,16,25,.25);padding-top:16px;text-align:left}
+.skingrid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+.skin{appearance:none;cursor:pointer;font:inherit;display:flex;flex-direction:column;align-items:center;gap:5px;
+  background:#fff;border:3px solid var(--ink);border-radius:14px;padding:10px 5px;box-shadow:3px 3px 0 var(--ink);
+  transition:transform .07s,box-shadow .07s}
+.skin:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--ink)}
+.skin .sw{width:30px;height:30px;border:2.5px solid var(--ink);border-radius:50%}
+.skin .skn{font-size:11px;font-weight:900}
+.skin .skc{font-size:10px;font-weight:900;background:#ffe9a8;border:2px solid var(--ink);border-radius:999px;padding:1px 8px}
+.skin.active{background:#ffeaf2}
+.skin.active .skc{background:var(--pink);color:#fff}
+.skin.locked{opacity:.6}
+.skin.locked .skc{background:#ffd0d0}
+
+/* achievement badge grid */
+.achievements{margin-top:20px;border-top:3px dashed rgba(36,16,25,.25);padding-top:16px;text-align:left}
+.achgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.ach{display:flex;flex-direction:column;align-items:center;text-align:center;gap:3px;
+  background:#fff;border:3px solid var(--ink);border-radius:14px;padding:9px 5px;box-shadow:3px 3px 0 var(--ink);opacity:.45;filter:grayscale(1)}
+.ach.on{opacity:1;filter:none;background:#fff7df}
+.ach .achi{font-size:24px;line-height:1}
+.ach .achn{font-size:10px;font-weight:800;line-height:1.15}
+
+/* achievement unlock toast */
+#achToast{position:fixed;left:50%;top:16%;transform:translate(-50%,-50%) scale(.7);z-index:40;pointer-events:none;
+  display:flex;align-items:center;gap:10px;background:#fff7df;border:3.5px solid var(--ink);border-radius:18px;
+  padding:10px 18px;box-shadow:6px 6px 0 var(--ink);opacity:0;white-space:nowrap}
+#achToast .achi{font-size:30px}
+#achToast .acht{font-size:13px;font-weight:800;text-align:left}
+#achToast .acht b{color:var(--pink);font-size:12px;text-transform:uppercase;letter-spacing:1px}
+#achToast.show{animation:banner 2.2s ease-out}
+@media (prefers-reduced-motion:reduce){#achToast.show{animation:bannerfade 2.2s ease-out}}
+
 .hide{display:none!important}
 .float{animation:bob 2.2s ease-in-out infinite;font-size:54px}
 @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}

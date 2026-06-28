@@ -2,9 +2,10 @@
 //
 // Rolls grabbed during a run are banked into a wallet on game over. Between
 // runs the wallet is spent on permanent upgrades, each with a few tiers. The
-// wallet and owned tiers persist in localStorage so progress survives reloads.
+// wallet and owned tiers live in the shared save (see save.js).
 
-const KEY = 'cheekyrun.save.v1';
+import { save, persist, getWallet, addRolls } from './save.js';
+export { getWallet, addRolls };
 
 // Each upgrade declares: a max tier, the cost to reach the *next* tier from a
 // given current tier (cost(currentTier) is valid for currentTier < max), the
@@ -54,21 +55,6 @@ export const UPGRADES = [
 
 const byId = (id) => UPGRADES.find((u) => u.id === id);
 
-let save = load();
-function load() {
-  try {
-    const raw = JSON.parse(localStorage.getItem(KEY)) || {};
-    return { wallet: raw.wallet | 0, owned: raw.owned || {} };
-  } catch {
-    return { wallet: 0, owned: {} };
-  }
-}
-function persist() {
-  try { localStorage.setItem(KEY, JSON.stringify(save)); } catch { /* ignore */ }
-}
-
-export const getWallet = () => save.wallet | 0;
-export const addRolls = (n) => { save.wallet = (save.wallet | 0) + (n | 0); persist(); };
 export const tierOf = (id) => save.owned[id] | 0;
 
 // Cost to buy the next tier, or null if already maxed.
