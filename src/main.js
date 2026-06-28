@@ -9,7 +9,7 @@ import { trackOffset, deformRoad } from './track.js';
 import { UPGRADES, effects, tierOf, nextCost, buy, getWallet, addRolls, DEFAULT_POOL, unlockedPerkIds, META, buyMeta, migrateSave } from './upgrades.js';
 import { PERKS, freshMods, applyPerks, perkById, draftChoices } from './perks.js';
 import { save, getRerolls, useReroll, getBanishes, useBanish, getBoon, setBoon, banishPerk, poolHas } from './save.js';
-import { getBest, setBest, getStats, bumpStats, resetSave } from './save.js';
+import { getBest, setBest, getStats, bumpStats, resetSave, reload } from './save.js';
 import { hasAch, unlock } from './save.js';
 import { ACHIEVEMENTS, checkAchievements } from './achievements.js';
 import { selectedSkin, selectSkin, getDailyBest, setDailyBest } from './save.js';
@@ -935,6 +935,10 @@ function buildDebugApi() {
     // still "owns" magnet/spring/fortune) then runs the cleanup, returning the
     // pruned ids and the surviving owned map — so the legacy fix is testable.
     migrate: (legacy) => { if (legacy) Object.assign(save.owned, legacy); const pruned = migrateSave(); renderShop(); return { pruned, owned: { ...save.owned } }; },
+    // Re-run the import-time sequence (load the stored blob → migrate) against
+    // whatever bytes a test wrote to localStorage, then re-init the menu. Lets a
+    // scenario prove a malformed/legacy save loads cleanly instead of bricking.
+    reloadSave: () => { reload(); migrateSave(); resetGame(); refreshHud(); renderShop(); return snapshot(); },
     wallet: getWallet, fund: (n) => { addRolls(n); renderShop(); return getWallet(); },
     buy: (id) => { const ok = buy(id); renderShop(); return ok; }, effects,
     // ---- perks (roguelite draft) ----
