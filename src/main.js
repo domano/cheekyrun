@@ -1,14 +1,14 @@
 import * as THREE from 'three';
 import { LANES, SPAWN_Z, DESPAWN_Z, INK, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE_RAMP, GATE_COOLDOWN, COMBO_WINDOW, comboMult, NEARMISS_MARGIN, NEARMISS_BONUS, POWERUP_DURATION, POWERUP_CHANCE, POWERUP_MIN_DIFF, POWERUP_COOLDOWN, POWERUPS, POWERUP_KINDS, mulberry32, dailyKey, dailySeed, $, buzz, shuffle } from './config.js';
 import { makeGradient, toon } from './materials.js';
-import { makeObstacle, makeHurdle, makeGate, makeRoll, makePowerup, makeTree, makeBush, makeFlower, makeCloud } from './props.js';
+import { makeObstacle, makeHurdle, makeGate, makeRoll, makePowerup, makeTree, makeBush, makeFlower, makeCloud, OBSTACLE_KINDS } from './props.js';
 import { createParticles } from './particles.js';
 import { buildPlayer, applyGear } from './player.js';
-import { LEVEL_DIST, biomeOf, levelFromDistance, levelProgress } from './levels.js';
+import { LEVEL_DIST, biomeOf, obstacleSet, levelFromDistance, levelProgress } from './levels.js';
 import { trackOffset, deformRoad } from './track.js';
 import { UPGRADES, effects, tierOf, nextCost, buy, getWallet, addRolls } from './upgrades.js';
 import { getBest, setBest, getStats, bumpStats, resetSave } from './save.js';
-import { hasAch } from './save.js';
+import { hasAch, unlock } from './save.js';
 import { ACHIEVEMENTS, checkAchievements } from './achievements.js';
 import { selectedSkin, selectSkin, getDailyBest, setDailyBest } from './save.js';
 import { SKINS, skinById, skinUnlocked, buySkin, applySkin } from './cosmetics.js';
@@ -148,8 +148,9 @@ function spawnRow() {
   const others = [0, 1, 2].filter(l => l !== nextSafe); shuffle(others, rng);
   const blocked = others.slice(0, blockCount);
 
-  // bars phase in only after the warm-up
-  const kinds = d < 0.28 ? ['cactus', 'rock'] : ['cactus', 'rock', 'bar'];
+  // each biome draws from its own roster; the duck bar phases in after warm-up
+  const theme = obstacleSet(level);
+  const kinds = d < 0.28 ? theme.jump : [...theme.jump, theme.duck];
   blocked.forEach(li => {
     const o = makeObstacle(kinds[(rng() * kinds.length) | 0]);
     o.position.set(LANES[li], 0, SPAWN_Z); o.userData.lane = li; o.userData.lx = LANES[li]; scene.add(o); obstacles.push(o);
@@ -328,8 +329,7 @@ function moveObstacles(dt) {
     const lx = o.userData.lx, halfW = o.userData.halfW || 0.95;
     const dz = Math.abs(o.position.z - player.position.z), dx = Math.abs(lx - player.position.x);
     if (dz < 0.8 && dx < halfW) {
-      const k = o.userData.kind;
-      const safe = (k === 'bar' || k === 'gate') ? (duckTimer > 0) : (groundY > 1.0);
+      const safe = o.userData.duck ? (duckTimer > 0) : (groundY > 1.0);
       if (!safe && invuln <= 0) {
         if (shields > 0) {
           shields--; invuln = 1.1; updateShieldHud(); breakCombo(); flash('#8fd3ff'); buzz(30); sfxShield(); shakeT = 0.25;
@@ -616,6 +616,7 @@ function buildDebugApi() {
       state, score: score(), paused,
       distance: +distance.toFixed(2), speed: +speed.toFixed(2), difficulty: +difficulty.toFixed(3), elapsed: +elapsed.toFixed(2),
       level, biome: biomeOf(level).name, levelProgress: +levelProgress(distance).toFixed(3),
+      biomeObstacles: [...obstacleSet(level).jump, obstacleSet(level).duck],
       rollCount, rollPoints, combo, comboMult: comboMult(combo), comboMax,
       shields, invuln: +invuln.toFixed(2), magnetR, rollValue, extraJumps, jumpsLeft,
       power, powerT: +powerT.toFixed(2),
@@ -669,9 +670,10 @@ function buildDebugApi() {
       lifecycle: ['start(overrides?)', 'reset()', 'fresh()', 'over()'],
       time: ['pause()', 'resume()', 'step(frames=1, dt=1/60)', 'seed(n)'],
       teleport: ['set({level,speed,shields,power,...})', `keys: ${Object.keys(SETTERS).join(', ')}`],
-      world: ['spawn(kind, lane?, z?)', 'clearField()', "kinds: cactus|rock|bar|gate|hurdle|roll|powerup[:magnet|x2|ghost]"],
+      world: ['spawn(kind, lane?, z?)', 'clearField()', `kinds: ${OBSTACLE_KINDS.join('|')}|gate|hurdle|roll|powerup[:magnet|x2|ghost]`],
       input: ['left()', 'right()', 'lane(i)', 'jump()', 'duck()'],
       shop: ['wallet()', 'fund(n)', 'buy(id)', 'effects()'],
+      cosmetics: ['skin()', 'pickSkin(id)', 'unlockAch(id)'],
     }),
     // ---- lifecycle ----
     start: (overrides) => { startGame(false); if (overrides) set(overrides); return snapshot(); },
@@ -703,6 +705,15 @@ function buildDebugApi() {
     // ---- shop / meta ----
     wallet: getWallet, fund: (n) => { addRolls(n); renderShop(); return getWallet(); },
     buy: (id) => { const ok = buy(id); renderShop(); return ok; }, effects,
+    // ---- cosmetics (skins) ----
+    // skin() reads the saved selection + the colours actually on the live mats.
+    // pickSkin() mirrors the menu click (gate on unlock, persist, recolour);
+    // unlockAch() grants an achievement so achievement-only skins can be tested.
+    skin: () => ({ selected: selectedSkin(), applied: {
+      skin: playerMats.skin.color.getHex(), inner: playerMats.inner.color.getHex(), tail: playerMats.tail.color.getHex(),
+    } }),
+    pickSkin: (id) => { const s = skinById(id); if (skinUnlocked(s)) { selectSkin(id); applySkin(playerMats, id); } renderCosmetics(); return selectedSkin(); },
+    unlockAch: (id) => { unlock(id); renderCosmetics(); return hasAch(id); },
   };
   return api;
 }

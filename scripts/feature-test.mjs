@@ -120,6 +120,29 @@ const SCENARIOS = [
     },
   },
   {
+    name: 'biome-obstacle-variety',
+    fn: (c, assert) => {
+      c.start();                                  // level 1 = Meadow
+      const meadow = c.state().biomeObstacles;
+      assert(meadow.includes('cactus'), 'Meadow uses its cactus prop');
+      c.set({ level: 3 });                        // Twilight
+      const twilight = c.state().biomeObstacles;
+      assert(twilight.includes('crystal'), 'Twilight uses its crystal prop');
+      assert(JSON.stringify(meadow) !== JSON.stringify(twilight), 'different stages draw from different obstacle sets');
+
+      // A biome jump-obstacle still crashes you if you do nothing...
+      c.start(); c.clearField();
+      c.spawn('crystal', 1, -4);
+      assert(c.step(60).state === 'over', 'a Twilight crystal crashes the run');
+
+      // ...and a biome duck-bar is cleared by sliding under it.
+      c.start(); c.clearField();
+      c.spawn('branch', 1, -3);                   // Meadow's slide-under prop
+      c.duck();
+      assert(c.step(25).state === 'playing', 'ducking clears a Meadow branch');
+    },
+  },
+  {
     name: 'shield-absorbs-hit',
     fn: (c, assert) => {
       c.start(); c.set({ shields: 1 }); c.clearField();
@@ -208,6 +231,29 @@ const SCENARIOS = [
       assert(s.rollCount === 1, 'a roll stays collectible despite the curving track');
       c.clearField(); c.spawn('cactus', 1, -4);
       assert(c.step(60).state === 'over', 'an obstacle in your lane still crashes you on a curve');
+    },
+  },
+  {
+    name: 'skin-selection-persists',
+    fn: (c, assert) => {
+      // Classic is the free default and is live on the character at boot.
+      assert(c.skin().selected === 'classic', 'a fresh save wears Classic');
+      assert(c.skin().applied.skin === 0xffbfa8, 'Classic colours are on the live mats');
+
+      // Achievement skins are locked until earned: selecting one is a no-op.
+      c.pickSkin('golden');
+      assert(c.skin().selected === 'classic', 'a locked achievement skin can not be selected');
+
+      // Earn the achievement, then select — it locks in and recolours the mats.
+      c.unlockAch('level10');
+      assert(c.pickSkin('golden') === 'golden', 'an unlocked achievement skin selects');
+      assert(c.skin().selected === 'golden', 'the selection is persisted, not just previewed');
+      assert(c.skin().applied.skin === 0xffd166, 'Golden colours are applied live');
+
+      // The regression: the skin must survive starting a run (resetGame re-applies).
+      c.start();
+      assert(c.skin().selected === 'golden', 'the skin stays selected after the run starts');
+      assert(c.skin().applied.skin === 0xffd166, 'Golden is re-applied on run start, not reset to Classic');
     },
   },
   {
