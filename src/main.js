@@ -816,7 +816,7 @@ function buildDebugApi() {
       distance: +distance.toFixed(2), speed: +speed.toFixed(2), difficulty: +difficulty.toFixed(3), elapsed: +elapsed.toFixed(2),
       level, biome: biomeOf(level).name, levelProgress: +levelProgress(distance).toFixed(3),
       biomeObstacles: [...obstacleSet(level).jump, obstacleSet(level).duck],
-      rollCount, rollPoints, combo, comboMult: cmult(combo), comboMax,
+      rollCount, rollPoints, combo, comboMult: cmult(combo), comboMax, comboTimer: +comboTimer.toFixed(2),
       shields, invuln: +invuln.toFixed(2), magnetR, rollValue, extraJumps, jumpsLeft,
       perks: perks.map(p => ({ id: p.id, stacks: p.stacks })), mods, levelUps,
       draft: draftCards.map(p => p.id), draftArm: +draftArm.toFixed(2),
