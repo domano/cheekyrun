@@ -213,6 +213,29 @@ const SCENARIOS = [
     },
   },
   {
+    name: 'skin-selection-persists',
+    fn: (c, assert) => {
+      // Classic is the free default and is live on the character at boot.
+      assert(c.skin().selected === 'classic', 'a fresh save wears Classic');
+      assert(c.skin().applied.skin === 0xffbfa8, 'Classic colours are on the live mats');
+
+      // Achievement skins are locked until earned: selecting one is a no-op.
+      c.pickSkin('golden');
+      assert(c.skin().selected === 'classic', 'a locked achievement skin can not be selected');
+
+      // Earn the achievement, then select — it locks in and recolours the mats.
+      c.unlockAch('level10');
+      assert(c.pickSkin('golden') === 'golden', 'an unlocked achievement skin selects');
+      assert(c.skin().selected === 'golden', 'the selection is persisted, not just previewed');
+      assert(c.skin().applied.skin === 0xffd166, 'Golden colours are applied live');
+
+      // The regression: the skin must survive starting a run (resetGame re-applies).
+      c.start();
+      assert(c.skin().selected === 'golden', 'the skin stays selected after the run starts');
+      assert(c.skin().applied.skin === 0xffd166, 'Golden is re-applied on run start, not reset to Classic');
+    },
+  },
+  {
     name: 'fart-on-jump-and-slide',
     fn: (c, assert) => {
       c.start(); c.clearField();
