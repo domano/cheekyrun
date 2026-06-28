@@ -1,0 +1,45 @@
+:root{ --pink:#ff5f93; --plum:#2a1b2e; --ink:#241019; }
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden;
+  background:linear-gradient(#8fd3ff 0%,#bfe4ff 28%,#ffd2e2 66%,#ffe2c4 100%);
+  font-family:"Trebuchet MS","Segoe UI",system-ui,sans-serif;color:var(--plum);
+  -webkit-user-select:none;user-select:none;touch-action:none}
+#game{position:fixed;inset:0}
+canvas{display:block}
+
+/* manga screentone + vignette */
+#fx{position:fixed;inset:0;pointer-events:none;z-index:4;
+  background:radial-gradient(125% 125% at 50% 40%,rgba(0,0,0,0) 56%,rgba(30,12,28,.32) 100%)}
+#fx::before{content:"";position:absolute;inset:0;opacity:.05;
+  background-image:radial-gradient(rgba(20,5,15,.95) 1px,transparent 1.5px);background-size:5px 5px}
+
+#hud{position:fixed;top:env(safe-area-inset-top,14px);left:0;right:0;z-index:10;
+  display:flex;justify-content:space-between;padding:16px 20px;pointer-events:none;font-weight:800}
+.pill{background:#fff;border:3px solid var(--ink);border-radius:999px;padding:7px 16px;
+  box-shadow:4px 4px 0 var(--ink);display:flex;align-items:center;gap:8px;font-size:18px}
+.pill small{font-weight:800;opacity:.5;font-size:11px;text-transform:uppercase;letter-spacing:1.5px}
+#muteBtn{position:fixed;top:calc(env(safe-area-inset-top,14px) + 14px);left:50%;transform:translateX(-50%);z-index:35;
+  width:46px;height:46px;border-radius:50%;background:#fff;border:3px solid var(--ink);box-shadow:3px 3px 0 var(--ink);
+  font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;line-height:1}
+#muteBtn:active{transform:translateX(-50%) translate(2px,2px);box-shadow:1px 1px 0 var(--ink)}
+#scorePop{position:fixed;left:50%;top:33%;transform:translateX(-50%);z-index:15;font-weight:900;font-size:28px;
+  color:#ffb300;-webkit-text-stroke:2px var(--ink);opacity:0;pointer-events:none;transition:opacity .15s}
+
+.scrim{position:fixed;inset:0;z-index:30;display:flex;align-items:center;justify-content:center;padding:24px;
+  background:radial-gradient(120% 120% at 50% 28%,rgba(0,0,0,0),rgba(30,12,28,.42))}
+.card{background:#fff7f1;border:4px solid var(--ink);border-radius:26px;padding:30px 28px;max-width:350px;width:100%;
+  text-align:center;box-shadow:10px 10px 0 var(--ink)}
+.title{font-size:44px;line-height:1;font-weight:900;letter-spacing:-1.5px;color:var(--pink);-webkit-text-stroke:2.5px var(--ink)}
+.tag{margin-top:8px;font-size:14px;opacity:.75;font-weight:700}
+.how{margin:18px 0 22px;font-size:13.5px;line-height:1.9;opacity:.9;text-align:left;display:inline-block}
+.how b{color:var(--pink)}
+.btn{appearance:none;cursor:pointer;font:inherit;font-weight:900;font-size:18px;color:#fff;background:var(--pink);
+  border:3px solid var(--ink);padding:13px 32px;border-radius:999px;box-shadow:5px 5px 0 var(--ink);transition:transform .07s,box-shadow .07s}
+.btn:active{transform:translate(3px,3px);box-shadow:2px 2px 0 var(--ink)}
+.final{font-size:16px;margin:6px 0 2px;font-weight:800}
+.final span{color:var(--pink);font-size:34px;-webkit-text-stroke:1.5px var(--ink)}
+.best{font-size:13px;opacity:.6;font-weight:800;margin-bottom:18px}
+.hide{display:none!important}
+.float{animation:bob 2.2s ease-in-out infinite;font-size:54px}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
+@media (prefers-reduced-motion:reduce){.float{animation:none}}
