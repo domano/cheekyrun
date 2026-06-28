@@ -168,6 +168,38 @@ const SCENARIOS = [
       assert(s.level === 2, 'Head Start begins the run a level in');
     },
   },
+  {
+    name: 'upgrade-visuals',
+    fn: (c, assert) => {
+      c.fund(2000); c.buy('shield'); c.buy('spring'); c.buy('spring');   // shield t1, spring t2
+      const s = c.start();
+      assert(s.gearTiers.shield === 1, 'owning Cushion shows its gear at tier 1');
+      assert(s.gearTiers.spring === 2, 'a second Springy tier is more pronounced');
+      assert(s.gearTiers.magnet === 0, 'un-owned upgrades wear no gear');
+    },
+  },
+  {
+    name: 'powerup-visual',
+    fn: (c, assert) => {
+      c.start();
+      assert(c.state().auraVisible === false, 'no halo before any power-up');
+      const on = c.set({ power: 'ghost' });
+      assert(on.auraVisible === true, 'an active power-up lights the halo aura');
+      const off = c.set({ power: null });
+      assert(off.auraVisible === false, 'the halo clears when the power-up ends');
+    },
+  },
+  {
+    name: 'fart-on-jump-and-slide',
+    fn: (c, assert) => {
+      c.start(); c.clearField();
+      assert(c.state().fartCount === 0, 'no puffs at the start of a run');
+      c.jump();
+      assert(c.state().fartCount === 1, 'jumping puffs a fart cloud');
+      c.duck();
+      assert(c.state().fartCount === 2, 'sliding puffs a fart cloud');
+    },
+  },
 ];
 
 /* ------------------------------- runner ------------------------------- */
