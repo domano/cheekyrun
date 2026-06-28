@@ -14,7 +14,6 @@ export function freshMods() {
     extraJumpsBonus: 0,
     comboWindowMult: 1,
     nearMissMult: 1,
-    shieldBonus: 0,
     noShields: false,
     rollSpawnMult: 1,
     obstacleMult: 1,
@@ -35,8 +34,10 @@ export const PERKS = [
     rarity: 'common', weight: 80, stack: 2, apply: (m) => { m.extraJumpsBonus += 1; } },
   { id: 'memory', icon: '🧠', name: 'Long Memory', desc: 'Combo lasts 40% longer.',
     rarity: 'rare', weight: 50, stack: 2, apply: (m) => { m.comboWindowMult *= 1.4; } },
+  // Cushion grants are a one-shot via shieldGrant (applied once in applyPerk, see
+  // main.js) so a mid-run spend isn't refunded by a recompute — apply() is a no-op.
   { id: 'pillow', icon: '🛡️', name: 'Pillow Stack', desc: 'Start with +1 cushion.',
-    rarity: 'rare', weight: 50, stack: 2, shieldGrant: 1, apply: (m) => { m.shieldBonus += 1; } },
+    rarity: 'rare', weight: 50, stack: 2, shieldGrant: 1, apply: () => {} },
   { id: 'daredevil', icon: '😎', name: 'Daredevil', desc: 'Near-misses pay big.',
     rarity: 'rare', weight: 60, stack: 2, apply: (m) => { m.nearMissMult *= 2; } },
   { id: 'doubledown', icon: '💰', name: 'Double Down', desc: 'Rolls are worth 2× always.',
