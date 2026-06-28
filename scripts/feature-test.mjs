@@ -120,6 +120,29 @@ const SCENARIOS = [
     },
   },
   {
+    name: 'biome-obstacle-variety',
+    fn: (c, assert) => {
+      c.start();                                  // level 1 = Meadow
+      const meadow = c.state().biomeObstacles;
+      assert(meadow.includes('cactus'), 'Meadow uses its cactus prop');
+      c.set({ level: 3 });                        // Twilight
+      const twilight = c.state().biomeObstacles;
+      assert(twilight.includes('crystal'), 'Twilight uses its crystal prop');
+      assert(JSON.stringify(meadow) !== JSON.stringify(twilight), 'different stages draw from different obstacle sets');
+
+      // A biome jump-obstacle still crashes you if you do nothing...
+      c.start(); c.clearField();
+      c.spawn('crystal', 1, -4);
+      assert(c.step(60).state === 'over', 'a Twilight crystal crashes the run');
+
+      // ...and a biome duck-bar is cleared by sliding under it.
+      c.start(); c.clearField();
+      c.spawn('branch', 1, -3);                   // Meadow's slide-under prop
+      c.duck();
+      assert(c.step(25).state === 'playing', 'ducking clears a Meadow branch');
+    },
+  },
+  {
     name: 'shield-absorbs-hit',
     fn: (c, assert) => {
       c.start(); c.set({ shields: 1 }); c.clearField();

@@ -4,25 +4,94 @@ import { toon, ink } from './materials.js';
 // Pure mesh factories. Each returns a positioned/unpositioned THREE.Group;
 // the caller is responsible for adding it to the scene.
 
-export function makeObstacle(kind) {
+// ---- per-biome obstacle roster ----
+// Every lane obstacle is one of these kinds. `action` decides how you clear it:
+// 'jump' obstacles are grounded (jump over), 'duck' obstacles are a raised bar
+// (slide under). Each biome (see levels.js) draws from its own subset so stages
+// look distinct, not just recoloured. `build()` returns the inner meshes.
+
+// A raised cross-bar on two posts — the shared shape behind every 'duck' kind.
+function duckBar(barM, postM, barGeo = [1.7, 0.3, 0.3]) {
   const g = new THREE.Group();
-  if (kind === 'bar') {
-    const bar = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.34, 0.34), toon(0xff5151)); bar.position.y = 1.55; bar.castShadow = true; ink(bar, 1.08);
-    [-0.8, 0.8].forEach(x => { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 1.6, 8), toon(0xe0d3c0)); p.position.set(x, 0.8, 0); p.castShadow = true; ink(p, 1.1); g.add(p); });
-    g.add(bar);
-  } else if (kind === 'rock') {
-    const r = new THREE.Mesh(new THREE.IcosahedronGeometry(0.6, 0), toon(0x99a3ad, { flat: true })); r.position.y = 0.5; r.scale.set(1.3, 0.9, 1.1); r.castShadow = true; ink(r, 1.08); g.add(r);
-  } else {
-    const m = toon(0x44b566);
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(...barGeo), barM); bar.position.y = 1.55; bar.castShadow = true; ink(bar, 1.08);
+  [-0.8, 0.8].forEach(x => { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 1.6, 8), postM); p.position.set(x, 0.8, 0); p.castShadow = true; ink(p, 1.1); g.add(p); });
+  g.add(bar); return g;
+}
+
+const OBSTACLES = {
+  // Meadow — green & woodsy.
+  cactus: { action: 'jump', color: 0x44b566, build: () => {
+    const g = new THREE.Group(), m = toon(0x44b566);
     const body = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.42, 1.5, 14), m); body.position.y = 0.75; body.castShadow = true; ink(body, 1.07);
     const aL = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.17, 0.6, 10), m); aL.position.set(-0.36, 0.95, 0); aL.rotation.z = 0.5; aL.castShadow = true; ink(aL, 1.12);
     const aR = aL.clone(); aR.position.x = 0.36; aR.rotation.z = -0.5;
-    g.add(body, aL, aR);
-  }
+    g.add(body, aL, aR); return g;
+  } },
+  rock: { action: 'jump', color: 0x99a3ad, build: () => {
+    const g = new THREE.Group();
+    const r = new THREE.Mesh(new THREE.IcosahedronGeometry(0.6, 0), toon(0x99a3ad, { flat: true })); r.position.y = 0.5; r.scale.set(1.3, 0.9, 1.1); r.castShadow = true; ink(r, 1.08); g.add(r); return g;
+  } },
+  branch: { action: 'duck', color: 0x8a5a33, build: () => {
+    const g = duckBar(toon(0x8a5a33), toon(0x9c6b43));
+    const leafM = toon(0x57bf64);
+    [-0.5, 0.1, 0.6].forEach(x => { const l = new THREE.Mesh(new THREE.SphereGeometry(0.28, 10, 10), leafM); l.position.set(x, 1.75, 0); l.castShadow = true; ink(l, 1.08); g.add(l); });
+    return g;
+  } },
+
+  // Sunset — warm desert.
+  barrel: { action: 'jump', color: 0xc8743a, build: () => {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 1.2, 16), toon(0xc8743a)); body.position.y = 0.6; body.castShadow = true; ink(body, 1.06);
+    const bandM = toon(0x6a4a2a);
+    [0.25, 0.95].forEach(y => { const b = new THREE.Mesh(new THREE.CylinderGeometry(0.54, 0.54, 0.12, 16), bandM); b.position.y = y; g.add(b); });
+    g.add(body); return g;
+  } },
+  boulder: { action: 'jump', color: 0xb89a6a, build: () => {
+    const g = new THREE.Group();
+    const r = new THREE.Mesh(new THREE.DodecahedronGeometry(0.7, 0), toon(0xb89a6a, { flat: true })); r.position.y = 0.6; r.scale.set(1.2, 1.0, 1.0); r.castShadow = true; ink(r, 1.06); g.add(r); return g;
+  } },
+  bar: { action: 'duck', color: 0xff5151, build: () => duckBar(toon(0xff5151), toon(0xe0d3c0), [1.7, 0.34, 0.34]) },
+
+  // Twilight — spooky night.
+  crystal: { action: 'jump', color: 0x9a7bff, build: () => {
+    const g = new THREE.Group(), m = toon(0x9a7bff, { emissive: 0x2a1a55, flat: true });
+    const main = new THREE.Mesh(new THREE.ConeGeometry(0.4, 1.5, 5), m); main.position.y = 0.75; main.castShadow = true; ink(main, 1.07); g.add(main);
+    [[-0.42, 0.5, 0.45], [0.42, 0.42, -0.4]].forEach(([x, h, z]) => { const c = new THREE.Mesh(new THREE.ConeGeometry(0.18, h * 2, 5), m); c.position.set(x, h, z); c.castShadow = true; ink(c, 1.1); g.add(c); });
+    return g;
+  } },
+  tombstone: { action: 'jump', color: 0x8a93a6, build: () => {
+    const g = new THREE.Group(), m = toon(0x8a93a6, { flat: true });
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.3, 0.25), m); slab.position.y = 0.75; slab.castShadow = true; ink(slab, 1.05);
+    const top = new THREE.Mesh(new THREE.SphereGeometry(0.45, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), m); top.position.y = 1.4; top.scale.z = 0.56; top.castShadow = true; ink(top, 1.06);
+    g.add(slab, top); return g;
+  } },
+  beam: { action: 'duck', color: 0xc9a7ff, build: () => duckBar(toon(0xc9a7ff, { emissive: 0x5a3a8a }), toon(0x6a5a8a)) },
+
+  // Candyland — bright sweets.
+  candycane: { action: 'jump', color: 0xff5fa6, build: () => {
+    const g = new THREE.Group(), m = toon(0xff5fa6);
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 1.3, 12), m); pole.position.y = 0.65; pole.castShadow = true; ink(pole, 1.08);
+    const hook = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.16, 8, 12, Math.PI), toon(0xffffff)); hook.position.set(0.28, 1.3, 0); hook.castShadow = true; ink(hook, 1.1);
+    g.add(pole, hook); return g;
+  } },
+  gumdrop: { action: 'jump', color: 0xff8ad0, build: () => {
+    const g = new THREE.Group();
+    const d = new THREE.Mesh(new THREE.ConeGeometry(0.6, 1.2, 18), toon(0xff8ad0, { emissive: 0x3a0022 })); d.position.y = 0.6; d.castShadow = true; ink(d, 1.06); g.add(d); return g;
+  } },
+  licorice: { action: 'duck', color: 0x3a2a4a, build: () => duckBar(toon(0x3a2a4a), toon(0xffd23f)) },
+};
+
+export function makeObstacle(kind) {
+  const def = OBSTACLES[kind] || OBSTACLES.cactus;
+  const g = def.build();
   g.userData.kind = kind;
-  g.userData.color = kind === 'bar' ? 0xff5151 : kind === 'rock' ? 0x99a3ad : 0x44b566;
+  g.userData.color = def.color;
+  g.userData.duck = def.action === 'duck';   // generic flag the loop reads for collision
   return g;
 }
+
+// Kinds available to the debug bridge / sanity checks.
+export const OBSTACLE_KINDS = Object.keys(OBSTACLES);
 
 // Full-width low hurdle spanning every lane — the only way past is to JUMP.
 export function makeHurdle() {
@@ -41,7 +110,7 @@ export function makeGate() {
   const bar = new THREE.Mesh(new THREE.BoxGeometry(6.8, 0.45, 0.4), toon(0xff5151)); bar.position.y = 1.55; bar.castShadow = true; ink(bar, 1.04); g.add(bar);
   const postM = toon(0xe0d3c0);
   [-3.2, 3.2].forEach(x => { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 1.7, 8), postM); p.position.set(x, 0.85, 0); p.castShadow = true; ink(p, 1.08); g.add(p); });
-  g.userData.kind = 'gate'; g.userData.color = 0xff5151;
+  g.userData.kind = 'gate'; g.userData.color = 0xff5151; g.userData.duck = true;
   return g;
 }
 
