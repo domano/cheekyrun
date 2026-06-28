@@ -190,6 +190,27 @@ const SCENARIOS = [
     },
   },
   {
+    name: 'curves-and-hills',
+    fn: (c, assert) => {
+      c.start();
+      const a = c.set({ distance: 100 }).track;
+      assert(a.nearX === 0 && a.nearY === 0, 'no warp at the player, so collisions stay fair');
+      assert(a.farX !== 0 || a.farY !== 0, 'the road bends/rolls into the distance');
+      const b = c.set({ distance: 100 }).track;
+      assert(a.farX === b.farX && a.farY === b.farY, 'the warp is deterministic for a given distance');
+      const d = c.set({ distance: 220 }).track;
+      assert(d.farX !== a.farX || d.farY !== a.farY, 'the track keeps changing as you travel');
+      // Gameplay is unaffected: a roll far down the curving track is still grabbed,
+      // and an obstacle dead ahead still crashes you.
+      c.clearField(); c.set({ magnetR: 0 });
+      c.spawn('roll', 1, -9);
+      const s = c.step(90);
+      assert(s.rollCount === 1, 'a roll stays collectible despite the curving track');
+      c.clearField(); c.spawn('cactus', 1, -4);
+      assert(c.step(60).state === 'over', 'an obstacle in your lane still crashes you on a curve');
+    },
+  },
+  {
     name: 'fart-on-jump-and-slide',
     fn: (c, assert) => {
       c.start(); c.clearField();
