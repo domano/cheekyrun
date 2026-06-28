@@ -5,6 +5,14 @@ export const SPAWN_Z = -64;
 export const DESPAWN_Z = 12;
 export const INK = 0x241019;
 
+// Full-width "gate" rows block every lane, so the only way past is the right
+// action — jump a low hurdle or slide under a high bar. Side-stepping can't
+// save you. These knobs tune how soon/often they appear.
+export const GATE_MIN_DIFF = 0.22;    // phase in only after this much warm-up
+export const GATE_CHANCE = 0.16;      // base chance on an eligible row
+export const GATE_CHANCE_RAMP = 0.2;  // extra chance added at full difficulty
+export const GATE_COOLDOWN = 2;       // normal rows guaranteed between gates
+
 // DOM lookup shorthand.
 export const $ = (id) => document.getElementById(id);
 

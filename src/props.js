@@ -23,6 +23,27 @@ export function makeObstacle(kind) {
   return g;
 }
 
+// Full-width low hurdle spanning every lane — the only way past is to JUMP.
+export function makeHurdle() {
+  const g = new THREE.Group();
+  const m = toon(0xffb13b);
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(6.8, 0.55, 0.4), m); bar.position.y = 0.5; bar.castShadow = true; ink(bar, 1.04); g.add(bar);
+  const legM = toon(0xe0d3c0);
+  [-3.1, 0, 3.1].forEach(x => { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.5, 8), legM); p.position.set(x, 0.25, 0); p.castShadow = true; ink(p, 1.1); g.add(p); });
+  g.userData.kind = 'hurdle';
+  return g;
+}
+
+// Full-width high bar spanning every lane — the only way past is to SLIDE.
+export function makeGate() {
+  const g = new THREE.Group();
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(6.8, 0.45, 0.4), toon(0xff5151)); bar.position.y = 1.55; bar.castShadow = true; ink(bar, 1.04); g.add(bar);
+  const postM = toon(0xe0d3c0);
+  [-3.2, 3.2].forEach(x => { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 1.7, 8), postM); p.position.set(x, 0.85, 0); p.castShadow = true; ink(p, 1.08); g.add(p); });
+  g.userData.kind = 'gate';
+  return g;
+}
+
 export function makeRoll() {
   const g = new THREE.Group();
   const paper = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.5, 22), toon(0xffffff, { emissive: 0x222222 }));
