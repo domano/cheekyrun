@@ -294,6 +294,32 @@ const SCENARIOS = [
     },
   },
   {
+    name: 'future-save-preserves-unknown-fields',
+    fn: (c, assert) => {
+      // Forward compatibility: a save written by a NEWER game version carries a
+      // higher schema version and fields this build has never heard of — both at
+      // the top level and nested inside a known map. An older client must load it
+      // cleanly AND preserve those fields, or the next persist() silently nukes
+      // the future client's progress (then a single old-version launch wipes it).
+      const KEY = 'cheekyrun.save.v1';
+      localStorage.setItem(KEY, JSON.stringify({
+        version: 99, wallet: 42, best: 1234,
+        futureFeature: { rank: 7 },                                   // unknown top-level field
+        cosmetics: { owned: { classic: true }, skin: 'classic', trail: 'rainbow' }, // unknown nested field
+      }));
+      const s = c.reloadSave();
+      assert(s.recovered === false, 'a future save loads cleanly, no reset-to-defaults');
+      // Round-trip it back to storage (fund(0) persists without changing state)
+      // and confirm the unrecognised data survived rather than being dropped.
+      c.fund(0);
+      const back = JSON.parse(localStorage.getItem(KEY));
+      assert(back.futureFeature && back.futureFeature.rank === 7, 'unknown top-level field survives the round-trip');
+      assert(back.cosmetics.trail === 'rainbow', 'unknown nested field survives the round-trip');
+      assert(back.version === 99, 'a future save keeps its higher version — never downgraded');
+      assert(back.wallet === 42 && back.best === 1234, 'known fields still load and coerce normally');
+    },
+  },
+  {
     name: 'powerup-visual',
     fn: (c, assert) => {
       c.start();

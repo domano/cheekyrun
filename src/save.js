@@ -2,17 +2,38 @@
 // into a module-singleton so every system (upgrades, best score, stats,
 // achievements, cosmetics, daily challenge) reads and writes the same object.
 //
-// The schema only ever grows: load() backfills every field with a default, so
-// an older save is a strict subset and migrates transparently — no version bump
-// needed. Keep load() inside a try/catch returning full defaults; a throw here
-// would blank the page (and fail the smoke test).
+// Resilience runs both directions:
+//
+// - Older save -> newer game: the schema only grows, so load() backfills every
+//   known field from defaults() — an old save is a strict subset and upgrades
+//   transparently. A breaking change instead bumps SCHEMA_VERSION and adds a
+//   MIGRATIONS step to reshape the blob forward.
+// - Newer save -> older game: load() spreads the raw blob through first, so any
+//   field a FUTURE version wrote (top-level or nested) rides along untouched
+//   instead of being dropped — and then overwritten to nothing on the next
+//   persist(). A future blob keeps its higher version and is never downgraded.
+//
+// Keep load() inside a try/catch returning full defaults; a throw here would
+// blank the page (and fail the smoke test).
 
 import { prevKey } from './config.js';
 
 const KEY = 'cheekyrun.save.v1';
 
+// Schema version stamped into the blob — distinct from the KEY above, which only
+// namespaces storage. Bump this whenever an existing field changes shape or
+// meaning (purely additive fields need no bump; load() backfills them), and add
+// the matching MIGRATIONS entry. Unversioned legacy saves read as version 0.
+const SCHEMA_VERSION = 1;
+
+// MIGRATIONS[n] reshapes a version-n blob in place into version n+1. load()
+// applies them in sequence to any save older than SCHEMA_VERSION, so a breaking
+// change has one obvious, testable home. Empty until the first such change.
+const MIGRATIONS = {};
+
 function defaults() {
   return {
+    version: SCHEMA_VERSION,
     wallet: 0,
     owned: {},                                  // upgrade id -> tier
     best: 0,                                     // persistent high score
@@ -36,14 +57,24 @@ function load() {
   const d = defaults();
   try {
     const raw = asMap(JSON.parse(localStorage.getItem(KEY)));
+    // Step a legacy/older blob forward to the schema we understand. A future
+    // save (version beyond us) skips this and is preserved as-is below.
+    let ver = raw.version | 0;
+    while (ver < SCHEMA_VERSION && MIGRATIONS[ver]) { MIGRATIONS[ver](raw); ver++; }
     const rawCos = asMap(raw.cosmetics), rawMeta = asMap(raw.meta);
+    // Spread raw first so any field a newer game version wrote that we don't
+    // recognise survives the round-trip; known fields are coerced/backfilled
+    // over the top. The same spread-then-default trick repeats per nested map.
     return {
+      ...raw,
+      version: Math.max(SCHEMA_VERSION, raw.version | 0),
       wallet: raw.wallet | 0,
       owned: asMap(raw.owned),
       best: raw.best | 0,
       stats: { ...d.stats, ...asMap(raw.stats) },
       achievements: asMap(raw.achievements),
       cosmetics: {
+        ...rawCos,
         owned: { ...d.cosmetics.owned, ...asMap(rawCos.owned) },
         skin: rawCos.skin || d.cosmetics.skin,
       },
