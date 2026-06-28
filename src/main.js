@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { LANES, SPAWN_Z, DESPAWN_Z, INK, $, buzz, shuffle } from './config.js';
+import { LANES, SPAWN_Z, DESPAWN_Z, INK, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE_RAMP, GATE_COOLDOWN, $, buzz, shuffle } from './config.js';
 import { makeGradient, toon } from './materials.js';
-import { makeObstacle, makeRoll, makeTree, makeBush, makeFlower, makeCloud } from './props.js';
+import { makeObstacle, makeHurdle, makeGate, makeRoll, makeTree, makeBush, makeFlower, makeCloud } from './props.js';
 import { createParticles } from './particles.js';
 import { buildPlayer } from './player.js';
 import { LEVEL_DIST, biomeOf, levelFromDistance, levelProgress } from './levels.js';
@@ -16,7 +16,7 @@ let player, shadowBlob, ears = [], feet = [], tail, particles;
 let obstacles = [], rolls = [], scenery = [], stripes = [], clouds = [];
 let groundMat, pathMat, discMat, hillMats = [];
 let state = 'menu', best = 0;
-let speed, distance, rollCount, rollPoints, rowTimer, sceneAcc, dustAcc, elapsed, difficulty, safeLane;
+let speed, distance, rollCount, rollPoints, rowTimer, sceneAcc, dustAcc, elapsed, difficulty, safeLane, forcedGap;
 let laneIdx, targetX, vy, grounded, jumpsLeft, banked, groundY, duckTimer, duckAmt, shakeT;
 // Level + upgrade run state (set from the save at each run start).
 let level, shields, invuln, magnetR, rollValue, extraJumps;
@@ -96,6 +96,16 @@ function init() {
 /* ---------------- spawning ---------------- */
 function spawnRow() {
   const d = difficulty;
+  // FULL-WIDTH GATE: every lane is blocked, so the only way through is the right
+  // action — jump a low hurdle or slide under a high bar. Side-stepping can't
+  // dodge it. Phases in after the warm-up, ramps with difficulty, and is spaced
+  // out by forcedGap so two gates never stack into something unfair.
+  if (forcedGap > 0) {
+    forcedGap--;
+  } else if (d > GATE_MIN_DIFF && Math.random() < GATE_CHANCE + GATE_CHANCE_RAMP * d) {
+    spawnGate(); forcedGap = GATE_COOLDOWN; return;
+  }
+
   // CORRIDOR: one lane is always guaranteed open, and it only shifts by <=1
   // lane per row, so a single lane-change always keeps you safe. Calmer early.
   let nextSafe;
@@ -123,6 +133,14 @@ function spawnRow() {
 
   safeLane = nextSafe;
 }
+function spawnGate() {
+  // 50/50 slide-under vs jump-over; spans all lanes (halfW covers every lane).
+  const slide = Math.random() < 0.5;
+  const o = slide ? makeGate() : makeHurdle();
+  o.position.set(0, 0, SPAWN_Z); o.userData.halfW = 3.3; scene.add(o); obstacles.push(o);
+  // A reward roll in a random lane for clearing it cleanly.
+  if (Math.random() < 0.7) { const r = makeRoll(); r.position.set(LANES[(Math.random() * 3) | 0], 0.95, SPAWN_Z); scene.add(r); rolls.push(r); }
+}
 function spawnScenery() {
   const x = (Math.random() < 0.5 ? -1 : 1) * (4.4 + Math.random() * 3.5), roll = Math.random();
   const o = roll < 0.4 ? makeTree() : roll < 0.7 ? makeBush() : makeFlower();
@@ -137,7 +155,7 @@ function resetGame() {
   shields = eff.shields; invuln = 0; magnetR = eff.magnet; rollValue = eff.rollValue; extraJumps = eff.extraJumps;
   level = 1 + eff.headstart;
   speed = 12.5; distance = (level - 1) * LEVEL_DIST; rollCount = 0; rollPoints = 0; rowTimer = 1.8; sceneAcc = 0; dustAcc = 0;
-  elapsed = Math.min(70, (level - 1) * 9); difficulty = 0; safeLane = 1;
+  elapsed = Math.min(70, (level - 1) * 9); difficulty = 0; safeLane = 1; forcedGap = 0;
   laneIdx = 1; targetX = 0; vy = 0; grounded = true; jumpsLeft = 2 + extraJumps; banked = 0; groundY = 0; duckTimer = 0; duckAmt = 0; shakeT = 0;
   player.position.set(0, 0, 0); player.rotation.set(0, 0, 0); player.scale.set(1, 1, 1);
   applyBiome(level, true);
@@ -224,9 +242,11 @@ function animate() {
 function moveObstacles(dt) {
   for (let i = obstacles.length - 1; i >= 0; i--) {
     const o = obstacles[i]; o.position.z += speed * dt;
+    const halfW = o.userData.halfW || 0.95;
     const dz = Math.abs(o.position.z - player.position.z), dx = Math.abs(o.position.x - player.position.x);
-    if (dz < 0.8 && dx < 0.95) {
-      const safe = o.userData.kind === 'bar' ? (duckTimer > 0) : (groundY > 1.0);
+    if (dz < 0.8 && dx < halfW) {
+      const k = o.userData.kind;
+      const safe = (k === 'bar' || k === 'gate') ? (duckTimer > 0) : (groundY > 1.0);
       if (!safe && invuln <= 0) {
         if (shields > 0) {
           shields--; invuln = 1.1; updateShieldHud(); buzz(30); sfxShield(); shakeT = 0.25;
