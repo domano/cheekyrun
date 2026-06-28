@@ -19,12 +19,13 @@ export const GATE_COOLDOWN = 2;       // normal rows guaranteed between gates
 export const COMBO_WINDOW = 2.6;      // seconds a combo survives idle
 export const COMBO_STEP = 4;          // hits between each +1 to the multiplier
 export const COMBO_MAX = 5;           // multiplier ceiling
-export const comboMult = (c) => Math.min(COMBO_MAX, 1 + Math.floor(c / COMBO_STEP));
+// `extra` raises the multiplier ceiling (the Hot Streak perk feeds it mods.comboCeil).
+export const comboMult = (c, extra = 0) => Math.min(COMBO_MAX + extra, 1 + Math.floor(c / COMBO_STEP));
 
 // Near-miss: clearing an obstacle this close (lane units beyond its half-width)
 // without touching it pays a small bonus and feeds the combo.
 export const NEARMISS_MARGIN = 0.7;
-export const NEARMISS_BONUS = 6;
+export const NEARMISS_BONUS = 8;
 
 // In-run power-ups: a rare floating gem that grants a brief effect. Spaced out
 // by a row cooldown so grabbing one feels like an event, not a given.
@@ -41,6 +42,12 @@ export const POWERUPS = {
 // How much faster the run rips while a Boost is active.
 export const DASH_SPEED_MULT = 1.5;
 export const POWERUP_KINDS = Object.keys(POWERUPS);
+
+// Roguelite draft: a level-up offers a choice of perks. Drafts fire on every
+// DRAFT_EVERY-th level-up (so they feel like an event, not every biome change),
+// showing DRAFT_CHOICES cards to pick one from.
+export const DRAFT_EVERY = 2;
+export const DRAFT_CHOICES = 3;
 
 // DOM lookup shorthand.
 export const $ = (id) => document.getElementById(id);

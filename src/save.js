@@ -18,6 +18,7 @@ function defaults() {
     achievements: {},                            // achievement id -> true
     cosmetics: { owned: { classic: true }, skin: 'classic' },
     dailyBest: { day: '', score: 0 },
+    meta: { pool: {}, banished: {}, rerolls: 0, banishes: 0, boon: null },
   };
 }
 
@@ -37,6 +38,11 @@ function load() {
         skin: (raw.cosmetics || {}).skin || d.cosmetics.skin,
       },
       dailyBest: { ...d.dailyBest, ...(raw.dailyBest || {}) },
+      meta: {
+        ...d.meta, ...(raw.meta || {}),
+        pool: { ...((raw.meta || {}).pool) },
+        banished: { ...((raw.meta || {}).banished) },
+      },
     };
   } catch {
     return d;
@@ -85,6 +91,20 @@ export const ownSkin = (id) => { save.cosmetics.owned[id] = true; persist(); };
 // Persist the active skin. Callers gate on cosmetics' skinUnlocked() first —
 // which also covers achievement skins (unlocked but never added to `owned`).
 export const selectSkin = (id) => { save.cosmetics.skin = id; persist(); };
+
+/* ----- roguelite meta: perk pool, banishes, charges, boon ----- */
+export const poolHas = (id) => !!save.meta.pool[id];
+export const unlockPerk = (id) => { save.meta.pool[id] = true; persist(); };
+export const isBanished = (id) => !!save.meta.banished[id];
+export const banishPerk = (id) => { save.meta.banished[id] = true; persist(); };
+export const getRerolls = () => save.meta.rerolls | 0;
+export const addRerolls = (n) => { save.meta.rerolls = (save.meta.rerolls | 0) + (n | 0); persist(); };
+export const useReroll = () => { if ((save.meta.rerolls | 0) > 0) { save.meta.rerolls--; persist(); return true; } return false; };
+export const getBanishes = () => save.meta.banishes | 0;
+export const addBanishes = (n) => { save.meta.banishes = (save.meta.banishes | 0) + (n | 0); persist(); };
+export const useBanish = () => { if ((save.meta.banishes | 0) > 0) { save.meta.banishes--; persist(); return true; } return false; };
+export const getBoon = () => save.meta.boon;
+export const setBoon = (id) => { save.meta.boon = id; persist(); };
 
 /* ----- daily challenge best (resets when the day changes) ----- */
 export function getDailyBest(day) { return save.dailyBest.day === day ? (save.dailyBest.score | 0) : 0; }

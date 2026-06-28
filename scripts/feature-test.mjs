@@ -194,16 +194,15 @@ const SCENARIOS = [
   {
     name: 'upgrade-visuals',
     fn: (c, assert) => {
-      c.fund(2000); c.buy('shield'); c.buy('shield'); c.buy('spring');   // shield t2, spring t1
+      c.fund(2000); c.buy('shield'); c.buy('shield'); c.buy('headstart');   // shield t2, headstart t1 (the surviving floor)
       const s = c.start();
       assert(s.gearTiers.shield === 2, 'owning Cushion shows its gear at tier 2');
-      assert(s.gearTiers.spring === 1, 'a Springy tier is owned');
-      assert(s.gearTiers.magnet === 0, 'un-owned upgrades wear no gear');
+      assert(s.gearTiers.headstart === 1, 'a Head Start tier is owned');
       // the worn props actually toggle with ownership...
       assert(s.gearVisible.shield === true, 'the shield bubble is worn');
-      assert(s.gearVisible.spring === true, 'the spring coils are worn');
-      assert(s.gearVisible.magnet === false, 'no magnet prop when un-owned');
-      assert(s.gearVisible.fortune === false && s.gearVisible.headstart === false, 'no clover/rocket when un-owned');
+      assert(s.gearVisible.headstart === true, 'the rocket is worn');
+      // the reframed upgrades (now perks) wear no permanent gear
+      assert(s.gearVisible.magnet === false && s.gearVisible.spring === false && s.gearVisible.fortune === false, 'reframed upgrades wear no gear');
       // ...and the shield's tier shows as orbiting pips, one per tier, not bulk.
       assert(s.gearVisible.shieldPips === 2, 'a tier-2 Cushion shows two tier pips');
     },
@@ -299,6 +298,217 @@ const SCENARIOS = [
       s = c.step(20);                             // cross it, then check the twirl is underway
       assert(s.level === 2, 'crossed into level 2');
       assert(s.spin > 0, 'leveling up kicks off a celebratory twirl');
+    },
+  },
+  {
+    name: 'perk-roll-value',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.clearField();
+      assert(c.state().mods.rollMult === 1, 'rollMult starts neutral');
+      const s1 = c.perk('lucky');
+      assert(s1.mods.rollMult === 1.18, 'Lucky Streak raises rollMult to 1.18');
+      assert(s1.perks.length === 1 && s1.perks[0].id === 'lucky', 'the perk is recorded on the run');
+      c.spawn('roll', 1, -4);
+      const s = c.step(60);
+      assert(s.rollCount === 1, 'the roll is collected');
+      assert(s.rollPoints === Math.round(s.rollValue * 1.18), 'roll points are scaled by the perk');
+    },
+  },
+  {
+    name: 'perk-extra-jump',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.clearField();
+      c.perk('hops');
+      assert(c.state().mods.extraJumpsBonus === 1, 'Hops raises the extra-jump bonus');
+      c.jump();                                   // leave the ground, then fall back
+      const s = c.step(60);                        // no rows spawn this early (rowTimer 1.8s)
+      assert(s.player.grounded, 'back on the ground');
+      assert(s.jumpsLeft === 3, 'landing refills to 2 base + 1 perk jump');
+    },
+  },
+  {
+    name: 'perk-stacking',
+    fn: (c, assert) => {
+      c.start();
+      c.perk('lucky'); c.perk('lucky'); let s = c.perk('lucky');   // cap is 3
+      assert(s.perks[0].stacks === 3, 'Lucky stacks up to its cap of 3');
+      assert(Math.abs(s.mods.rollMult - Math.pow(1.18, 3)) < 1e-9, 'each stack compounds rollMult');
+      s = c.perk('lucky');                          // beyond the cap
+      assert(s.perks[0].stacks === 3, 'a perk cannot exceed its stack cap');
+    },
+  },
+  {
+    name: 'curse-glass-cannon',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.set({ shields: 2 }); c.clearField();
+      const s1 = c.perk('glasscannon');
+      assert(s1.mods.rollX === 2, 'Glass Cannon doubles roll value');
+      assert(s1.mods.noShields === true, 'Glass Cannon disables cushions');
+      assert(Math.abs(s1.mods.obstacleMult - 1.25) < 1e-9, 'Glass Cannon also raises the hazard rate (a real cost even with no shields)');
+      c.spawn('cactus', 1, -4);
+      const s = c.step(60);
+      assert(s.state === 'over', 'with cushions disabled, a hit ends the run despite owning shields');
+    },
+  },
+  {
+    name: 'perk-greed-mods',
+    fn: (c, assert) => {
+      c.start();
+      const s = c.perk('greedygut');
+      assert(Math.abs(s.mods.rollSpawnMult - 1.6) < 1e-9, 'Greedy Gut boosts roll spawns');
+      assert(Math.abs(s.mods.obstacleMult - 1.25) < 1e-9, 'Greedy Gut also cranks the danger');
+    },
+  },
+  {
+    name: 'draft-cadence',
+    fn: (c, assert) => {
+      c.start(); c.seed(1);
+      c.set({ distance: 248 }); let s = c.step(30);     // cross into level 2 (1st level-up)
+      assert(s.level === 2 && s.levelUps === 1, 'reached level 2 on the first level-up');
+      assert(s.state === 'draft', 'the first level-up front-loads a draft');
+      assert(s.draft.length === 3, 'three perks are offered');
+      c.pick(0);                                         // take one, resume
+      c.set({ distance: 498 }); s = c.step(30);          // cross into level 3 (2nd level-up)
+      assert(s.level === 3 && s.levelUps === 2, 'reached level 3');
+      assert(s.state === 'playing', 'no draft on the second level-up');
+      c.set({ distance: 748 }); s = c.step(30);          // cross into level 4 (3rd level-up)
+      assert(s.level === 4 && s.state === 'draft', 'the third level-up drafts again');
+    },
+  },
+  {
+    name: 'draft-pick-applies-and-resumes',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.seed(2);
+      c.openDraft();
+      const d = c.draft();
+      assert(d.state === 'draft' && d.choices.length === 3, 'a draft of three is open');
+      const first = d.choices[0];
+      let s = c.pick(0);
+      assert(s.state === 'playing', 'picking a perk resumes the run');
+      assert(s.perks.length === 1 && s.perks[0].id === first, 'the chosen card becomes the run perk');
+      const d0 = s.distance; s = c.step(30);
+      assert(s.distance > d0, 'the simulation advances again after the pick');
+    },
+  },
+  {
+    name: 'draft-deterministic',
+    fn: (c, assert) => {
+      c.start(); c.seed(7); c.openDraft(); const a = c.draft().choices;
+      c.start(); c.seed(7); c.openDraft(); const b = c.draft().choices;
+      assert(a.length === 3 && b.length === 3, 'both drafts offer three perks');
+      assert(a.join(',') === b.join(','), 'the same seed yields the same draft');
+    },
+  },
+  {
+    name: 'meta-unlock-into-pool',
+    fn: (c, assert) => {
+      c.start();
+      assert(!c.state().meta.eligible.includes('doubledown'), 'epics start locked out of the pool');
+      c.fund(9999);
+      assert(c.buyMeta('unlock:doubledown') === true, 'an affordable unlock is bought');
+      assert(c.state().meta.eligible.includes('doubledown'), 'the unlocked perk becomes draftable');
+    },
+  },
+  {
+    name: 'meta-reroll-charge',
+    fn: (c, assert) => {
+      c.fund(9999);
+      assert(c.buyMeta('reroll') === true, 'a reroll pack is bought');
+      const before = c.state().meta.rerolls;
+      assert(before >= 1, 'reroll charges are banked');
+      c.start(); c.seed(3); c.openDraft();
+      const s = c.reroll();
+      assert(s.meta.rerolls === before - 1, 'a reroll spends exactly one charge');
+      assert(c.draft().choices.length === 3, 'three cards remain after a reroll');
+    },
+  },
+  {
+    name: 'meta-banish',
+    fn: (c, assert) => {
+      c.fund(9999); c.buyMeta('banish');
+      c.start(); c.seed(7); c.openDraft();
+      const banned = c.draft().choices[0];
+      const s = c.banish(0);
+      assert(s.meta.banishes === 0, 'banishing spends the token');
+      assert(!c.draft().choices.includes(banned), 'the banished perk is no longer offered');
+      assert(!s.meta.eligible.includes(banned), 'the banished perk leaves the pool for good');
+    },
+  },
+  {
+    name: 'starting-boon',
+    fn: (c, assert) => {
+      c.boon('lucky');
+      const s = c.start();
+      assert(s.perks.length === 1 && s.perks[0].id === 'lucky', 'the run begins with the boon perk');
+      assert(s.mods.rollMult === 1.18, 'the boon effect is live from the first frame');
+    },
+  },
+  {
+    name: 'perk-overdrive',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 });
+      assert(c.state().mods.speedMult === 1, 'speed starts unmodified');
+      c.perk('overdrive');
+      assert(Math.abs(c.state().mods.speedMult - 1.18) < 1e-9, 'Overdrive raises speedMult');
+      const a = c.step(1).speed; c.perk('overdrive');
+      const b = c.step(1).speed;
+      assert(b > a, 'a second Overdrive stack rips even faster');
+    },
+  },
+  {
+    name: 'perk-hotstreak',
+    fn: (c, assert) => {
+      c.start(); c.set({ combo: 40 });
+      const base = c.state().comboMult;                 // capped at COMBO_MAX (5)
+      c.perk('hotstreak');
+      assert(c.state().comboMult === base + 2, 'Hot Streak lifts the combo ceiling by 2');
+    },
+  },
+  {
+    name: 'curse-featherweight',
+    fn: (c, assert) => {
+      c.start();
+      c.perk('featherweight');
+      const m = c.state().mods;
+      assert(Math.abs(m.floatMult - 0.45) < 1e-9, 'Featherweight floats you down softly');
+      assert(m.extraJumpsBonus === -1, 'but costs you a mid-air jump');
+    },
+  },
+  {
+    name: 'greed-spawn-density',
+    fn: (c, assert) => {
+      // Force a fixed, seeded sequence of rows (no rendering) and count the rolls
+      // that land — Greedy Gut's rollSpawnMult should produce more over the run.
+      const rolls = (greed) => {
+        c.start({ magnetR: 0 }); c.seed(99); c.set({ difficulty: 0.5 }); c.clearField();
+        if (greed) c.perk('greedygut');
+        for (let k = 0; k < 40; k++) c.spawnRow();
+        return c.state().counts.rolls;
+      };
+      const base = rolls(false), greedy = rolls(true);
+      assert(base > 0, 'rolls spawn in a normal run');
+      assert(greedy > base, `Greedy Gut spawns more rolls over the run (base ${base}, greedy ${greedy})`);
+    },
+  },
+  {
+    name: 'daily-seeded-draft',
+    fn: (c, assert) => {
+      c.startDaily(); c.openDraft(); const a = c.draft().choices;
+      c.startDaily(); c.openDraft(); const b = c.draft().choices;
+      assert(a.length === 3, 'a daily draft offers three');
+      assert(a.join(',') === b.join(','), 'a daily run is fully seeded — identical draft each time');
+    },
+  },
+  {
+    name: 'daily-ignores-perks-and-boon',
+    fn: (c, assert) => {
+      c.boon('lucky'); c.fund(9999); c.buyMeta('unlock:doubledown');
+      const s = c.startDaily();
+      assert(s.daily === true, 'a daily run is flagged');
+      assert(s.perks.length === 0, 'daily ignores the starting boon');
+      assert(s.mods.rollMult === 1, 'no perk mods at a daily start');
+      assert(!s.meta.eligible.includes('doubledown'), 'daily drafts the default pool, not meta unlocks');
+      assert(s.meta.eligible.length === 7, 'daily pool is the seven-perk default');
     },
   },
 ];
