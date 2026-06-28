@@ -7,13 +7,17 @@ import { buildPlayer } from './player.js';
 import { LEVEL_DIST, biomeOf, levelFromDistance, levelProgress } from './levels.js';
 import { UPGRADES, effects, tierOf, nextCost, buy, getWallet, addRolls } from './upgrades.js';
 import { getBest, setBest, getStats, bumpStats } from './save.js';
+import { hasAch } from './save.js';
+import { ACHIEVEMENTS, checkAchievements } from './achievements.js';
+import { selectedSkin, selectSkin } from './save.js';
+import { SKINS, skinById, skinUnlocked, buySkin, applySkin } from './cosmetics.js';
 import {
   initAudio, ensureAudio, toggleSound,
   sfxLane, sfxJump, sfxDuck, sfxCoin, sfxCrash, sfxStart, sfxOver, sfxLevel, sfxShield,
 } from './audio.js';
 
 let scene, camera, renderer, clock;
-let player, shadowBlob, ears = [], feet = [], tail, particles;
+let player, shadowBlob, ears = [], feet = [], tail, particles, playerMats;
 let obstacles = [], rolls = [], pickups = [], scenery = [], stripes = [], clouds = [];
 let groundMat, pathMat, discMat, hillMats = [];
 let state = 'menu';
@@ -21,7 +25,7 @@ let speed, distance, rollCount, rollPoints, rowTimer, sceneAcc, dustAcc, elapsed
 let laneIdx, targetX, vy, grounded, jumpsLeft, banked, groundY, duckTimer, duckAmt, shakeT;
 let combo, comboTimer, comboMax;
 let squash;   // signed squash-&-stretch impulse: + on landing, - on launch, decays to 0
-let power, powerT, powerCD;   // active power-up kind, its remaining time, spawn cooldown (rows)
+let power, powerT, powerCD, gotPower;   // active power-up kind, remaining time, spawn cooldown (rows), grabbed-any flag
 const speedLines = $('speedlines');
 // Level + upgrade run state (set from the save at each run start).
 let level, shields, invuln, magnetR, rollValue, extraJumps;
@@ -86,7 +90,8 @@ function init() {
   for (let i = 0; i < 8; i++) { const c = makeCloud(); scene.add(c); clouds.push(c); }
 
   particles = createParticles(scene);
-  ({ player, ears, feet, tail } = buildPlayer(scene));
+  ({ player, ears, feet, tail, mats: playerMats } = buildPlayer(scene));
+  applySkin(playerMats, selectedSkin());
 
   shadowBlob = new THREE.Mesh(new THREE.CircleGeometry(0.72, 28),
     new THREE.MeshBasicMaterial({ color: INK, transparent: true, opacity: .26 }));
@@ -95,7 +100,7 @@ function init() {
   clock = new THREE.Clock(); resetGame();
   addEventListener('resize', onResize); bindControls();
   $('startBtn').onclick = startGame; $('againBtn').onclick = startGame; $('muteBtn').onclick = toggleSound;
-  renderShop(); renderStats();
+  renderShop(); renderStats(); renderAchievements(); renderCosmetics();
 }
 
 /* ---------------- spawning ---------------- */
@@ -172,8 +177,9 @@ function resetGame() {
   speed = 12.5; distance = (level - 1) * LEVEL_DIST; rollCount = 0; rollPoints = 0; rowTimer = 1.8; sceneAcc = 0; dustAcc = 0;
   elapsed = Math.min(70, (level - 1) * 9); difficulty = 0; safeLane = 1; forcedGap = 0;
   laneIdx = 1; targetX = 0; vy = 0; grounded = true; jumpsLeft = 2 + extraJumps; banked = 0; groundY = 0; duckTimer = 0; duckAmt = 0; shakeT = 0;
-  combo = 0; comboTimer = 0; comboMax = 0; squash = 0; power = null; powerT = 0; powerCD = 6;
+  combo = 0; comboTimer = 0; comboMax = 0; squash = 0; power = null; powerT = 0; powerCD = 6; gotPower = false;
   player.position.set(0, 0, 0); player.rotation.set(0, 0, 0); player.scale.set(1, 1, 1);
+  applySkin(playerMats, selectedSkin());
   applyBiome(level, true);
 }
 function startGame() {
@@ -188,9 +194,11 @@ function gameOver() {
   particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.6, 0)), { count: 16, color: 0xff8a6a, speed: 4, up: 4, life: .7, grav: 12 });
   setBest(score());
   bumpStats({ runs: 1, dist: Math.floor(distance), rolls: rollCount, maxCombo: comboMax, maxLevel: level });
+  const unlocked = checkAchievements({ run: { level, score: score(), comboMax, rollCount, gotPower }, stats: getStats() });
   addRolls(rollCount);             // bank this run's rolls into the shop wallet
   $('finalScore').textContent = score(); $('bestLine').textContent = 'Best: ' + getBest();
-  $('earned').textContent = rollCount; renderShop(); renderStats();
+  $('earned').textContent = rollCount; renderShop(); renderStats(); renderAchievements(); renderCosmetics();
+  if (unlocked.length) queueAchToasts(unlocked);
   setTimeout(() => { $('hud').classList.add('hide'); $('gameover').classList.remove('hide'); }, 420);
 }
 const score = () => Math.floor(distance) + rollPoints;
@@ -333,7 +341,7 @@ function movePickups(dt) {
   }
 }
 function activatePower(kind, pos) {
-  power = kind; powerT = POWERUP_DURATION;
+  power = kind; powerT = POWERUP_DURATION; gotPower = true;
   if (kind === 'ghost') invuln = POWERUP_DURATION;      // phase through everything
   const p = POWERUPS[kind];
   flash('#fff7c0'); buzz([12, 20, 12]); sfxLevel(); showBanner(`${p.icon} ${p.label}!`);
@@ -446,7 +454,7 @@ function renderShop() {
     root.innerHTML = `<div class="shophead"><span>🛒 Upgrades</span><span class="wallet">🧻 ${wallet}</span></div><div class="shopgrid">${grid}</div>`;
   });
   document.querySelectorAll('.shop .up').forEach(b => {
-    b.onclick = (e) => { e.stopPropagation(); ensureAudio(); if (buy(b.dataset.id)) { sfxCoin(); buzz(18); renderShop(); } else buzz(25); };
+    b.onclick = (e) => { e.stopPropagation(); ensureAudio(); if (buy(b.dataset.id)) { sfxCoin(); buzz(18); renderShop(); renderCosmetics(); } else buzz(25); };
   });
 }
 
@@ -455,4 +463,55 @@ function renderStats() {
   const s = getStats(), km = (s.dist / 1000).toFixed(1);
   const html = `<span>🏆 Best ${getBest()}</span><span>🏃 ${s.runs} run${s.runs === 1 ? '' : 's'}</span><span>🧻 ${s.rolls}</span><span>🔥 x${comboMult(s.maxCombo)}</span><span>📏 ${km}km</span>`;
   document.querySelectorAll('.stats').forEach(el => { el.innerHTML = html; });
+}
+
+// Achievement badge grid (locked badges show a padlock), shown on both cards.
+function renderAchievements() {
+  const got = ACHIEVEMENTS.filter(a => hasAch(a.id)).length;
+  const grid = ACHIEVEMENTS.map(a => {
+    const on = hasAch(a.id);
+    return `<div class="ach${on ? ' on' : ''}" title="${a.desc}"><span class="achi">${on ? a.icon : '🔒'}</span><span class="achn">${a.name}</span></div>`;
+  }).join('');
+  document.querySelectorAll('.achievements').forEach(root => {
+    root.innerHTML = `<div class="shophead"><span>🏅 Achievements</span><span class="wallet">${got}/${ACHIEVEMENTS.length}</span></div><div class="achgrid">${grid}</div>`;
+  });
+}
+
+// Skin swatch picker. Each swatch shows the skin's colour; click to select an
+// owned skin (applies live) or buy a roll-priced one. Achievement skins unlock
+// free once earned, and show a lock until then.
+function renderCosmetics() {
+  const sel = selectedSkin();
+  const cells = SKINS.map(s => {
+    const owned = skinUnlocked(s), active = s.id === sel;
+    const tag = active ? 'ON' : owned ? 'wear' : s.ach ? '🔒' : s.cost + ' 🧻';
+    const swatch = `#${s.skin.toString(16).padStart(6, '0')}`;
+    return `<button class="skin${active ? ' active' : ''}${owned ? '' : ' locked'}" data-id="${s.id}">
+      <span class="sw" style="background:${swatch}"></span><span class="skn">${s.name}</span><span class="skc">${tag}</span>
+    </button>`;
+  }).join('');
+  document.querySelectorAll('.cosmetics').forEach(root => {
+    root.innerHTML = `<div class="shophead"><span>🎨 Skins</span></div><div class="skingrid">${cells}</div>`;
+  });
+  document.querySelectorAll('.cosmetics .skin').forEach(b => {
+    b.onclick = (e) => {
+      e.stopPropagation(); ensureAudio();
+      const s = skinById(b.dataset.id);
+      if (skinUnlocked(s)) { selectSkin(s.id); applySkin(playerMats, s.id); sfxLane(); buzz(12); }
+      else if (buySkin(s.id)) { selectSkin(s.id); applySkin(playerMats, s.id); sfxCoin(); buzz(18); renderShop(); }
+      else buzz(25);
+      renderCosmetics();
+    };
+  });
+}
+
+// Pop newly-earned achievements one at a time as a top toast.
+let achQueue = [];
+function queueAchToasts(list) { const empty = achQueue.length === 0; achQueue.push(...list); if (empty) nextAchToast(); }
+function nextAchToast() {
+  const a = achQueue.shift(), t = $('achToast');
+  if (!a) { t.classList.remove('show'); return; }
+  t.innerHTML = `<span class="achi">${a.icon}</span><span class="acht"><b>Achievement!</b><br>${a.name}</span>`;
+  t.classList.remove('show'); void t.offsetWidth; t.classList.add('show'); sfxLevel(); buzz([10, 30, 10]);
+  clearTimeout(nextAchToast._t); nextAchToast._t = setTimeout(nextAchToast, 2200);
 }

@@ -24,9 +24,11 @@ export function buildPlayer(scene) {
     const f = new THREE.Mesh(new THREE.SphereGeometry(0.18, 16, 16), skin);
     f.scale.set(1, 0.55, 1.4); f.position.set(x, 0.1, 0.28); f.castShadow = true; ink(f, 1.12); player.add(f); feet.push(f);
   });
-  const tail = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 16), toon(0xfff4ef));
+  const tailM = toon(0xfff4ef);
+  const tail = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 16), tailM);
   tail.position.set(0, 0.95, 0.55); tail.castShadow = true; ink(tail, 1.12); player.add(tail);
 
   scene.add(player);
-  return { player, ears, feet, tail };
+  // `mats` are handed back so cosmetics can recolour the character in place.
+  return { player, ears, feet, tail, mats: { skin, inner, blush: blushM, tail: tailM } };
 }
