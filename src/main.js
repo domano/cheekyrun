@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { LANES, SPAWN_Z, DESPAWN_Z, INK, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE_RAMP, GATE_COOLDOWN, COMBO_WINDOW, comboMult, NEARMISS_MARGIN, NEARMISS_BONUS, POWERUP_DURATION, POWERUP_CHANCE, POWERUP_MIN_DIFF, POWERUP_COOLDOWN, POWERUPS, POWERUP_KINDS, mulberry32, dailyKey, dailySeed, $, buzz, shuffle } from './config.js';
+import { LANES, SPAWN_Z, DESPAWN_Z, INK, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE_RAMP, GATE_COOLDOWN, COMBO_WINDOW, comboMult, NEARMISS_MARGIN, NEARMISS_BONUS, POWERUP_DURATION, POWERUP_CHANCE, POWERUP_MIN_DIFF, POWERUP_COOLDOWN, POWERUPS, POWERUP_KINDS, DASH_SPEED_MULT, mulberry32, dailyKey, dailySeed, $, buzz, shuffle } from './config.js';
 import { makeGradient, toon } from './materials.js';
 import { makeObstacle, makeHurdle, makeGate, makeRoll, makePowerup, makeTree, makeBush, makeFlower, makeCloud, OBSTACLE_KINDS } from './props.js';
 import { createParticles } from './particles.js';
@@ -15,7 +15,7 @@ import { SKINS, skinById, skinUnlocked, buySkin, applySkin } from './cosmetics.j
 import { installDebug } from './debug.js';
 import {
   initAudio, ensureAudio, toggleSound,
-  sfxLane, sfxJump, sfxDuck, sfxCoin, sfxCrash, sfxStart, sfxOver, sfxLevel, sfxShield,
+  sfxLane, sfxJump, sfxDuck, sfxCoin, sfxCrash, sfxStart, sfxOver, sfxLevel, sfxShield, sfxComboBreak,
 } from './audio.js';
 
 let scene, camera, renderer, clock;
@@ -28,6 +28,7 @@ let speed, distance, rollCount, rollPoints, rowTimer, sceneAcc, dustAcc, elapsed
 let laneIdx, targetX, vy, grounded, jumpsLeft, banked, groundY, duckTimer, duckAmt, shakeT;
 let combo, comboTimer, comboMax;
 let squash;   // signed squash-&-stretch impulse: + on landing, - on launch, decays to 0
+let emoteT, spin;   // emoteT: brief happy-squish timer (rolls/near-miss). spin: remaining radians of a level-up cheer twirl.
 // `simTime` is the animation clock (sum of per-frame dt). Driving it ourselves
 // — rather than reading clock.elapsedTime — lets the debug bridge advance the
 // sim with a fixed dt, so tests are deterministic instead of wall-clock bound.
@@ -69,8 +70,8 @@ function init() {
   $('game').appendChild(renderer.domElement);
 
   // flatter light so toon bands read; one strong key for direction
-  scene.add(new THREE.HemisphereLight(0xdff0ff, 0xffd6b0, 0.55));
-  const sun = new THREE.DirectionalLight(0xfff0dc, 1.15);
+  scene.add(new THREE.HemisphereLight(0xdff0ff, 0xffd6b0, 0.62));
+  const sun = new THREE.DirectionalLight(0xfff0dc, 0.85);
   sun.position.set(7, 15, 9); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024);
   const sc = sun.shadow.camera; sc.near = 1; sc.far = 60; sc.left = -11; sc.right = 11; sc.top = 18; sc.bottom = -18;
   sun.shadow.bias = -0.0006; scene.add(sun);
@@ -201,7 +202,7 @@ function resetGame() {
   speed = 12.5; distance = (level - 1) * LEVEL_DIST; rollCount = 0; rollPoints = 0; rowTimer = 1.8; sceneAcc = 0; dustAcc = 0;
   elapsed = Math.min(70, (level - 1) * 9); difficulty = 0; safeLane = 1; forcedGap = 0;
   laneIdx = 1; targetX = 0; vy = 0; grounded = true; jumpsLeft = 2 + extraJumps; banked = 0; groundY = 0; duckTimer = 0; duckAmt = 0; shakeT = 0;
-  combo = 0; comboTimer = 0; comboMax = 0; squash = 0; power = null; powerT = 0; powerCD = 6; gotPower = false;
+  combo = 0; comboTimer = 0; comboMax = 0; squash = 0; emoteT = 0; spin = 0; power = null; powerT = 0; powerCD = 6; gotPower = false;
   player.position.set(0, 0, 0); player.rotation.set(0, 0, 0); player.scale.set(1, 1, 1);
   applySkin(playerMats, selectedSkin());
   // Show the upgrades you own on the character (none in a daily — it's gear-free).
@@ -241,8 +242,18 @@ function updateShieldHud() {
 function popScore(v, mult) { const e = $('scorePop'); e.textContent = '+' + v + (mult > 1 ? ' x' + mult : ''); e.style.opacity = 1; clearTimeout(popScore._t); popScore._t = setTimeout(() => e.style.opacity = 0, 260); }
 
 // Combo: bump on a roll/near-miss, refresh the window, and pulse the HUD chip.
-function bumpCombo() { combo++; comboTimer = COMBO_WINDOW; comboMax = Math.max(comboMax, combo); updateComboHud(true); }
-function breakCombo() { if (combo) { combo = 0; updateComboHud(false); } }
+let comboHideT;
+function bumpCombo() { clearTimeout(comboHideT); $('comboHud').classList.remove('lose'); combo++; comboTimer = COMBO_WINDOW; comboMax = Math.max(comboMax, combo); updateComboHud(true); }
+function breakCombo() {
+  if (!combo) return;
+  const had = combo >= 2; combo = 0;
+  if (!had) { updateComboHud(false); return; }
+  // Losing a visible streak stings: play a shrink-and-fade on the chip + a soft
+  // descending blip so the chip doesn't just blink out unnoticed.
+  const box = $('comboHud'); sfxComboBreak();
+  box.classList.remove('lose'); void box.offsetWidth; box.classList.add('lose');
+  clearTimeout(comboHideT); comboHideT = setTimeout(() => { box.classList.add('hide'); box.classList.remove('lose'); }, 300);
+}
 function updateComboHud(pulse) {
   const box = $('comboHud');
   if (combo >= 2) {
@@ -268,6 +279,9 @@ function fart() {
   particles.emit(new THREE.Vector3(player.position.x, player.position.y + 0.35, player.position.z + 0.55),
     { count: 7, color: 0xc6e26a, speed: 1.3, up: 0.5, life: .75, grav: 1.4, size: 0.7 });
 }
+// A quick happy squish — bouncy stretch + perked ears for a beat. Fired on rolls
+// and clean near-misses so good play visibly delights the character.
+function emote() { emoteT = 0.45; squash = Math.max(squash, 0.28); }
 function bindControls() {
   addEventListener('keydown', e => {
     if (state !== 'playing') { if (e.code === 'Space' || e.code === 'Enter') startGame(); return; }
@@ -299,6 +313,7 @@ function tick(dt) {
     invuln = Math.max(0, invuln - dt);
     difficulty = Math.min(1, elapsed / 70);           // warm up over ~70s
     speed = (12.5 + 13.5 * difficulty) * (1 + 0.045 * (level - 1));  // levels keep nudging the pace up
+    if (power === 'dash') speed *= DASH_SPEED_MULT;                  // Boost: a brief speed surge (you're invuln while it lasts)
     distance += speed * dt;
     const lv = levelFromDistance(distance);
     if (lv > level) { level = lv; onLevelUp(); }
@@ -345,7 +360,7 @@ function moveObstacles(dt) {
     // through it, not side-stepped) the instant it passes — pays out and chains.
     if (!o.userData.scored && prevZ < player.position.z && o.position.z >= player.position.z && dx < halfW + NEARMISS_MARGIN) {
       o.userData.scored = true;
-      bumpCombo(); rollPoints += NEARMISS_BONUS; popScore(NEARMISS_BONUS, comboMult(combo)); buzz(8);
+      bumpCombo(); emote(); rollPoints += NEARMISS_BONUS; popScore(NEARMISS_BONUS, comboMult(combo)); buzz(8);
       particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.9, 0)), { count: 7, color: 0xeaffff, speed: 2.4, up: 2, life: .4, grav: 4, size: 0.4 });
     }
     const off = trackOffset(o.position.z, distance); o.position.x = lx + off.x; o.position.y = off.y;
@@ -368,7 +383,7 @@ function moveRolls(dt) {
     const lx = o.userData.lx;
     const dz = Math.abs(o.position.z - player.position.z), dx = Math.abs(lx - player.position.x);
     if (dz < 0.9 && dx < 0.95) {
-      bumpCombo();
+      bumpCombo(); emote();
       const mult = comboMult(combo) * (power === 'x2' ? 2 : 1), gained = rollValue * mult;
       rollCount++; rollPoints += gained; popScore(gained, mult); buzz(18); sfxCoin();
       particles.emit(o.position.clone(), { count: 12, color: 0xffd56b, speed: 3, up: 3, life: .5, grav: 9, size: 0.5 }); scene.remove(o); rolls.splice(i, 1); continue;
@@ -393,7 +408,7 @@ function movePickups(dt) {
 }
 function activatePower(kind, pos) {
   power = kind; powerT = POWERUP_DURATION; gotPower = true;
-  if (kind === 'ghost') invuln = POWERUP_DURATION;      // phase through everything
+  if (kind === 'ghost' || kind === 'dash') invuln = POWERUP_DURATION;   // ghost & boost both phase through everything
   const p = POWERUPS[kind];
   flash('#fff7c0'); buzz([12, 20, 12]); sfxLevel(); showBanner(`${p.icon} ${p.label}!`);
   particles.emit(pos.add(new THREE.Vector3(0, 0.3, 0)), { count: 18, color: p.color, speed: 4, up: 4, life: .6, grav: 6 });
@@ -428,7 +443,9 @@ function updatePlayer(dt, t) {
   player.position.x += (targetX - player.position.x) * Math.min(1, dt * 13);
   banked += (((targetX - player.position.x) * 0.5) - banked) * Math.min(1, dt * 11); player.rotation.z = banked;
   if (!grounded) {
-    vy -= 27 * dt; groundY += vy * dt; if (groundY <= 0) {
+    // Asymmetric gravity: float up gently, fall back snappily — hops feel weighty
+    // and responsive without changing how high you reach.
+    vy -= (vy > 0 ? 23 : 34) * dt; groundY += vy * dt; if (groundY <= 0) {
       groundY = 0; vy = 0; grounded = true; jumpsLeft = 2 + extraJumps; squash = 0.42;
       particles.emit(new THREE.Vector3(player.position.x, 0.05, player.position.z + 0.2), { count: 4, color: 0xe7d8be, speed: 1.6, up: 0.8, life: .35, grav: 6, size: 0.45 });
     }
@@ -437,7 +454,25 @@ function updatePlayer(dt, t) {
   const running = state === 'playing', freq = running ? 14 : 5;
   const bob = (grounded && duckTimer <= 0) ? Math.abs(Math.sin(t * freq)) * 0.12 : 0;
   player.position.y = groundY + bob * (1 - duckAmt);
-  ears.forEach((ear, i) => { const s = i ? -1 : 1; ear.rotation.z = s * 0.22 + Math.sin(t * 9 + i) * 0.16; ear.rotation.x = Math.sin(t * 7) * 0.08 + (grounded ? 0 : -0.25) + duckAmt * 0.5; });
+  // Emote: a happy squish decays over ~0.45s; an "alarm" ramps up the closer an
+  // un-dodged obstacle looms in the player's lane — together they let the ears
+  // react to good and bad moments.
+  emoteT = Math.max(0, emoteT - dt);
+  const happy = emoteT > 0 ? emoteT / 0.45 : 0;
+  let alarm = 0;
+  if (running) for (const o of obstacles) {
+    const adz = player.position.z - o.position.z;                 // >0 means it's still ahead
+    if (adz > 0.5 && adz < 6 && Math.abs(o.position.x - player.position.x) < (o.userData.halfW || 0.95) + 0.2) {
+      alarm = Math.max(alarm, 1 - adz / 6);
+    }
+  }
+  // Level-up twirl: spend the remaining spin radians around Y, snap clean at 0.
+  if (spin > 0) { const ds = Math.min(spin, dt * 12); player.rotation.y += ds; spin -= ds; if (spin <= 0) player.rotation.y = 0; }
+  ears.forEach((ear, i) => {
+    const s = i ? -1 : 1;
+    ear.rotation.z = s * (0.22 - alarm * 0.18) + Math.sin(t * 9 + i) * (0.16 + happy * 0.12);
+    ear.rotation.x = Math.sin(t * 7) * 0.08 + (grounded ? 0 : -0.25) + duckAmt * 0.5 - happy * 0.5 + alarm * 0.7;
+  });
   feet.forEach((f, i) => { const ph = i ? Math.PI : 0; f.position.y = 0.1 + ((running && grounded && duckTimer <= 0) ? Math.max(0, Math.sin(t * freq + ph)) * 0.16 : 0); });
   if (tail) tail.position.x = Math.sin(t * 10) * 0.05;
   if (aura && aura.visible) {
@@ -485,6 +520,7 @@ function onResize() { camera.aspect = innerWidth / innerHeight; camera.updatePro
 function onLevelUp() {
   const b = biomeOf(level);
   showBanner(`Lvl ${level} · ${b.name}`); sfxLevel(); buzz([15, 30, 15]);
+  spin = Math.PI * 2; squash = -0.25;     // a celebratory twirl + little stretch-up
   applyBiome(level, false);
   particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.8, 0)), { count: 18, color: 0xfff0a0, speed: 4, up: 4, life: .7, grav: 8 });
 }
@@ -632,6 +668,7 @@ function buildDebugApi() {
       rollCount, rollPoints, combo, comboMult: comboMult(combo), comboMax,
       shields, invuln: +invuln.toFixed(2), magnetR, rollValue, extraJumps, jumpsLeft,
       power, powerT: +powerT.toFixed(2),
+      emote: +emoteT.toFixed(2), spin: +spin.toFixed(2),
       laneIdx, targetX,
       track: trackSnapshot(),
       player: { x: +player.position.x.toFixed(3), groundY: +groundY.toFixed(3), grounded, ducking: duckTimer > 0 },
@@ -667,7 +704,7 @@ function buildDebugApi() {
     shields: v => { shields = v; }, invuln: v => { invuln = v; }, magnetR: v => { magnetR = v; },
     rollValue: v => { rollValue = v; }, extraJumps: v => { extraJumps = v; }, jumpsLeft: v => { jumpsLeft = v; },
     combo: v => { combo = v; }, rollCount: v => { rollCount = v; }, rollPoints: v => { rollPoints = v; },
-    power: v => { power = v; if (v && powerT <= 0) powerT = POWERUP_DURATION; if (v === 'ghost') invuln = Math.max(invuln, POWERUP_DURATION); },
+    power: v => { power = v; if (v && powerT <= 0) powerT = POWERUP_DURATION; if (v === 'ghost' || v === 'dash') invuln = Math.max(invuln, POWERUP_DURATION); },
     powerT: v => { powerT = v; }, safeLane: v => { safeLane = v; }, forcedGap: v => { forcedGap = v; },
   };
   function set(o = {}) {
