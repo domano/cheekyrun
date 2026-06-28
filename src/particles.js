@@ -25,7 +25,13 @@ export function createParticles(scene, count = 46) {
       p.mesh.material.color.setHex(o.color ?? 0xffffff);
       p.mesh.material.opacity = 1;
       const a = Math.random() * Math.PI * 2, sp = (o.speed || 2) * (0.4 + Math.random());
-      p.vel.set(Math.cos(a) * sp, (o.up || 2) * (0.4 + Math.random()), Math.sin(a) * sp);
+      if (o.dir) {
+        // Bias the burst along a direction (e.g. a near-miss streak trailing
+        // behind the player) with a little jitter so it reads as motion.
+        p.vel.set(o.dir.x * sp + (Math.random() - 0.5) * 0.8, (o.up || 1) * (0.3 + Math.random() * 0.6), o.dir.z * sp + (Math.random() - 0.5) * 0.8);
+      } else {
+        p.vel.set(Math.cos(a) * sp, (o.up || 2) * (0.4 + Math.random()), Math.sin(a) * sp);
+      }
       p.mesh.scale.setScalar(o.size ?? (0.6 + Math.random() * 0.6));
       n--;
     }

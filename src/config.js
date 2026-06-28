@@ -26,6 +26,34 @@ export const comboMult = (c, extra = 0) => Math.min(COMBO_MAX + extra, 1 + Math.
 // without touching it pays a small bonus and feeds the combo.
 export const NEARMISS_MARGIN = 0.7;
 export const NEARMISS_BONUS = 8;
+// Lateral "skim": dodging an obstacle in an ADJACENT lane by lane-changing past
+// it (rather than jumping/ducking through). Pays a smaller bonus than a clean
+// jump/duck near-miss, and only counts when you actually dodged for it — a lane
+// change within SKIM_WINDOW seconds — so parking in the next lane earns nothing.
+export const SKIM_MARGIN = 1.45;   // lateral reach beyond half-width (covers one lane gap, not two)
+export const SKIM_BONUS = 4;
+export const SKIM_WINDOW = 0.55;   // seconds after a lane change a skim still counts
+
+// Compound rows: occasionally the guaranteed-open lane also holds a jumpable /
+// duckable hazard, so the safe lane stays *reachable* but no longer *free* — you
+// must lane-change AND clear it in one beat. Still fair (one move + one action).
+export const SAFE_HAZARD_MIN_DIFF = 0.35;   // only once the run has some heat
+export const SAFE_HAZARD_CHANCE = 0.4;      // scaled by difficulty, so it ramps in
+
+// Game feel: a jump pressed just before landing is buffered for this long and
+// fires the instant you touch down, so chained hops never feel dropped.
+export const JUMP_BUFFER = 0.13;
+// Hit-stop: a brief world freeze on impact so the hit reads as a physical event.
+export const HITSTOP_SHIELD = 0.06;   // shield save — the run keeps going, so the freeze is felt
+export const HITSTOP_DEATH = 0.09;    // the crash
+// Near-miss slow-mo: a short time-dilation on a hot-combo skim/near-miss. Only
+// kicks in once the multiplier is climbing, so it stays an event, not constant.
+export const SLOWMO_FACTOR = 0.45;    // world runs at this fraction of real time
+export const SLOWMO_TIME = 0.13;      // seconds the dilation lasts
+export const SLOWMO_MIN_MULT = 3;     // combo multiplier needed to trigger it
+// Flow scoring: while a combo is hot the multiplier feeds bonus score as you run,
+// so a greedy chained run visibly out-scores a cautious one. Tuned gentle.
+export const SCORE_FLOW_RATE = 0.6;
 
 // In-run power-ups: a rare floating gem that grants a brief effect. Spaced out
 // by a row cooldown so grabbing one feels like an event, not a given.
