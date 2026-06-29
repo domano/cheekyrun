@@ -1,18 +1,38 @@
-// The single source of persistent state. One localStorage blob, loaded once
-// into a module-singleton so every system (upgrades, best score, stats,
-// achievements, cosmetics, daily challenge) reads and writes the same object.
+// The single source of persistent state. One versioned localStorage blob,
+// loaded once into a module-singleton so every system (upgrades, best score,
+// stats, achievements, cosmetics, daily challenge, roguelite meta) reads and
+// writes the same object.
 //
-// The schema only ever grows: load() backfills every field with a default, so
-// an older save is a strict subset and migrates transparently — no version bump
-// needed. Keep load() inside a try/catch returning full defaults; a throw here
-// would blank the page (and fail the smoke test).
+// Designed to survive future game versions. load() runs three passes so any
+// blob — old, newer, or corrupt — boots a clean, playable save:
+//
+//   1. migrate()   — a directed chain (MIGRATIONS) bumps an older `version`
+//                    up to CURRENT, one step per schema change. Pure additions
+//                    need no entry (pass 2 backfills them); add a migration
+//                    only when a field is renamed, restructured, or recomputed.
+//   2. normalize() — rebuilds the canonical shape from the raw blob: every
+//                    known field is coerced to its expected type, unknown
+//                    *top-level* keys are passed through untouched (so a save
+//                    written by a NEWER build round-trips without data loss),
+//                    and brand-new fields backfill from defaults().
+//   3. clamp       — value guards baked into normalize (no negative wallet or
+//                    upgrade tier, maxLevel >= 1, …) so a corrupt *value* can't
+//                    reach the game loop and throw; the field self-heals.
+//
+// load() is wrapped in try/catch returning full defaults, so even a pathological
+// blob can't blank the page (which would also fail the smoke test). Because the
+// version lives *inside* the blob, this storage key is permanent — future schema
+// changes bump VERSION and add a migration, never a new key.
 
 import { prevKey } from './config.js';
 
-const KEY = 'cheekyrun.save.v1';
+const KEY = 'cheekyrun.save';
+const LEGACY_KEYS = ['cheekyrun.save.v1'];   // pre-versioning saves; cleared on first load
+const VERSION = 1;                           // bump + add a MIGRATIONS step per breaking schema change
 
 function defaults() {
   return {
+    version: VERSION,
     wallet: 0,
     owned: {},                                  // upgrade id -> tier
     best: 0,                                     // persistent high score
@@ -24,39 +44,83 @@ function defaults() {
   };
 }
 
-// A stored field that should be a key->value map. Legacy/corrupt saves can hold
-// the wrong type here (a string, array or number); indexing — or worse, deleting
-// keys (see migrateSave) — on those throws. Since migrateSave runs at import, one
-// such field would brick the whole app before anything renders, so coerce every
-// map field to a real plain object on the way in.
-const asMap = (v) => (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
+/* ----- type coercion helpers (the load-time guards) ----- */
+const isObj = (v) => v != null && typeof v === 'object' && !Array.isArray(v);
+const asMap = (v) => isObj(v) ? v : {};                 // anything non-object -> empty map
+const int = (v) => v | 0;
+const nat = (v) => Math.max(0, v | 0);                  // non-negative int
+const str = (v, dflt) => typeof v === 'string' ? v : dflt;
+// A key->true flag map (achievements, perk pool, owned cosmetics): keep only
+// truthy keys, so a junk value can never masquerade as "owned".
+const flagMap = (v) => { const o = {}, m = asMap(v); for (const k in m) if (m[k]) o[k] = true; return o; };
+// A key->count map (upgrade tiers): clamp each to a positive int, dropping
+// zero/negative/garbage so the game never reads a phantom or negative tier.
+const tierMap = (v) => { const o = {}, m = asMap(v); for (const k in m) { const n = nat(m[k]); if (n) o[k] = n; } return o; };
+
+// Directed migrations between schema versions. migrate() applies MIGRATIONS[v]
+// to a save at version v to bring it to v+1, repeating until it reaches VERSION.
+// Each entry mutates the raw blob in place. Example for a future wallet rename:
+//   1: (s) => { s.coins = s.wallet; delete s.wallet; },   // v1 -> v2
+const MIGRATIONS = {
+  // (none yet — VERSION is 1)
+};
+
+function migrate(raw) {
+  if (!isObj(raw)) return raw;
+  let v = nat(raw.version) || 1;                         // legacy/no-version blobs are treated as v1
+  while (v < VERSION && MIGRATIONS[v]) { MIGRATIONS[v](raw); v++; }
+  return raw;
+}
+
+// Rebuild the canonical save from an arbitrary raw blob. Known fields are
+// coerced to their expected types; unknown top-level keys are preserved so a
+// newer build's data isn't destroyed by an older one.
+function normalize(raw) {
+  const r = isObj(raw) ? raw : {};
+  const rcos = asMap(r.cosmetics), rmeta = asMap(r.meta);
+  const rstats = asMap(r.stats), rdb = asMap(r.dailyBest);
+  const known = {
+    version: VERSION,
+    wallet: nat(r.wallet),
+    owned: tierMap(r.owned),
+    best: nat(r.best),
+    stats: {
+      runs: nat(rstats.runs), dist: nat(rstats.dist), rolls: nat(rstats.rolls),
+      maxCombo: nat(rstats.maxCombo), maxLevel: Math.max(1, int(rstats.maxLevel)),
+    },
+    achievements: flagMap(r.achievements),
+    cosmetics: {
+      owned: { classic: true, ...flagMap(rcos.owned) },
+      skin: str(rcos.skin, 'classic'),
+    },
+    dailyBest: {
+      day: str(rdb.day, ''), score: nat(rdb.score),
+      streak: nat(rdb.streak), lastDay: str(rdb.lastDay, ''),
+    },
+    meta: {
+      pool: flagMap(rmeta.pool), banished: flagMap(rmeta.banished),
+      rerolls: nat(rmeta.rerolls), banishes: nat(rmeta.banishes),
+      boon: str(rmeta.boon, null),
+    },
+  };
+  const out = {};
+  for (const k in r) if (!(k in known)) out[k] = r[k];   // pass unknown future keys through
+  return Object.assign(out, known);
+}
+
+function dropLegacy() {
+  try { for (const k of LEGACY_KEYS) localStorage.removeItem(k); } catch { /* ignore */ }
+}
 
 export let save = load();
 function load() {
-  const d = defaults();
-  try {
-    const raw = asMap(JSON.parse(localStorage.getItem(KEY)));
-    const rawCos = asMap(raw.cosmetics), rawMeta = asMap(raw.meta);
-    return {
-      wallet: raw.wallet | 0,
-      owned: asMap(raw.owned),
-      best: raw.best | 0,
-      stats: { ...d.stats, ...asMap(raw.stats) },
-      achievements: asMap(raw.achievements),
-      cosmetics: {
-        owned: { ...d.cosmetics.owned, ...asMap(rawCos.owned) },
-        skin: rawCos.skin || d.cosmetics.skin,
-      },
-      dailyBest: { ...d.dailyBest, ...asMap(raw.dailyBest) },
-      meta: {
-        ...d.meta, ...rawMeta,
-        pool: asMap(rawMeta.pool),
-        banished: asMap(rawMeta.banished),
-      },
-    };
-  } catch {
-    return d;
-  }
+  let raw = null;
+  try { raw = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch { /* corrupt JSON */ }
+  let result;
+  try { result = normalize(migrate(raw)); }
+  catch (e) { console.warn('Cheeky Run: save unreadable; starting fresh', e); result = defaults(); }
+  dropLegacy();
+  return result;
 }
 // Re-read the stored blob into the live singleton (mutated in place so every
 // importer's reference stays valid). Mirrors the import-time load + lets tests

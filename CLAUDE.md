@@ -143,8 +143,17 @@ else is a focused module it pulls from. State lives in module-scope `let`s in
   canvas, so biomes set both `document.body.style.background` and the 3D
   fog/ground/path/hills/disc material colours.
 
-- **Upgrades (`upgrades.js`):** a tiny localStorage save (`cheekyrun.save.v1`)
-  holds a roll `wallet` and owned upgrade tiers. Rolls grabbed in a run are
+- **Save (`save.js`):** one versioned localStorage blob (`cheekyrun.save`) is the
+  single source of persistent state — wallet, owned upgrade tiers, best, stats,
+  achievements, cosmetics, daily, roguelite meta. `load()` self-heals any blob:
+  a directed `MIGRATIONS` chain bumps an older `version`, `normalize()` rebuilds
+  the canonical shape (coercing types, backfilling new fields, passing unknown
+  future keys through), and value clamps stop a corrupt value bricking startup.
+  Adding a field = extend `defaults()`/`normalize()`; a breaking change = bump
+  `VERSION` and push a `MIGRATIONS` step. The key never changes again.
+
+- **Upgrades (`upgrades.js`):** reads/writes the save for a roll `wallet` and
+  owned upgrade tiers. Rolls grabbed in a run are
   banked on game over via `addRolls()`. `effects()` resolves the current save
   into gameplay values read once at run start in `resetGame()` (shields,
   magnet radius, points-per-roll, extra jumps, head-start levels). The shop UI

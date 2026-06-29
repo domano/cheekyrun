@@ -6,7 +6,7 @@ import { createParticles } from './particles.js';
 import { buildPlayer, applyGear } from './player.js';
 import { LEVEL_DIST, biomeOf, obstacleSet, biomePlay, biomeAir, levelFromDistance, levelProgress } from './levels.js';
 import { trackOffset, deformRoad } from './track.js';
-import { UPGRADES, effects, tierOf, nextCost, buy, getWallet, addRolls, DEFAULT_POOL, unlockedPerkIds, META, buyMeta, migrateSave } from './upgrades.js';
+import { UPGRADES, effects, tierOf, nextCost, buy, getWallet, addRolls, DEFAULT_POOL, unlockedPerkIds, META, buyMeta } from './upgrades.js';
 import { PERKS, freshMods, applyPerks, perkById, draftChoices } from './perks.js';
 import { save, getRerolls, useReroll, getBanishes, useBanish, getBoon, setBoon, banishPerk, poolHas } from './save.js';
 import { getBest, setBest, getStats, bumpStats, resetSave, reload } from './save.js';
@@ -1105,20 +1105,17 @@ function buildDebugApi() {
     lane: (i) => { moveLane(i - laneIdx); return laneIdx; },
     jump: () => { jump(); return snapshot(); }, duck: () => { duck(); return snapshot(); },
     // ---- shop / meta ----
-    // migrate(legacy?) injects a pre-roguelite owned-tier blob (e.g. a save that
-    // still "owns" magnet/spring/fortune) then runs the cleanup, returning the
-    // pruned ids and the surviving owned map — so the legacy fix is testable.
-    migrate: (legacy) => { if (legacy) Object.assign(save.owned, legacy); const pruned = migrateSave(); renderShop(); return { pruned, owned: { ...save.owned } }; },
-    // Re-run startup (load the stored blob → migrate → resetGame) against
-    // whatever bytes a test wrote to localStorage, recovering to defaults if it
-    // throws — mirrors safeInit()'s guard. Lets a scenario prove a malformed or
-    // value-corrupt legacy save boots to a clean, playable menu instead of a
-    // dead page. Returns whether a reset was needed.
+    // Re-run startup against whatever bytes a test wrote to localStorage: the
+    // save loader (save.js) self-heals any blob on reload() — coercing types,
+    // clamping bad values, migrating old versions — so a malformed, value-corrupt
+    // or future-version save boots to a clean, playable menu instead of a dead
+    // page. resetGame is still guarded (mirrors safeInit) as a last-resort
+    // backstop; `recovered` reports whether that full reset was needed.
     reloadSave: () => {
       reload();
       let recovered = false;
-      try { migrateSave(); resetGame(); }
-      catch { recovered = true; resetSave(); migrateSave(); resetGame(); }
+      try { resetGame(); }
+      catch { recovered = true; resetSave(); resetGame(); }
       state = 'menu'; paused = true; refreshHud(); renderShop(); renderStats(); renderAchievements(); renderCosmetics();
       return { ...snapshot(), recovered };
     },

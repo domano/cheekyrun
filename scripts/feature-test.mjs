@@ -243,28 +243,38 @@ const SCENARIOS = [
     },
   },
   {
-    name: 'legacy-save-migration',
+    name: 'save-resilience',
     fn: (c, assert) => {
-      // A pre-roguelite save still "owns" magnet/spring/fortune as upgrades.
-      const r = c.migrate({ magnet: 4, spring: 2, fortune: 3, shield: 1, headstart: 1 });
-      assert(r.pruned.sort().join(',') === 'fortune,magnet,spring', 'reframed upgrade tiers are pruned from the save');
-      assert(r.owned.shield === 1 && r.owned.headstart === 1, 'real upgrade tiers survive');
-      assert(r.owned.magnet === undefined, 'the dead magnet tier is gone');
-      // ...so the cleaned save wears no phantom perk gear at run start.
-      const s = c.start();
-      assert(s.gearVisible.magnet === false && s.gearVisible.spring === false && s.gearVisible.fortune === false, 'a migrated save wears no phantom gear');
-      assert(s.gearVisible.shield === true, 'the still-owned Cushion is still worn');
+      // The versioned save loader self-heals on load. A blob written by a FUTURE
+      // build — higher version, an unknown upgrade id, an unknown top-level key —
+      // mixed with a corrupt value must load without losing the data this build
+      // understands, and without a full reset.
+      localStorage.setItem('cheekyrun.save', JSON.stringify({
+        version: 999,                                   // written by a newer build
+        wallet: 320, best: 7000,
+        owned: { shield: 2, headstart: -4, ghostDash: 9 },   // bad tier + an upgrade this build never heard of
+        cosmetics: 'broken',                            // wrong type entirely
+        futureField: { keep: 'me' },                    // unknown top-level key
+      }));
+      let s;
+      try { s = c.reloadSave(); } catch (e) { assert(false, 'a future/corrupt save threw: ' + e.message); return; }
+      assert(s.recovered === false, 'the save self-heals on load — no full reset needed');
+      assert(s.state === 'menu', 'startup lands on a clean, live menu');
+      assert(c.wallet() === 320, 'the wallet from a future-version save is preserved');
+      assert(c.effects().shields === 2, 'a real upgrade tier survives');
+      assert(c.effects().headstart === 0, 'the negative tier self-heals to 0 instead of bricking startup');
+      const r = c.start();
+      assert(r.state === 'playing' && r.level === 1, 'a normal run starts on the healed save');
     },
   },
   {
     name: 'malformed-save-still-boots',
     fn: (c, assert) => {
-      // Regression: a legacy/corrupt save whose map fields aren't plain objects
-      // (here `owned` as a string) once threw in migrateSave() at IMPORT time —
-      // strict-mode `delete` on a string index — taking the whole module graph
-      // down before init()/animate() ran. Symptom: menu HTML with no 3D scene,
-      // empty shop, dead buttons. Such a save must now load cleanly.
-      localStorage.setItem('cheekyrun.save.v1', JSON.stringify({
+      // Regression: a corrupt save whose map fields aren't plain objects (here
+      // `owned`/`meta`/`cosmetics` as strings, `achievements` as a number) must
+      // not take the module graph down at import. The loader coerces every such
+      // field to a clean map; the save loads cleanly to a live, playable menu.
+      localStorage.setItem('cheekyrun.save', JSON.stringify({
         owned: 'abc', wallet: 70, meta: 'nope', cosmetics: 'classic', achievements: 5,
       }));
       let s;
@@ -277,20 +287,22 @@ const SCENARIOS = [
     },
   },
   {
-    name: 'corrupt-save-recovers-to-defaults',
+    name: 'corrupt-value-self-heals',
     fn: (c, assert) => {
-      // Type coercion can't catch a bad *value*: a negative upgrade tier makes the
-      // run start on a negative level, and biomeOf() returns undefined → a throw
-      // deep in startup. The catch-all must wipe such a save to defaults and boot
-      // clean rather than leave a dead page (no 3D scene, empty shop, dead buttons).
-      localStorage.setItem('cheekyrun.save.v1', JSON.stringify({ owned: { headstart: -3 }, wallet: 200, best: 4000 }));
+      // A bad *value* (not just a bad type): a negative upgrade tier once made the
+      // run start on a negative level, biomeOf() returned undefined → a throw deep
+      // in startup, and the only fix was nuking the whole save. The loader now
+      // clamps the bad tier away at load, so the field self-heals while the rest
+      // of the save (wallet, best) is preserved — no full reset, no data loss.
+      localStorage.setItem('cheekyrun.save', JSON.stringify({ owned: { headstart: -3 }, wallet: 200, best: 4000 }));
       let s;
-      try { s = c.reloadSave(); } catch (e) { assert(false, 'recovery itself threw: ' + e.message); return; }
-      assert(s.recovered === true, 'the value-corrupt save tripped the reset-to-defaults path');
+      try { s = c.reloadSave(); } catch (e) { assert(false, 'loading the corrupt-value save threw: ' + e.message); return; }
+      assert(s.recovered === false, 'the bad value self-heals — no reset-to-defaults needed');
       assert(s.state === 'menu', 'startup lands on a clean, live menu');
-      assert(c.effects().headstart === 0, 'the corrupt upgrade tier was reset to defaults');
+      assert(c.effects().headstart === 0, 'the negative upgrade tier was clamped away');
+      assert(c.wallet() === 200, 'the rest of the save (wallet) is preserved, not wiped');
       const r = c.start();
-      assert(r.state === 'playing' && r.level === 1, 'a normal run starts from level 1 on the reset save');
+      assert(r.state === 'playing' && r.level === 1, 'a normal run starts from level 1 on the healed save');
     },
   },
   {
