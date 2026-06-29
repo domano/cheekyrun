@@ -2,60 +2,125 @@
 // into a module-singleton so every system (upgrades, best score, stats,
 // achievements, cosmetics, daily challenge) reads and writes the same object.
 //
-// The schema only ever grows: load() backfills every field with a default, so
-// an older save is a strict subset and migrates transparently — no version bump
-// needed. Keep load() inside a try/catch returning full defaults; a throw here
-// would blank the page (and fail the smoke test).
+// Resilience to future versions of the game rests on three layers, applied on
+// every load:
+//
+//   1. SCHEMA — every field is declared once with a type-safe sanitiser that
+//      backfills a default and coerces junk. A missing field (older save) or a
+//      wrong-typed/out-of-range one (corrupt save) can never reach gameplay, so
+//      the page never bricks. Adding a field is one line here and needs nothing
+//      else: old saves transparently gain it on next load.
+//   2. MIGRATIONS — an explicit, ordered chain of structural upgrades for the
+//      changes the schema can't express on its own (rename, remove, reshape).
+//      Each step takes a version-N blob to N+1; VERSION names the latest.
+//   3. Recovery — if a migration throws on genuinely broken data, the bad blob
+//      is stashed under a `.bad` key and we boot clean rather than dead.
+//
+// Keep load() unable to throw past its catch — a throw here would blank the page
+// (and fail the smoke test).
 
 import { prevKey } from './config.js';
 
-const KEY = 'cheekyrun.save.v1';
+const KEY = 'cheekyrun.save';
+// The pre-redesign save lived here under an ad-hoc "additive backfill" scheme.
+// It is intentionally not carried forward; we drop it on first load so it stops
+// lingering in everyone's localStorage.
+const LEGACY_KEY = 'cheekyrun.save.v1';
 
-function defaults() {
-  return {
-    wallet: 0,
-    owned: {},                                  // upgrade id -> tier
-    best: 0,                                     // persistent high score
-    stats: { runs: 0, dist: 0, rolls: 0, maxCombo: 0, maxLevel: 1 },
-    achievements: {},                            // achievement id -> true
-    cosmetics: { owned: { classic: true }, skin: 'classic' },
-    dailyBest: { day: '', score: 0, streak: 0, lastDay: '' },
-    meta: { pool: {}, banished: {}, rerolls: 0, banishes: 0, boon: null },
-  };
+// Bump when a MIGRATIONS step is added. Purely additive fields do NOT need a
+// bump — the schema backfills them. Only structural changes (rename/remove/
+// reshape) warrant a migration and a version bump.
+export const VERSION = 1;
+
+/* ----- field sanitisers ----------------------------------------------------
+ * Each is a function (raw) -> clean that never throws and always returns a
+ * value of the right shape, substituting a default for missing/garbage input.
+ * `shape` composes them into nested objects; the whole SCHEMA is itself a shape,
+ * so SCHEMA(undefined) yields a complete default save (see defaults()).        */
+
+const obj = (v) => (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
+// An integer clamped to >= min, defaulting to `d` (or min) when absent/NaN.
+const int = (min = 0, d) => (v) => Number.isFinite(v) ? Math.max(min, Math.trunc(v)) : (d ?? min);
+const text = (d = '') => (v) => typeof v === 'string' ? v : d;
+// A set of truthy keys, optionally seeded with keys that are always present.
+const flags = (...seed) => (v) => {
+  const o = obj(v), r = {};
+  for (const k of seed) r[k] = true;
+  for (const k in o) if (o[k]) r[k] = true;
+  return r;
+};
+// A key -> non-negative integer map (e.g. upgrade id -> tier). Drops zero/neg.
+const counts = () => (v) => {
+  const o = obj(v), r = {};
+  for (const k in o) { const n = Math.max(0, Math.trunc(o[k] || 0)); if (n) r[k] = n; }
+  return r;
+};
+// A nullable string field (e.g. the selected boon).
+const maybeText = () => (v) => (typeof v === 'string' && v) ? v : null;
+// Sanitise a nested object field-by-field against a spec of sanitisers.
+const shape = (spec) => (v) => {
+  const o = obj(v), r = {};
+  for (const k in spec) r[k] = spec[k](o[k]);
+  return r;
+};
+
+// The whole persistent shape. To add a field, add a line — nothing else.
+const SCHEMA = shape({
+  version:      int(0, VERSION),
+  wallet:       int(0),                          // rolls currency
+  owned:        counts(),                        // upgrade id -> tier
+  best:         int(0),                          // persistent high score
+  stats:        shape({ runs: int(0), dist: int(0), rolls: int(0), maxCombo: int(0), maxLevel: int(1) }),
+  achievements: flags(),                         // achievement id -> true
+  cosmetics:    shape({ owned: flags('classic'), skin: text('classic') }),
+  dailyBest:    shape({ day: text(), score: int(0), streak: int(0), lastDay: text() }),
+  meta:         shape({ pool: flags(), banished: flags(), rerolls: int(0), banishes: int(0), boon: maybeText() }),
+});
+
+const defaults = () => SCHEMA(undefined);
+
+/* ----- structural migrations -----------------------------------------------
+ * MIGRATIONS[v] upgrades a version-`v` blob to version v+1, run in order on
+ * load. A step takes a raw blob and returns the next-version blob (mutate and
+ * return is fine). Keep them pure — they run before sanitising, must not touch
+ * the live `save`, and run on data the schema hasn't cleaned yet, so be
+ * defensive. Adding one: append the step, bump VERSION.                        */
+const MIGRATIONS = [
+  // 0 -> 1: baseline of the redesigned save. Pre-redesign blobs used a separate
+  // storage key (LEGACY_KEY) and are not carried over, so there is nothing to
+  // transform here yet — this slot documents the contract for the next change.
+];
+
+// Walk a raw blob from its stored version up to VERSION. An unversioned or
+// junk blob is treated as version 0 (the oldest); a non-object yields {} so the
+// schema fills in a clean default.
+function migrate(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  let s = raw;
+  let v = Number.isFinite(raw.version) ? Math.max(0, raw.version | 0) : 0;
+  for (; v < VERSION; v++) {
+    const step = MIGRATIONS[v];
+    if (step) s = step(s) || s;
+  }
+  return s;
 }
-
-// A stored field that should be a key->value map. Legacy/corrupt saves can hold
-// the wrong type here (a string, array or number); indexing — or worse, deleting
-// keys (see migrateSave) — on those throws. Since migrateSave runs at import, one
-// such field would brick the whole app before anything renders, so coerce every
-// map field to a real plain object on the way in.
-const asMap = (v) => (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
 
 export let save = load();
 function load() {
-  const d = defaults();
+  // Retire the pre-redesign blob once, whatever happens below.
+  try { if (localStorage.getItem(LEGACY_KEY) != null) localStorage.removeItem(LEGACY_KEY); } catch { /* ignore */ }
+  let raw = null;
+  try { raw = JSON.parse(localStorage.getItem(KEY)); } catch { /* unreadable -> defaults */ }
   try {
-    const raw = asMap(JSON.parse(localStorage.getItem(KEY)));
-    const rawCos = asMap(raw.cosmetics), rawMeta = asMap(raw.meta);
-    return {
-      wallet: raw.wallet | 0,
-      owned: asMap(raw.owned),
-      best: raw.best | 0,
-      stats: { ...d.stats, ...asMap(raw.stats) },
-      achievements: asMap(raw.achievements),
-      cosmetics: {
-        owned: { ...d.cosmetics.owned, ...asMap(rawCos.owned) },
-        skin: rawCos.skin || d.cosmetics.skin,
-      },
-      dailyBest: { ...d.dailyBest, ...asMap(raw.dailyBest) },
-      meta: {
-        ...d.meta, ...rawMeta,
-        pool: asMap(rawMeta.pool),
-        banished: asMap(rawMeta.banished),
-      },
-    };
-  } catch {
-    return d;
+    const clean = SCHEMA(migrate(raw));
+    clean.version = VERSION;                      // stamp: future loads start here
+    return clean;
+  } catch (e) {
+    // A migration threw on genuinely broken data. Stash it for forensics and
+    // boot clean rather than leave a dead page.
+    try { const bad = localStorage.getItem(KEY); if (bad != null) localStorage.setItem(KEY + '.bad', bad); } catch { /* ignore */ }
+    console.warn('Cheeky Run: unreadable save; starting fresh', e);
+    return defaults();
   }
 }
 // Re-read the stored blob into the live singleton (mutated in place so every

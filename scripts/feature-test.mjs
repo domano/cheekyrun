@@ -259,38 +259,64 @@ const SCENARIOS = [
   {
     name: 'malformed-save-still-boots',
     fn: (c, assert) => {
-      // Regression: a legacy/corrupt save whose map fields aren't plain objects
-      // (here `owned` as a string) once threw in migrateSave() at IMPORT time —
-      // strict-mode `delete` on a string index — taking the whole module graph
-      // down before init()/animate() ran. Symptom: menu HTML with no 3D scene,
-      // empty shop, dead buttons. Such a save must now load cleanly.
-      localStorage.setItem('cheekyrun.save.v1', JSON.stringify({
+      // A junk save whose fields are the wrong type entirely (here `owned` as a
+      // string, `meta`/`cosmetics` as strings, `achievements` a number) must load
+      // cleanly: the schema sanitiser coerces every field to its declared shape
+      // instead of letting a bad index/delete brick the module graph at import
+      // (which once left menu HTML with no 3D scene, empty shop, dead buttons).
+      localStorage.setItem('cheekyrun.save', JSON.stringify({
         owned: 'abc', wallet: 70, meta: 'nope', cosmetics: 'classic', achievements: 5,
       }));
       let s;
       try { s = c.reloadSave(); } catch (e) { assert(false, 'loading a malformed save threw: ' + e.message); return; }
       assert(typeof s === 'object', 'a malformed save loads without throwing');
+      assert(s.recovered === false, 'the schema sanitised it in place — no nuclear reset needed');
+      assert(s.version === 1, 'the loaded save is stamped at the current version');
       assert(c.effects().shields === 0, 'string `owned` is coerced to a clean map — no phantom tiers');
+      assert(c.wallet() === 70, 'a well-typed field (wallet) survives the cleanup');
       const r = c.start();
       assert(r.state === 'playing', 'a run still starts after loading the malformed save');
       assert(r.gearVisible.shield === false, 'no phantom gear is worn from the junk save');
     },
   },
   {
-    name: 'corrupt-save-recovers-to-defaults',
+    name: 'corrupt-save-heals-in-place',
     fn: (c, assert) => {
-      // Type coercion can't catch a bad *value*: a negative upgrade tier makes the
-      // run start on a negative level, and biomeOf() returns undefined → a throw
-      // deep in startup. The catch-all must wipe such a save to defaults and boot
-      // clean rather than leave a dead page (no 3D scene, empty shop, dead buttons).
-      localStorage.setItem('cheekyrun.save.v1', JSON.stringify({ owned: { headstart: -3 }, wallet: 200, best: 4000 }));
+      // A bad *value* (not just a bad type): a negative upgrade tier once started
+      // the run on a negative level, biomeOf() returned undefined, and startup
+      // threw — so the old system needed a nuclear reset to recover. The schema
+      // now clamps out-of-range values on load, so the save is healed in place:
+      // the bad tier is dropped, every other field is kept, and no reset fires.
+      localStorage.setItem('cheekyrun.save', JSON.stringify({ owned: { headstart: -3 }, wallet: 200, best: 4000 }));
       let s;
-      try { s = c.reloadSave(); } catch (e) { assert(false, 'recovery itself threw: ' + e.message); return; }
-      assert(s.recovered === true, 'the value-corrupt save tripped the reset-to-defaults path');
+      try { s = c.reloadSave(); } catch (e) { assert(false, 'healing the save threw: ' + e.message); return; }
+      assert(s.recovered === false, 'the corrupt tier was clamped on load — no reset needed');
       assert(s.state === 'menu', 'startup lands on a clean, live menu');
-      assert(c.effects().headstart === 0, 'the corrupt upgrade tier was reset to defaults');
+      assert(c.effects().headstart === 0, 'the negative upgrade tier was clamped away');
+      assert(c.wallet() === 200 && s.best === 4000, 'the good fields (wallet, best) are preserved, not wiped');
       const r = c.start();
-      assert(r.state === 'playing' && r.level === 1, 'a normal run starts from level 1 on the reset save');
+      assert(r.state === 'playing' && r.level === 1, 'a normal run starts from level 1 on the healed save');
+    },
+  },
+  {
+    name: 'versioned-save-migration',
+    fn: (c, assert) => {
+      // The resilience contract for future sessions: an older, unversioned blob
+      // that predates fields we add later must still load. It's treated as the
+      // oldest version, run through the migration chain, stamped at the current
+      // version, and any field it lacks is backfilled from the schema — while the
+      // values it does carry survive and unknown junk keys are simply ignored.
+      localStorage.setItem('cheekyrun.save', JSON.stringify({
+        wallet: 333, best: 1200,                  // known fields, no `version`, no `stats`/`meta`/...
+        gadgets: { laser: 9 }, vibes: 'immaculate',  // fields from no version that ever existed
+      }));
+      let s;
+      try { s = c.reloadSave(); } catch (e) { assert(false, 'loading an unversioned save threw: ' + e.message); return; }
+      assert(s.version === 1, 'an unversioned blob is migrated and stamped at the current version');
+      assert(c.wallet() === 333 && s.best === 1200, 'the values it carried survive the migration');
+      assert(c.effects().shields === 0 && c.effects().headstart === 0, 'missing fields are backfilled to defaults');
+      const r = c.start();
+      assert(r.state === 'playing' && r.level === 1, 'the migrated save boots to a normal, playable run');
     },
   },
   {
