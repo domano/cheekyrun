@@ -9,7 +9,7 @@ import { trackOffset, deformRoad } from './track.js';
 import { UPGRADES, effects, tierOf, nextCost, buy, getWallet, addRolls, DEFAULT_POOL, unlockedPerkIds, META, buyMeta } from './upgrades.js';
 import { PERKS, freshMods, applyPerks, perkById, draftChoices } from './perks.js';
 import { save, getRerolls, useReroll, getBanishes, useBanish, getBoon, setBoon, banishPerk, poolHas } from './save.js';
-import { getBest, setBest, getStats, bumpStats, resetSave, reload, requestPersistence, onExternalChange } from './save.js';
+import { getBest, setBest, getStats, bumpStats, resetSave, reload, requestPersistence, onExternalChange, persistOk } from './save.js';
 import { hasAch, unlock } from './save.js';
 import { ACHIEVEMENTS, checkAchievements } from './achievements.js';
 import { selectedSkin, selectSkin, getDailyBest, setDailyBest, getDailyStreak } from './save.js';
@@ -189,7 +189,9 @@ function init() {
   $('againBtn').onclick = () => startGame(daily);     // "Again!" replays the same mode
   $('dailyBtn').onclick = () => startGame(true);
   $('muteBtn').onclick = toggleSound;
+  $('saveWarnX').onclick = () => { saveWarnDismissed = true; refreshSaveWarn(); };
   renderShop(); renderStats(); renderAchievements(); renderCosmetics(); renderDaily();
+  refreshSaveWarn();
   installDebug(buildDebugApi);
 }
 
@@ -453,6 +455,7 @@ function gameOver() {
     setTimeout(() => flash('#ffe08a'), 180);
   }
   $('earned').textContent = rollCount; renderShop(); renderStats(); renderCosmetics();
+  refreshSaveWarn();                              // banking just persisted — re-check it actually stuck
   renderAchievements(unlocked.map(a => a.id));   // glow any earned this run, right on the card
   if (unlocked.length) { sfxLevel(); buzz([10, 30, 10]); }
   $('perktray').classList.add('hide');
@@ -460,6 +463,24 @@ function gameOver() {
 }
 const score = () => Math.floor(distance) + rollPoints;
 function updateHud() { $('score').textContent = score(); $('rolls').textContent = rollCount; }
+
+// Surface a save-blocked notice when the browser is dropping our writes (Safari
+// with cookies/storage blocked or in private mode, a full disk). Without this the
+// player just sees a mysterious "clean slate" on every reopen; here we say why and
+// how to fix it. Dismissible, and re-shown only while saving is actually failing.
+let saveWarnDismissed = false;
+function refreshSaveWarn() {
+  const el = $('saveWarn'); if (!el) return;
+  const blocked = !persistOk;
+  if (blocked && !saveWarnDismissed) {
+    $('saveWarnMsg').textContent =
+      'Your browser is blocking saved progress, so upgrades and best scores won’t stick. ' +
+      'In Safari, turn off Private Browsing and allow cookies for this site (Settings → Safari).';
+    el.classList.remove('hide');
+  } else {
+    el.classList.add('hide');
+  }
+}
 // Fraction (0..1) of the way through the current stage; pins at 1 through the
 // run-up/finish-line breather until crossing starts the next stage.
 const stageProgress = () => stageLen > 0 ? Math.min(1, Math.max(0, (distance - stageStart) / stageLen)) : 0;
@@ -1123,7 +1144,7 @@ function buildDebugApi() {
       gearTiers, auraVisible: !!(aura && aura.visible), fartCount,
       gearVisible: gear ? { shield: gear.shield.visible, spring: gear.spring.visible, magnet: gear.magnet.visible, fortune: gear.fortune.visible, headstart: gear.headstart.visible, shieldPips: gear.shieldPips.filter(p => p.visible).length } : {},
       counts: { obstacles: obstacles.length, rolls: rolls.length, pickups: pickups.length, scenery: scenery.length, finish: finishLine ? 1 : 0 },
-      wallet: getWallet(), daily,
+      wallet: getWallet(), daily, saveBlocked: !persistOk,
     };
   }
 
@@ -1188,7 +1209,7 @@ function buildDebugApi() {
     // paused: the harness drives time via step(), so the rAF loop never renders
     // (continuous software-WebGL rendering otherwise pegs the CPU and starves
     // the test driver, making every CLI round-trip crawl).
-    fresh: () => { resetSave(); resetGame(); state = 'menu'; paused = true; refreshHud(); renderShop(); return snapshot(); },
+    fresh: () => { resetSave(); resetGame(); state = 'menu'; paused = true; saveWarnDismissed = false; refreshHud(); renderShop(); refreshSaveWarn(); return snapshot(); },
     over: () => { if (state === 'playing') gameOver(); return snapshot(); },
     // ---- deterministic time ----
     pause: () => { paused = true; return snapshot(); },
@@ -1231,6 +1252,9 @@ function buildDebugApi() {
       return { ...snapshot(), recovered };
     },
     wallet: getWallet, fund: (n) => { addRolls(n); renderShop(); return getWallet(); },
+    // Re-evaluate + report the save-blocked notice (drives refreshSaveWarn from a
+    // test after stubbing localStorage to simulate a browser dropping writes).
+    saveWarn: () => { refreshSaveWarn(); return { persistOk, shown: !$('saveWarn').classList.contains('hide') }; },
     buy: (id) => { const ok = buy(id); renderShop(); return ok; }, effects,
     // ---- perks (roguelite draft) ----
     perk: (id) => { applyPerk(id); return snapshot(); },

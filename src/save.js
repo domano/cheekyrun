@@ -136,15 +136,34 @@ function load() {
 // exercise loading a hand-written save without a full page reload.
 export function reload() { Object.assign(save, load()); return save; }
 
-// True after the last persist() succeeded. Flips false on a quota/security
-// failure (e.g. a full disk, or Safari private mode where setItem throws) so a
-// caller can tell "saved" from "looked saved but didn't" instead of guessing.
-export let persistOk = true;
+// A throwaway round-trip: can this browser actually keep bytes for us? Safari
+// with "Block All Cookies" (and some locked-down/quota-full states) makes
+// localStorage throw — or silently drop the write, which only a read-back
+// catches. Used to seed persistOk truthfully at boot, before the first real save.
+function storageWritable() {
+  try {
+    const probe = 'cheekyrun.probe';
+    localStorage.setItem(probe, '1');
+    const ok = localStorage.getItem(probe) === '1';
+    localStorage.removeItem(probe);
+    return ok;
+  } catch { return false; }
+}
+
+// True while saved progress is actually landing on disk. Flips false on a
+// quota/security failure (a full disk, or Safari with cookies/storage blocked
+// where setItem throws OR silently no-ops) so a caller can tell "saved" from
+// "looked saved but didn't" — and warn the player instead of losing it quietly.
+// Seeded from a boot-time probe so the UI can warn even before the first save.
+export let persistOk = storageWritable();
 export function persist() {
   let blob;
   try { blob = JSON.stringify(save); } catch { return; }
   try {
     localStorage.setItem(KEY, blob);
+    // Read-back: a write that "succeeds" but stores nothing (a locked-down
+    // Safari, a torn quota write) must not masquerade as saved.
+    if (localStorage.getItem(KEY) !== blob) throw new Error('write did not persist');
     persistOk = true;
     // Mirror to the shadow slot. Best-effort: if only the backup write fails the
     // primary still landed, so don't flip persistOk on it.
@@ -157,13 +176,20 @@ export function persist() {
 
 // Ask the browser to keep our storage from being evicted under pressure. Without
 // this, localStorage on a shared origin (e.g. *.github.io) is best-effort and can
-// be cleared "after a while" with no user action. Idempotent + feature-detected,
-// so it's a no-op where unsupported; best called from the first user gesture.
+// be cleared "after a while" with no user action — on Safari, all script-writable
+// storage is wiped after 7 days unless the origin is granted persistence (e.g.
+// bookmarked or added to the Home Screen). Idempotent + feature-detected, so it's
+// a no-op where unsupported; best called from the first user gesture.
+// persistGranted: null = unknown/unanswered, true/false = the browser's verdict.
+export let persistGranted = null;
 let persistenceAsked = false;
 export function requestPersistence() {
   if (persistenceAsked) return;
   persistenceAsked = true;
-  try { navigator.storage?.persist?.(); } catch { /* ignore */ }
+  try {
+    const p = navigator.storage?.persist?.();
+    p?.then?.((granted) => { persistGranted = !!granted; }).catch?.(() => {});
+  } catch { /* ignore */ }
 }
 
 // Keep multiple tabs coherent: when another tab rewrites the save, re-read it

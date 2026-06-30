@@ -358,6 +358,30 @@ const SCENARIOS = [
     },
   },
   {
+    name: 'save-blocked-warns',
+    fn: (c, assert) => {
+      // The Safari "clean slate on reopen": when the browser drops our writes
+      // (cookies/storage blocked, private mode, a full disk), persist() now
+      // detects it and the game shows a notice instead of losing progress in
+      // silence. persistOk must reflect the truth, not just that setItem returned.
+      const realSet = localStorage.setItem.bind(localStorage);
+      try {
+        localStorage.setItem = () => { throw new Error('storage blocked'); };
+        c.fund(50);                                   // a save attempt that now fails
+        const blocked = c.saveWarn();
+        assert(blocked.persistOk === false, 'a write that throws flips persistOk false');
+        assert(blocked.shown === true, 'the save-blocked notice is shown');
+        assert(c.state().saveBlocked === true, 'the snapshot reports saving is blocked');
+      } finally {
+        localStorage.setItem = realSet;               // restore real storage for later scenarios
+      }
+      c.fund(0);                                       // a successful write heals the flag
+      const ok = c.saveWarn();
+      assert(ok.persistOk === true, 'a successful write clears persistOk');
+      assert(ok.shown === false, 'the notice hides once saving works again');
+    },
+  },
+  {
     name: 'powerup-visual',
     fn: (c, assert) => {
       c.start();
