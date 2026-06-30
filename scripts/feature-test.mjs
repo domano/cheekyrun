@@ -70,13 +70,44 @@ const SCENARIOS = [
     },
   },
   {
-    name: 'level-up',
+    name: 'stage-finish-line',
     fn: (c, assert) => {
-      c.start(); c.set({ distance: 248 });       // just shy of the level-2 boundary (250)
-      assert(c.state().level === 1, 'still level 1 below the boundary');
-      const s = c.step(90);                       // step across it
-      assert(s.level === 2, 'crossing the distance boundary bumps the level');
-      assert(s.biome === 'Sunset', 'level 2 switches to the Sunset biome');
+      c.start();
+      assert(c.state().level === 1, 'a run begins on stage 1');
+      c.forceFinish();                            // drop the finish line just ahead
+      assert(c.state().finishLine !== null, 'reaching the stage end drops a finish line');
+      let s; for (let i = 0; i < 40; i++) { s = c.step(6); if (s.level === 2) break; }
+      assert(s.level === 2, 'crossing the finish line advances the stage');
+      assert(s.biome === 'Sunset', 'the next stage switches to the Sunset biome');
+    },
+  },
+  {
+    name: 'stage-length-scales-with-speed',
+    fn: (c, assert) => {
+      c.start();
+      c.set({ speed: 12.5, level: 2 });           // begin a stage at base speed
+      const slow = c.state().stageLen;
+      c.set({ speed: 30, level: 3 });             // begin a stage while running fast
+      const fast = c.state().stageLen;
+      assert(slow > 0, 'a stage has a positive length');
+      assert(fast > slow, `a faster run gets a longer stage (slow ${slow}, fast ${fast})`);
+    },
+  },
+  {
+    name: 'stage-breather-suppresses-spawns',
+    fn: (c, assert) => {
+      // The stage body spawns obstacle rows as usual...
+      // (a coarse dt keeps the rendered-frame count — and the test — cheap)
+      c.start({ magnetR: 0 }); c.seed(5);
+      c.set({ stageStart: 0, stageLen: 4000 }); c.clearField();   // sit deep inside the stage body
+      const body = c.step(100, 1 / 30).counts.obstacles;
+      assert(body > 0, 'obstacles spawn through the stage body');
+      // ...but the run-up to the finish line (and the breather past it) stays clear.
+      c.start({ magnetR: 0 }); c.seed(5);
+      const d = c.state().distance;
+      c.set({ stageStart: d - 200, stageLen: 50 }); c.clearField();   // into=200 ≫ stageLen → in the clearing zone
+      const breather = c.step(100, 1 / 30).counts.obstacles;
+      assert(breather === 0, 'no obstacles spawn in the finish-line breather');
     },
   },
   {
@@ -392,8 +423,8 @@ const SCENARIOS = [
       let s = c.step(30);                         // long enough to grab, short enough that the squish hasn't decayed
       assert(s.rollCount === 1, 'roll collected');
       assert(s.emote > 0, 'grabbing a roll triggers a happy squish');
-      c.start(); c.set({ distance: 248 });        // just shy of the level-2 boundary
-      s = c.step(20);                             // cross it, then check the twirl is underway
+      c.start(); c.forceFinish();                  // drop the finish line just ahead
+      for (let i = 0; i < 40; i++) { s = c.step(5); if (s.level === 2) break; }   // cross it, then check the twirl is underway
       assert(s.level === 2, 'crossed into level 2');
       assert(s.spin > 0, 'leveling up kicks off a celebratory twirl');
     },
@@ -460,17 +491,18 @@ const SCENARIOS = [
   {
     name: 'draft-cadence',
     fn: (c, assert) => {
+      const cross = (lvl) => { c.forceFinish(); let s; for (let i = 0; i < 40; i++) { s = c.step(6); if (s.level === lvl) break; } return s; };
       c.start(); c.seed(1);
-      c.set({ distance: 248 }); let s = c.step(30);     // cross into level 2 (1st level-up)
-      assert(s.level === 2 && s.levelUps === 1, 'reached level 2 on the first level-up');
+      let s = cross(2);                                  // 1st finish line → level 2 (1st level-up)
+      assert(s.level === 2 && s.levelUps === 1, 'first finish line reaches level 2');
       assert(s.state === 'draft', 'the first level-up front-loads a draft');
       assert(s.draft.length === 3, 'three perks are offered');
       c.set({ draftArm: 0 });                            // skip the input-lock for the test
       c.pick(0);                                         // take one, resume
-      c.set({ distance: 498 }); s = c.step(30);          // cross into level 3 (2nd level-up)
-      assert(s.level === 3 && s.levelUps === 2, 'reached level 3');
+      s = cross(3);                                      // 2nd finish line → level 3 (2nd level-up)
+      assert(s.level === 3 && s.levelUps === 2, 'second finish line reaches level 3');
       assert(s.state === 'playing', 'no draft on the second level-up');
-      c.set({ distance: 748 }); s = c.step(30);          // cross into level 4 (3rd level-up)
+      s = cross(4);                                      // 3rd finish line → level 4 (3rd level-up)
       assert(s.level === 4 && s.state === 'draft', 'the third level-up drafts again');
     },
   },
@@ -1019,8 +1051,8 @@ const SCENARIOS = [
     // a big-moment beat the player can feel, not just a particle puff.
     name: 'level-up-shockwave',
     fn: (c, assert) => {
-      c.start(); c.set({ distance: 248 });
-      let s = c.step(20);                               // cross into level 2
+      c.start(); c.forceFinish();
+      let s; for (let i = 0; i < 40; i++) { s = c.step(5); if (s.level === 2) break; }   // cross into level 2
       assert(s.level === 2, 'crossed into level 2');
       assert(s.ringT > 0, 'a level-up fires the expanding shockwave ring');
     },
