@@ -943,6 +943,22 @@ const SCENARIOS = [
     },
   },
   {
+    // The score HUD catches fire as the score climbs faster: raw pace and a hot
+    // combo both lift `scoreHeat` (0..1), which drives the glow/flames/shake.
+    name: 'score-heat-on-fire',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.clearField();
+      const cold = c.step(4).scoreHeat;
+      assert(cold < 0.2, `a fresh, slow run keeps the score cool (${cold})`);
+      c.set({ combo: 40, comboTimer: 99 }); const hotCombo = c.step(40).scoreHeat;
+      assert(hotCombo > cold + 0.1, `a hot combo sets the score alight (${cold} → ${hotCombo})`);
+      c.start({ magnetR: 0 }); c.clearField(); c.set({ elapsed: 200 });
+      const fast = c.step(40).scoreHeat;
+      assert(fast > cold + 0.1, `a fast run heats the score (${cold} → ${fast})`);
+      assert(hotCombo <= 1.0001 && fast <= 1.0001, 'heat stays within 0..1');
+    },
+  },
+  {
     // Un-capped difficulty: warm-up difficulty plateaus at ~70s, so `heat` keeps
     // creeping with the level. A deep run packs denser rows at the SAME difficulty.
     name: 'heat-escalates-density',
