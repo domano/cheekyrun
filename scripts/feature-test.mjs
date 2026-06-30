@@ -1070,6 +1070,45 @@ const SCENARIOS = [
     },
   },
   {
+    // Split paths: the track occasionally forks — a solid centre divider walls off
+    // the middle lane, and one side route (the "hard" one) runs a tighter gauntlet
+    // of hazards but is paved with extra rolls, while the other stays mostly clear.
+    name: 'split-path-fork',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.seed(7); c.set({ difficulty: 0.9 }); c.clearField();
+      const f = c.forkNow();
+      assert(f.fork.rows > 0, 'forkNow opens a split-path fork');
+      const hardLeft = f.fork.hard === 0;                       // hard route on the left (negative lx)?
+      const onHard = (lx) => hardLeft ? lx < -1 : lx > 1;
+      const onEasy = (lx) => hardLeft ? lx > 1 : lx < -1;
+      for (let k = 0; k < f.fork.rows; k++) c.spawnRow();        // lay the fork's content rows
+      const fld = c.field();
+      const haz = fld.obstacles.filter(o => !o.divider);
+      const hardHaz = haz.filter(o => onHard(o.lx)).length, easyHaz = haz.filter(o => onEasy(o.lx)).length;
+      const hardRolls = fld.rolls.filter(o => onHard(o.lx)).length, easyRolls = fld.rolls.filter(o => onEasy(o.lx)).length;
+      assert(hardHaz > 0, 'the hard route throws hazards');
+      assert(hardHaz > easyHaz, `the hard route is the tougher gauntlet (hard ${hardHaz}, easy ${easyHaz})`);
+      assert(easyHaz === 0, 'the easy route stays clear of hazards');
+      assert(hardRolls > easyRolls, `the hard route is paved with more rolls (hard ${hardRolls}, easy ${easyRolls})`);
+
+      // The fork lays a continuous centre divider as the world runs.
+      c.start({ magnetR: 0 }); c.seed(7); c.set({ difficulty: 0.9, stageStart: 0, stageLen: 4000 }); c.clearField();
+      const g = c.forkNow(); c.lane(g.fork.hard === 0 ? 2 : 0);  // sit on the easy side while it runs
+      const s = c.step(60, 1 / 30);
+      assert(s.counts.dividers > 0, 'a running fork lays centre-lane divider segments');
+      assert(s.state === 'playing', 'the easy route is survivable');
+
+      // The divider is solid: it can be neither jumped nor ducked — unlike a normal
+      // obstacle, which a jump clears — so a fork is a genuine commit to one side.
+      c.start({ magnetR: 0 }); c.clearField();
+      c.spawn('divider', 1, -4); c.jump();
+      assert(c.step(60).state === 'over', 'jumping does not clear a centre divider');
+      c.start({ magnetR: 0 }); c.clearField();
+      c.spawn('divider', 1, -4); c.left();                      // step into a side lane instead
+      assert(c.step(60).state === 'playing', 'stepping to a side lane clears the divider');
+    },
+  },
+  {
     // Daily return streak: completing the daily on consecutive days builds a streak;
     // a missed day resets it to 1. (Driven via explicit day keys so it's testable.)
     name: 'daily-streak',

@@ -13,6 +13,21 @@ export const GATE_CHANCE = 0.16;      // base chance on an eligible row
 export const GATE_CHANCE_RAMP = 0.2;  // extra chance added at full difficulty
 export const GATE_COOLDOWN = 2;       // normal rows guaranteed between gates
 
+// SPLIT PATHS: occasionally the track forks. A hedge divider walls off the
+// centre lane for a stretch, so you must commit to the LEFT or RIGHT route. One
+// side is the HARD route — a tighter gauntlet of hazards but paved with extra
+// rolls; the other is the EASY route — mostly clear road, the odd roll. A sign at
+// the mouth (and a banner) telegraphs which side is which. Spaced out like gates
+// so a fork stays an event, not the norm.
+export const FORK_MIN_DIFF = 0.3;      // phase in only after a solid warm-up
+export const FORK_CHANCE = 0.1;        // chance on an eligible row to open a fork
+export const FORK_COOLDOWN = 8;        // normal rows guaranteed after a fork ends
+export const FORK_ROWS = 6;            // how many content rows a fork lasts
+export const FORK_SEG = 3.2;           // world units between centre-divider segments
+export const FORK_HARD_OBSTACLE = 0.8; // chance the hard route throws a hazard each row
+export const FORK_HARD_ROLL = 0.95;    // chance the hard route drops a roll each row (the payoff)
+export const FORK_EASY_ROLL = 0.25;    // chance the easy route drops a roll each row
+
 // Combo: grabbing rolls (and clean near-misses) in quick succession stacks a
 // multiplier. The chain survives COMBO_WINDOW seconds without a pickup, then
 // drops. The multiplier steps up one notch every COMBO_STEP hits, capped.

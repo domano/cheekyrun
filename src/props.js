@@ -146,6 +146,47 @@ export function makeFinishLine() {
   return g;
 }
 
+// One segment of the centre-lane hedge that walls off a split-path fork. Segments
+// are spawned end-to-end (depth = FORK_SEG) so the wall reads as continuous. It's
+// solid — neither jumpable nor duckable — so the only way past a fork is to commit
+// to a side lane. A neutral leafy green so it reads as a barrier in every biome.
+export function makeDivider() {
+  const g = new THREE.Group();
+  const hedge = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.1, 3.2), toon(0x6cbf5a));
+  hedge.position.y = 0.55; hedge.castShadow = true; ink(hedge, 1.05); g.add(hedge);
+  // A few foliage puffs along the top so the barrier looks like a clipped hedge.
+  const leafM = toon(0x7fd06a);
+  [-1.0, 0, 1.0].forEach(z => {
+    const l = new THREE.Mesh(new THREE.SphereGeometry(0.42, 10, 10), leafM);
+    l.position.set(0, 1.15, z); l.scale.set(1.1, 0.8, 1.1); l.castShadow = true; ink(l, 1.06); g.add(l);
+  });
+  g.userData.kind = 'divider';
+  return g;
+}
+
+// The signpost dropped at a fork's mouth: a central post carrying an arrow board
+// to each side — the HARD route's board is gold-on-red (reward + danger), the EASY
+// route's is calm green — so a glance tells you which way the rolls (and risk) lie.
+export function makeForkSign(hardIsLeft) {
+  const g = new THREE.Group();
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 3.0, 10), toon(0xe0d3c0));
+  post.position.y = 1.5; post.castShadow = true; ink(post, 1.06); g.add(post);
+  // An arrow board pointing to one side, tinted for hard (gold) or easy (green).
+  const board = (dir, hard) => {
+    const b = new THREE.Group();
+    const plank = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.6, 0.12), toon(hard ? 0xffc23a : 0x7fd06a));
+    plank.castShadow = true; ink(plank, 1.05); b.add(plank);
+    // a little arrowhead (cone laid on its side) on the pointing edge
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.6, 4), toon(hard ? 0xff6b5a : 0x57bf64));
+    tip.rotation.z = dir < 0 ? Math.PI / 2 : -Math.PI / 2; tip.position.x = dir * 0.95; ink(tip, 1.06); b.add(tip);
+    b.position.set(dir * 0.95, hard ? 2.35 : 1.65, 0);   // hard board rides higher so it reads first
+    return b;
+  };
+  g.add(board(-1, hardIsLeft), board(1, !hardIsLeft));
+  g.userData.kind = 'forksign';
+  return g;
+}
+
 export function makeRoll() {
   const g = new THREE.Group();
   const paper = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.5, 22), toon(0xffffff, { emissive: 0x222222 }));

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { LANES, SPAWN_Z, DESPAWN_Z, INK, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE_RAMP, GATE_COOLDOWN, COMBO_WINDOW, comboMult, NEARMISS_MARGIN, NEARMISS_BONUS, SKIM_MARGIN, SKIM_BONUS, SKIM_WINDOW, SAFE_HAZARD_MIN_DIFF, SAFE_HAZARD_CHANCE, JUMP_BUFFER, HITSTOP_SHIELD, HITSTOP_DEATH, SLOWMO_FACTOR, SLOWMO_TIME, SLOWMO_MIN_MULT, SCORE_FLOW_RATE, HEAT_PER_LEVEL, HEAT_LEVEL_CAP, HEAT_MAX, PHOENIX_COMBO, PHOENIX_INVULN, GREED_CAP, RING_TIME, POWERUP_DURATION, POWERUP_CHANCE, POWERUP_MIN_DIFF, POWERUP_COOLDOWN, POWERUPS, POWERUP_KINDS, DASH_SPEED_MULT, DRAFT_EVERY, DRAFT_CHOICES, DRAFT_ARM, DRAFT_GRACE, mulberry32, dailyKey, dailySeed, $, buzz, shuffle } from './config.js';
+import { LANES, SPAWN_Z, DESPAWN_Z, INK, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE_RAMP, GATE_COOLDOWN, FORK_MIN_DIFF, FORK_CHANCE, FORK_COOLDOWN, FORK_ROWS, FORK_SEG, FORK_HARD_OBSTACLE, FORK_HARD_ROLL, FORK_EASY_ROLL, COMBO_WINDOW, comboMult, NEARMISS_MARGIN, NEARMISS_BONUS, SKIM_MARGIN, SKIM_BONUS, SKIM_WINDOW, SAFE_HAZARD_MIN_DIFF, SAFE_HAZARD_CHANCE, JUMP_BUFFER, HITSTOP_SHIELD, HITSTOP_DEATH, SLOWMO_FACTOR, SLOWMO_TIME, SLOWMO_MIN_MULT, SCORE_FLOW_RATE, HEAT_PER_LEVEL, HEAT_LEVEL_CAP, HEAT_MAX, PHOENIX_COMBO, PHOENIX_INVULN, GREED_CAP, RING_TIME, POWERUP_DURATION, POWERUP_CHANCE, POWERUP_MIN_DIFF, POWERUP_COOLDOWN, POWERUPS, POWERUP_KINDS, DASH_SPEED_MULT, DRAFT_EVERY, DRAFT_CHOICES, DRAFT_ARM, DRAFT_GRACE, mulberry32, dailyKey, dailySeed, $, buzz, shuffle } from './config.js';
 import { makeGradient, toon } from './materials.js';
-import { makeObstacle, makeHurdle, makeGate, makeRoll, makePowerup, makeTree, makeBush, makeFlower, makeCloud, makeFinishLine, OBSTACLE_KINDS } from './props.js';
+import { makeObstacle, makeHurdle, makeGate, makeDivider, makeForkSign, makeRoll, makePowerup, makeTree, makeBush, makeFlower, makeCloud, makeFinishLine, OBSTACLE_KINDS } from './props.js';
 import { createParticles } from './particles.js';
 import { buildPlayer, applyGear } from './player.js';
 import { STAGE_BASE, STAGE_LEAD, stageLength, biomeOf, obstacleSet, biomePlay, biomeAir } from './levels.js';
@@ -28,6 +28,10 @@ let groundMat, pathMat, discMat, hillMats = [], roadGround, roadPath;
 let fxRing, ringT = 0, camKick = 0;    // level-up shockwave ring + a one-shot camera FOV punch
 let state = 'menu';
 let speed, distance, rollCount, rollPoints, rowTimer, sceneAcc, dustAcc, elapsed, difficulty, safeLane, forcedGap;
+// Split-path fork: while `forkRows` > 0 the track is forked — `forkHard` is the
+// lane index (0 or 2) of the harder, roll-rich route; the centre lane is walled by
+// a hedge whose segments are paced by `dividerAcc`. `forkCD` spaces forks apart.
+let forkRows = 0, forkHard = 0, forkCD = 0, dividerAcc = 0;
 // Stage window: where the current stage began + how long it runs (sized to speed
 // when it starts). `finishLine` is the banner dropped at the tail; crossing it
 // ends the stage. `finishArmed` gates the one-shot level-up on that crossing.
@@ -178,6 +182,14 @@ function spawnRow() {
   // heat === difficulty and the biome biases are all 1, so the warm-up is unchanged.
   const heat = Math.min(HEAT_MAX, d + Math.min(HEAT_LEVEL_CAP, (level - 1) * HEAT_PER_LEVEL));
   const bp = biomePlay(level);   // per-biome spawn character (more gates here, denser rolls there)
+  // SPLIT PATH: while a fork is laying down, every row is a fork row (side-route
+  // hazards + rolls); the centre divider is paced separately in tick(). Skip the
+  // normal corridor entirely. Otherwise, occasionally OPEN a fork — spaced by its
+  // own cooldown and kept clear of a freshly-spawned gate (forcedGap).
+  if (forkRows > 0) { spawnForkRow(); return; }
+  if (forkCD > 0) { forkCD--; }
+  else if (heat > FORK_MIN_DIFF && forcedGap <= 0 && rng() < FORK_CHANCE) { startFork(); spawnForkRow(); return; }
+
   // FULL-WIDTH GATE: every lane is blocked, so the only way through is the right
   // action — jump a low hurdle or slide under a high bar. Side-stepping can't
   // dodge it. Phases in after the warm-up, ramps with heat, and is spaced
@@ -245,6 +257,48 @@ function spawnGate() {
   o.position.set(0, 0, SPAWN_Z); o.userData.halfW = 3.3; o.userData.lx = 0; scene.add(o); obstacles.push(o);
   // A reward roll in a random lane for clearing it cleanly.
   if (rng() < 0.7) { const li = (rng() * 3) | 0; const r = makeRoll(); r.position.set(LANES[li], 0.95, SPAWN_Z); r.userData.lx = LANES[li]; scene.add(r); rolls.push(r); }
+}
+// Open a split-path fork: pick which side is the hard (roll-rich) route, drop the
+// telegraph sign at the horizon, and arm the centre divider. The divider segments
+// themselves are paced by distance in tick() so the wall stays continuous.
+function startFork() {
+  forkRows = FORK_ROWS;
+  forkHard = rng() < 0.5 ? 0 : 2;
+  dividerAcc = FORK_SEG;                              // lay the first divider segment next tick
+  const sign = makeForkSign(forkHard === 0);
+  sign.position.set(0, 0, SPAWN_Z); sign.userData.lx = 0; scene.add(sign); scenery.push(sign);
+  const side = forkHard === 0 ? 'left' : 'right';
+  showBanner(`⚠️ Fork! 🧻 rolls ${side}`); sfxWhoosh(); buzz([10, 20]);
+}
+// One row of a fork's side-route content: the hard route runs a tighter gauntlet
+// of hazards but is paved with extra rolls (the payoff); the easy route stays
+// mostly clear. The centre lane carries no content — it's walled by the divider.
+function spawnForkRow() {
+  forkRows--;
+  const theme = obstacleSet(level), kinds = [...theme.jump, theme.duck];
+  const hard = forkHard, easy = forkHard === 0 ? 2 : 0;
+  // Hard route: a hazard most rows...
+  const hazard = rng() < FORK_HARD_OBSTACLE;
+  if (hazard) {
+    const o = makeObstacle(kinds[(rng() * kinds.length) | 0]);
+    o.position.set(LANES[hard], 0, SPAWN_Z); o.userData.lane = hard; o.userData.lx = LANES[hard]; scene.add(o); obstacles.push(o);
+  }
+  // ...plus a roll (set just past any hazard so it pays the clear).
+  if (rng() < FORK_HARD_ROLL) spawnForkRoll(hard, hazard ? SPAWN_Z - FORK_SEG : SPAWN_Z);
+  // Easy route: the occasional roll on otherwise clear road.
+  if (rng() < FORK_EASY_ROLL) spawnForkRoll(easy, SPAWN_Z);
+  // Fork over: cool it down and hand the corridor back where the player now stands.
+  if (forkRows <= 0) { forkCD = FORK_COOLDOWN; safeLane = laneIdx; }
+}
+function spawnForkRoll(lane, z) {
+  const r = makeRoll(); r.position.set(LANES[lane], 0.95, z); r.userData.lx = LANES[lane]; scene.add(r); rolls.push(r);
+}
+// One centre-lane divider segment at the spawn horizon. Solid (see moveObstacles):
+// it can't be jumped or ducked, so a fork is a true commit to one side.
+function spawnDivider() {
+  const o = makeDivider();
+  o.position.set(LANES[1], 0, SPAWN_Z); o.userData.lx = LANES[1]; o.userData.halfW = 0.55; o.userData.divider = true;
+  scene.add(o); obstacles.push(o);
 }
 function spawnScenery() {
   const x = (Math.random() < 0.5 ? -1 : 1) * (4.4 + Math.random() * 3.5), roll = Math.random();
@@ -377,6 +431,7 @@ function resetGame() {
   speed = 12.5; distance = (level - 1) * STAGE_BASE; rollCount = 0; rollPoints = 0; rowTimer = 1.8; sceneAcc = 0; dustAcc = 0;
   stageStart = distance; stageLen = stageLength(speed);   // first stage is base-length; later ones grow with speed
   elapsed = Math.min(70, (level - 1) * 9); difficulty = 0; safeLane = 1; forcedGap = 0;
+  forkRows = 0; forkHard = 0; forkCD = 0; dividerAcc = 0;
   laneIdx = 1; targetX = 0; vy = 0; grounded = true; jumpsLeft = 2 + extraJumps + mods.extraJumpsBonus; banked = 0; groundY = 0; duckTimer = 0; duckAmt = 0; shakeT = 0;
   jumpBufferT = 0; laneChangeT = -99; hitStopT = 0; slowmoT = 0; worldScale = 1;
   combo = 0; comboTimer = 0; comboMax = 0; flowAcc = 0; safeHazardCount = 0; squash = 0; emoteT = 0; spin = 0; power = null; powerT = 0; powerCD = 6; gotPower = false;
@@ -581,7 +636,13 @@ function tick(dt) {
     const T = (1.35 - 0.6 * difficulty) / (1 + 0.04 * (level - 1)) * biomePlay(level).rowMult;  // seconds between rows
     // Keep the row cadence ticking, but hold spawns through the stage's run-up so
     // the finish line and the upgrade screen land on empty road.
-    rowTimer -= sdt; if (rowTimer <= 0) { if (into < stageLen - STAGE_LEAD) spawnRow(); rowTimer = T; }
+    const spawning = into < stageLen - STAGE_LEAD;
+    rowTimer -= sdt; if (rowTimer <= 0) { if (spawning) spawnRow(); rowTimer = T; }
+    // Centre-divider segments are paced by distance so the wall reads continuous —
+    // but only while a fork is laying down AND still in the spawnable body. Reaching
+    // the finish-line breather abandons any half-laid fork so it can't wall the line.
+    if (forkRows > 0 && spawning) { dividerAcc += speed * sdt; while (dividerAcc >= FORK_SEG) { dividerAcc -= FORK_SEG; spawnDivider(); } }
+    else if (!spawning && forkRows > 0) { forkRows = 0; dividerAcc = 0; forkCD = FORK_COOLDOWN; }
     sceneAcc += speed * sdt; if (sceneAcc >= 5) { sceneAcc = 0; spawnScenery(); }
     if (power) { powerT -= sdt; if (powerT <= 0) { power = null; updatePowerVisual(); sfxPowerEnd(); } updatePowerHud(); }
     moveObstacles(sdt); moveRolls(sdt); movePickups(sdt); moveFinishLine(sdt);
@@ -609,7 +670,9 @@ function moveObstacles(dt) {
     const lx = o.userData.lx, halfW = o.userData.halfW || 0.95;
     const dz = Math.abs(o.position.z - player.position.z), dx = Math.abs(lx - player.position.x);
     if (dz < 0.8 && dx < halfW) {
-      const safe = o.userData.duck ? (duckTimer > 0) : (groundY > 1.0);
+      // A fork divider is solid — neither a jump nor a duck clears it, so the only
+      // way past a fork is to be in a side lane. Other obstacles clear as usual.
+      const safe = o.userData.divider ? false : o.userData.duck ? (duckTimer > 0) : (groundY > 1.0);
       if (!safe && invuln <= 0) {
         if (shields > 0 && !mods.noShields) {
           shields--; invuln = 1.1; updateShieldHud(); breakCombo(); flash('#8fd3ff'); buzz(30); sfxShield(shields === 0); shakeT = 0.25;
@@ -628,7 +691,7 @@ function moveObstacles(dt) {
     // a tight lateral dodge — lane-changing past an adjacent-lane hazard right as
     // it goes by. The skim only counts if you actually changed lanes for it
     // (within SKIM_WINDOW), so parking one lane over earns nothing.
-    if (!o.userData.scored && prevZ < player.position.z && o.position.z >= player.position.z && dx < halfW + SKIM_MARGIN) {
+    if (!o.userData.scored && !o.userData.divider && prevZ < player.position.z && o.position.z >= player.position.z && dx < halfW + SKIM_MARGIN) {
       const through = dx < halfW + NEARMISS_MARGIN;
       const skim = !through && (simTime - laneChangeT) < SKIM_WINDOW;
       if (through || skim) {
@@ -1049,6 +1112,7 @@ function buildDebugApi() {
       dailyStreak: getDailyStreak(dailyKey()),
       jumpBufferT: +jumpBufferT.toFixed(3), hitStopT: +hitStopT.toFixed(3), slowmoT: +slowmoT.toFixed(3),
       safeHazards: safeHazardCount, musicIntensity: +getIntensity().toFixed(3),
+      fork: { rows: forkRows, hard: forkHard, cd: forkCD },
       perks: perks.map(p => ({ id: p.id, stacks: p.stacks })), mods, levelUps,
       draft: draftCards.map(p => p.id), draftArm: +draftArm.toFixed(2),
       meta: { rerolls: getRerolls(), banishes: getBanishes(), boon: getBoon(), eligible: eligiblePool() },
@@ -1059,7 +1123,7 @@ function buildDebugApi() {
       player: { x: +player.position.x.toFixed(3), groundY: +groundY.toFixed(3), grounded, ducking: duckTimer > 0 },
       gearTiers, auraVisible: !!(aura && aura.visible), fartCount,
       gearVisible: gear ? { shield: gear.shield.visible, spring: gear.spring.visible, magnet: gear.magnet.visible, fortune: gear.fortune.visible, headstart: gear.headstart.visible, shieldPips: gear.shieldPips.filter(p => p.visible).length } : {},
-      counts: { obstacles: obstacles.length, rolls: rolls.length, pickups: pickups.length, scenery: scenery.length, finish: finishLine ? 1 : 0 },
+      counts: { obstacles: obstacles.length, rolls: rolls.length, pickups: pickups.length, scenery: scenery.length, finish: finishLine ? 1 : 0, dividers: obstacles.filter(o => o.userData.divider).length },
       wallet: getWallet(), daily,
     };
   }
@@ -1069,6 +1133,7 @@ function buildDebugApi() {
   function spawn(kind = 'cactus', lane = laneIdx, z = -8) {
     let o, arr;
     if (kind === 'roll') { o = makeRoll(); o.position.set(LANES[lane], 0.95, z); o.userData.lx = LANES[lane]; arr = rolls; }
+    else if (kind === 'divider') { o = makeDivider(); o.position.set(LANES[lane], 0, z); o.userData.lx = LANES[lane]; o.userData.halfW = 0.55; o.userData.divider = true; arr = obstacles; }
     else if (kind === 'gate' || kind === 'hurdle') {
       o = kind === 'gate' ? makeGate() : makeHurdle();
       o.position.set(0, 0, z); o.userData.halfW = 3.3; o.userData.lx = 0; arr = obstacles;
@@ -1110,7 +1175,7 @@ function buildDebugApi() {
       lifecycle: ['start(overrides?)', 'reset()', 'fresh()', 'over()'],
       time: ['pause()', 'resume()', 'step(frames=1, dt=1/60)', 'seed(n)'],
       teleport: ['set({level,speed,shields,power,...})', `keys: ${Object.keys(SETTERS).join(', ')}`],
-      world: ['spawn(kind, lane?, z?)', 'clearField()', 'forceFinish(z?)', `kinds: ${OBSTACLE_KINDS.join('|')}|gate|hurdle|roll|powerup[:magnet|x2|ghost]`],
+      world: ['spawn(kind, lane?, z?)', 'clearField()', 'forceFinish(z?)', 'forkNow()', 'field()', `kinds: ${OBSTACLE_KINDS.join('|')}|gate|hurdle|divider|roll|powerup[:magnet|x2|ghost]`],
       input: ['left()', 'right()', 'lane(i)', 'jump()', 'duck()'],
       shop: ['wallet()', 'fund(n)', 'buy(id)', 'effects()', 'migrate(legacyOwned?)'],
       perks: ['perk(id)', 'draft()', 'openDraft()', 'pick(i)', 'reroll()', 'banish(i)', `ids: ${PERKS.map(p => p.id).join('|')}`],
@@ -1139,6 +1204,7 @@ function buildDebugApi() {
     clearField: () => {
       [...obstacles, ...rolls, ...pickups].forEach(o => scene.remove(o));
       obstacles = []; rolls = []; pickups = [];
+      forkRows = 0; dividerAcc = 0;
       if (finishLine) { scene.remove(finishLine); finishLine = null; finishArmed = false; }
       return snapshot();
     },
@@ -1177,6 +1243,15 @@ function buildDebugApi() {
     reroll: () => { rerollDraft(); return snapshot(); },
     banish: (i) => { banishCard(i); return snapshot(); },
     spawnRow: () => { spawnRow(); return snapshot(); },   // force one obstacle/roll row (no render — cheap for tests)
+    // Open a split-path fork right now (deterministic via the run's seed), so a test
+    // can drive the fork without waiting for the random roll in spawnRow().
+    forkNow: () => { startFork(); return snapshot(); },
+    // A plain dump of the live obstacle/roll field (lane X + Z) for asserting on
+    // spawn distribution — e.g. that a fork's hard route is denser than its easy one.
+    field: () => ({
+      obstacles: obstacles.map(o => ({ lx: +o.userData.lx.toFixed(2), z: +o.position.z.toFixed(2), divider: !!o.userData.divider, duck: !!o.userData.duck })),
+      rolls: rolls.map(o => ({ lx: +o.userData.lx.toFixed(2), z: +o.position.z.toFixed(2) })),
+    }),
     // ---- meta (roguelite lab) ----
     buyMeta: (id) => { const ok = buyMeta(id); renderShop(); return ok; },
     boon: (id) => { setBoon(id || null); renderShop(); return getBoon(); },
