@@ -307,6 +307,31 @@ const SCENARIOS = [
     },
   },
   {
+    // Completeness gate: every perk wears a visible 3D prop. The legacy three map
+    // onto magnet/spring/clover; every other perk keys onto a prop in its own
+    // file (src/perkgear/<id>.js). Goes fully green once each perk has a model.
+    name: 'perk-gear-models',
+    fn: (c, assert) => {
+      const MAP = {
+        vacuum: 'magnet', hops: 'spring', lucky: 'fortune',
+        tailwind: 'tailwind', memory: 'memory', pillow: 'pillow', daredevil: 'daredevil',
+        doubledown: 'doubledown', glasscannon: 'glasscannon', greedygut: 'greedygut',
+        featherfall: 'featherfall', secondwind: 'secondwind', overdrive: 'overdrive',
+        hotstreak: 'hotstreak', featherweight: 'featherweight', perfectionist: 'perfectionist',
+        magpie: 'magpie', allin: 'allin',
+      };
+      c.start();
+      for (const id in MAP) {
+        const s = c.perk(id);
+        assert(s.gearVisible[MAP[id]] === true, `drafting ${id} wears its ${MAP[id]} prop`);
+      }
+      const f = c.start();   // perks are per-run: a fresh run strips every prop off
+      for (const id in MAP) {
+        assert(f.gearVisible[MAP[id]] === false, `${id}'s prop is gone on a fresh run`);
+      }
+    },
+  },
+  {
     name: 'save-resilience',
     fn: (c, assert) => {
       // The versioned save loader self-heals on load. A blob written by a FUTURE

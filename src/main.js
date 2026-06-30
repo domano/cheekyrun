@@ -3,7 +3,7 @@ import { LANES, SPAWN_Z, DESPAWN_Z, INK, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE
 import { makeGradient, toon } from './materials.js';
 import { makeObstacle, makeHurdle, makeGate, makeRoll, makePowerup, makeTree, makeBush, makeFlower, makeCloud, makeFinishLine, OBSTACLE_KINDS } from './props.js';
 import { createParticles } from './particles.js';
-import { buildPlayer, applyGear } from './player.js';
+import { buildPlayer, applyGear, tickGear } from './player.js';
 import { STAGE_BASE, STAGE_LEAD, stageLength, biomeOf, obstacleSet, biomePlay, biomeAir } from './levels.js';
 import { trackOffset, deformRoad } from './track.js';
 import { UPGRADES, effects, tierOf, nextCost, buy, getWallet, addRolls, DEFAULT_POOL, unlockedPerkIds, META, buyMeta } from './upgrades.js';
@@ -291,7 +291,10 @@ const PERK_GEAR = { vacuum: 'magnet', hops: 'spring', lucky: 'fortune' };
 // stacks. Rebuilt whenever ownership or the draft changes.
 function wornGear() {
   const t = daily ? {} : { shield: tierOf('shield'), headstart: tierOf('headstart') };
-  for (const p of perks) { const g = PERK_GEAR[p.id]; if (g) t[g] = p.stacks; }
+  // Drafted perks each wear a prop: the legacy three map onto magnet/spring/
+  // clover (PERK_GEAR); every other perk keys onto its own id (its file in
+  // src/perkgear/<id>.js). Sized by stack count.
+  for (const p of perks) { const g = PERK_GEAR[p.id] || p.id; t[g] = p.stacks; }
   return t;
 }
 function refreshGear() { gearTiers = wornGear(); applyGear(gear, gearTiers); }
@@ -881,6 +884,7 @@ function updatePlayer(dt, t) {
   }
   if (gear && gear.shield.visible) gear.shield.rotation.y += dt * 0.7;   // orbit the tier pips
   if (gear && gear.headstart.visible) gear.flame.scale.y = 0.8 + Math.abs(Math.sin(t * 22)) * 0.5;
+  if (gear) tickGear(gear, t, dt);   // animate the dynamic perk props that opt in
   squash -= squash * Math.min(1, dt * 12);   // ease the squash/stretch impulse back to 0
   const baseSq = (grounded && duckTimer <= 0) ? 1 - bob * 0.4 : 1;
   const sy = baseSq * (1 - duckAmt * 0.55) * (1 - squash), sxz = (1 / Math.sqrt(baseSq)) * (1 + duckAmt * 0.32) * (1 + squash * 0.5);
@@ -1142,7 +1146,8 @@ function buildDebugApi() {
       track: trackSnapshot(),
       player: { x: +player.position.x.toFixed(3), groundY: +groundY.toFixed(3), grounded, ducking: duckTimer > 0 },
       gearTiers, auraVisible: !!(aura && aura.visible), fartCount,
-      gearVisible: gear ? { shield: gear.shield.visible, spring: gear.spring.visible, magnet: gear.magnet.visible, fortune: gear.fortune.visible, headstart: gear.headstart.visible, shieldPips: gear.shieldPips.filter(p => p.visible).length } : {},
+      gearVisible: gear ? { shield: gear.shield.visible, spring: gear.spring.visible, magnet: gear.magnet.visible, fortune: gear.fortune.visible, headstart: gear.headstart.visible, shieldPips: gear.shieldPips.filter(p => p.visible).length,
+        ...Object.fromEntries((gear._defs || []).map(d => [d.id, gear[d.id].visible])) } : {},
       counts: { obstacles: obstacles.length, rolls: rolls.length, pickups: pickups.length, scenery: scenery.length, finish: finishLine ? 1 : 0 },
       wallet: getWallet(), daily,
     };
