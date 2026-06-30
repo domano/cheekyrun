@@ -40,23 +40,23 @@ export const PERKS = [
   // main.js) so a mid-run spend isn't refunded by a recompute — apply() is a no-op.
   { id: 'pillow', icon: '🛡️', name: 'Pillow Stack', desc: 'Start with +1 cushion.',
     rarity: 'rare', weight: 50, stack: 2, shieldGrant: 1, apply: () => {} },
-  { id: 'daredevil', icon: '😎', name: 'Daredevil', desc: 'Near-misses pay big.',
+  { id: 'daredevil', icon: '😎', name: 'Daredevil', desc: 'Near-misses pay 2×.',
     rarity: 'rare', weight: 60, stack: 2, apply: (m) => { m.nearMissMult *= 2; } },
   { id: 'doubledown', icon: '💰', name: 'Double Down', desc: 'Rolls are worth 2× always.',
     rarity: 'epic', weight: 30, stack: 1, apply: (m) => { m.rollX *= 2; } },
   { id: 'glasscannon', icon: '🥃', name: 'Glass Cannon', desc: '2× rolls, but no cushions & more hazards.',
     rarity: 'curse', weight: 30, stack: 1, apply: (m) => { m.rollX *= 2; m.obstacleMult *= 1.25; m.noShields = true; } },
-  { id: 'greedygut', icon: '🤑', name: 'Greedy Gut', desc: 'More rolls — and more danger.',
+  { id: 'greedygut', icon: '🤑', name: 'Greedy Gut', desc: '+60% rolls, but +25% hazards.',
     rarity: 'curse', weight: 30, stack: 2, apply: (m) => { m.rollSpawnMult *= 1.6; m.obstacleMult *= 1.25; } },
-  { id: 'featherfall', icon: '🪶', name: 'Featherfall', desc: 'Float down softly.',
+  { id: 'featherfall', icon: '🪶', name: 'Featherfall', desc: 'Hang in the air longer.',
     rarity: 'epic', weight: 22, stack: 1, apply: (m) => { m.floatMult *= 0.5; } },
-  { id: 'secondwind', icon: '🌬️', name: 'Second Wind', desc: 'Grab a roll, regain a jump.',
+  { id: 'secondwind', icon: '🌬️', name: 'Second Wind', desc: 'Grab a roll mid-air, regain a jump.',
     rarity: 'epic', weight: 22, stack: 1, apply: (m) => { m.jumpOnRoll = true; } },
   { id: 'overdrive', icon: '🏎️', name: 'Overdrive', desc: '+18% speed — pure distance.',
     rarity: 'rare', weight: 45, stack: 2, apply: (m) => { m.speedMult *= 1.18; } },
-  { id: 'hotstreak', icon: '🌟', name: 'Hot Streak', desc: 'Your combo can climb higher.',
+  { id: 'hotstreak', icon: '🌟', name: 'Hot Streak', desc: 'Combo cap +2.',
     rarity: 'epic', weight: 22, stack: 1, apply: (m) => { m.comboCeil += 2; } },
-  { id: 'featherweight', icon: '🎈', name: 'Featherweight', desc: 'Super floaty, but one fewer jump.',
+  { id: 'featherweight', icon: '🎈', name: 'Featherweight', desc: 'Hang way longer, but one fewer jump.',
     rarity: 'curse', weight: 26, stack: 1, apply: (m) => { m.floatMult *= 0.45; m.extraJumpsBonus -= 1; } },
   // --- Keystones: build-defining picks that change *how* you play, not just stats ---
   // A dodge build: rolls no longer feed the combo, so the only way to keep a streak
@@ -65,7 +65,7 @@ export const PERKS = [
     rarity: 'epic', weight: 20, stack: 1, apply: (m) => { m.nearMissMult *= 3; m.rollsNoCombo = true; } },
   // A greed build: every roll you bank makes the next ones worth more (up to +150%),
   // so a long, clean harvest snowballs.
-  { id: 'magpie', icon: '🐦', name: 'Magpie', desc: 'Each roll grabbed makes rolls worth more.',
+  { id: 'magpie', icon: '🐦', name: 'Magpie', desc: 'Each roll grabbed: +1% value, up to +150%.',
     rarity: 'epic', weight: 20, stack: 1, apply: (m) => { m.greedScale += 0.01; } },
   // A high-roller curse: triple roll value, but you run bare (no cushions) through
   // a denser hazard field — pure score, no safety net.
