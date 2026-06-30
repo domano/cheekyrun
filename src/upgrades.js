@@ -90,7 +90,7 @@ export const META = [
     name: 'Unlock ' + p.name, desc: p.desc, cost: p.rarity === 'curse' ? 130 : 150,
   })),
   { id: 'reroll', kind: 'reroll', grant: 2, icon: '🎲', name: 'Reroll pack', desc: '+2 draft rerolls.', cost: 80 },
-  { id: 'banish', kind: 'banish', grant: 1, icon: '🚫', name: 'Banish token', desc: 'Remove a perk from your pool.', cost: 90 },
+  { id: 'banish', kind: 'banish', grant: 1, icon: '🚫', name: 'Banish token', desc: '+1 token — remove a perk from your pool.', cost: 90 },
 ];
 
 const metaById = (id) => META.find((m) => m.id === id);

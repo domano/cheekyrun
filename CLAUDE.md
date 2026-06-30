@@ -157,6 +157,14 @@ else is a focused module it pulls from. State lives in module-scope `let`s in
   future keys through), and value clamps stop a corrupt value bricking startup.
   Adding a field = extend `defaults()`/`normalize()`; a breaking change = bump
   `VERSION` and push a `MIGRATIONS` step. The key never changes again.
+  Durability against the browser dropping storage "after a while":
+  `requestPersistence()` (called on the first gesture) asks for non-evictable
+  storage; `persist()` mirrors every write into a shadow slot (`cheekyrun.save.bak`)
+  and `load()` falls back to it when the primary is evicted or half-written;
+  `onExternalChange()` reconciles a sibling tab's write so two tabs don't clobber
+  each other. `persist()` surfaces a quota/blocked write (`persistOk`) instead of
+  silently swallowing it. Note: `safeInit()` (`main.js`) retries init on the *same*
+  save before ever resetting — a transient crash no longer wipes good progress.
 
 - **Upgrades (`upgrades.js`):** reads/writes the save for a roll `wallet` and
   owned upgrade tiers. Rolls grabbed in a run are
