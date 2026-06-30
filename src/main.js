@@ -452,6 +452,7 @@ function applyScoreHeat() {
   p.classList.toggle('warm', scoreHeat >= 0.25 && scoreHeat < 0.55);
   p.classList.toggle('hot', scoreHeat >= 0.55 && scoreHeat < 0.8);
   p.classList.toggle('blaze', scoreHeat >= 0.8);
+  p.classList.toggle('quake', scoreHeat >= 0.9);   // a tremble only at the very top of the curve
 }
 // Fraction (0..1) of the way through the current stage; pins at 1 through the
 // run-up/finish-line breather until crossing starts the next stage.
