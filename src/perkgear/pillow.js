@@ -1,6 +1,8 @@
-// 🛡️ Pillow Stack — a plush quilted pillow worn like a tiny backpack on the
-// back; a second pillow appears stacked above it once 2 stacks are owned, so
-// the tier reads through count rather than size. Reference template: overdrive.js.
+// 🛡️ Pillow Stack — a plush pillow worn high on the upper back like a clear
+// backpack, cresting the top silhouette so it peeks up between/above the ears
+// from the gameplay camera. A second, smaller pillow stacks just behind/above
+// once 2 stacks are owned, so the tier reads through count, not bulk.
+// Reference template: overdrive.js.
 //   id     — the perk id (must match perks.js); also its key in PERK_GEAR.
 //   build()        → a THREE.Object3D, already positioned/oriented on the body.
 //                    Built once, hidden; the game shows it when the perk is drafted.
@@ -12,27 +14,26 @@
 import * as THREE from 'three';
 import { toon, ink } from '../materials.js';
 
-const PILLOW = 0xbcd4ff;  // periwinkle quilted cotton
-const BUTTON = 0x8fb3f0;  // a shade darker, tufted center button
-const SEAM = 0x9cc0f5;    // thin quilting indent lines
+const PILLOW = 0xa9b6e8;  // periwinkle — separates clearly from the off-white body
+const BUTTON = 0x8c9ad8;  // a shade darker, tufted center dimple
+const SEAM = 0x8c9ad8;    // thin quilting seam band, same dark tone as the dimple
 
-// One plush pillow: a softened box (slightly rounded via low segment count +
-// scale), a tufted center button, and two thin quilting seams.
-function makePillow(pillowM, buttonM, seamM) {
+// One plush pillow: a rounded box, a tufted center dimple, and a darker inset
+// seam band standing in for two quilting lines (no extra outline meshes).
+function makePillow(pillowM, buttonM, seamM, w, h, d) {
   const p = new THREE.Group();
 
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.26, 0.1, 3, 3, 2), pillowM);
-  body.castShadow = true; ink(body, 1.08); p.add(body);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d, 3, 3, 2), pillowM);
+  body.castShadow = true; ink(body, 1.07); p.add(body);
 
-  const button = new THREE.Mesh(new THREE.SphereGeometry(0.035, 10, 10), buttonM);
-  button.position.z = 0.06; ink(button, 1.1); p.add(button);
+  const button = new THREE.Mesh(new THREE.SphereGeometry(d * 0.34, 10, 10), buttonM);
+  button.position.z = d / 2 - 0.02; ink(button, 1.1); p.add(button);
 
-  // thin quilting seams — flattened boxes pressed just into the face, no outline
-  [[-0.09, 0], [0.09, 0]].forEach(([x]) => {
-    const seam = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.22, 0.004), seamM);
-    seam.position.set(x, 0, 0.052);
-    p.add(seam);
-  });
+  // darker inset seam band pressed just into the face, flush — no outline so
+  // it can't read as a separate floating mesh
+  const seam = new THREE.Mesh(new THREE.BoxGeometry(w * 0.94, h * 0.1, 0.01), seamM);
+  seam.position.z = d / 2 - 0.005;
+  p.add(seam);
 
   return p;
 }
@@ -43,19 +44,22 @@ export default {
     const g = new THREE.Group();
     const pillowM = toon(PILLOW), buttonM = toon(BUTTON), seamM = toon(SEAM, { flat: true });
 
-    const lower = makePillow(pillowM, buttonM, seamM);
+    // main pillow: rounded box 1.0 x 0.55 x 0.35, scaled down to body proportions
+    const lower = makePillow(pillowM, buttonM, seamM, 0.4, 0.22, 0.14);
     g.add(lower);
 
-    // second pillow, stacked just above — revealed via tick() once stacks >= 2
-    const upper = makePillow(pillowM, buttonM, seamM);
-    upper.position.y = 0.2;
+    // second, smaller pillow tucked behind/above — revealed via tick() once
+    // stacks >= 2, peeking just above the first to read as a taller stack
+    const upper = makePillow(pillowM, buttonM, seamM, 0.32, 0.16, 0.1);
+    upper.position.set(0, 0.16, -0.05);
     upper.visible = false;
     g.add(upper);
     g.userData.upper = upper;
 
-    // worn like a tiny backpack on the back, tilted to lie flush against it
-    g.position.set(0, 0.8, 0.55);
-    g.rotation.x = -0.3;
+    // mounted high on the upper back, tilted back so it crests the top
+    // silhouette and peeks up between/above the ears from the chase camera
+    g.position.set(0, 1.15, 0.15);
+    g.rotation.x = -0.55;
     return g;
   },
   // stays modest in size; the stack reads through the second pillow, not bulk

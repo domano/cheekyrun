@@ -11,71 +11,64 @@
 import * as THREE from 'three';
 import { toon, ink } from '../materials.js';
 
-const BODY = 0x2a2d3a;   // glossy black
-const BELLY = 0xf4f4f8;  // white chest
-const TEAL = 0x3aa0b0;   // iridescent wing/tail sheen
+const BODY = 0x2d2a3a;   // glossy blue-black
+const BELLY = 0xffffff;  // pied white belly — the recognition cue
 const BEAK = 0xffa12e;   // tiny orange beak
+const EYE = 0xffffff;    // single white dot eye
 
 export default {
   id: 'magpie',
   build() {
     const g = new THREE.Group();
-    const bodyM = toon(BODY), bellyM = toon(BELLY), tealM = toon(TEAL, { flat: true }), beakM = toon(BEAK, { flat: true });
+    const bodyM = toon(BODY), bellyM = toon(BELLY), beakM = toon(BEAK, { flat: true }), eyeM = toon(EYE, { flat: true });
 
-    // round body, the bird's main mass
-    const body = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 10), bodyM);
-    body.position.set(0, 0.1, 0);
+    // body, a small glossy ellipsoid — the bird's main mass
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 10), bodyM);
+    body.scale.set(1, 0.78, 1.22);
     ink(body, 1.08);
     g.add(body);
 
-    // small white belly/chest sphere nestled into the front-lower body
-    const belly = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), bellyM);
-    belly.position.set(0, 0.06, 0.07);
+    // white belly patch, flattened and pressed onto the front-lower body
+    const belly = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), bellyM);
+    belly.scale.set(0.85, 0.7, 0.5);
+    belly.position.set(0, -0.03, 0.13);
     ink(belly, 1.1);
     g.add(belly);
 
-    // round head, perched forward and slightly up
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.065, 10, 10), bodyM);
-    head.position.set(0, 0.18, 0.08);
-    ink(head, 1.1);
-    g.add(head);
-    g.userData.head = head;
-    g.userData.headBaseY = head.position.y;
+    // tiny white dot eye, just above the beak, facing the camera
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.018, 6, 6), eyeM);
+    eye.position.set(0.05, 0.05, 0.16);
+    g.add(eye);
 
-    // tiny orange beak, a stubby cone poking out the front of the head
-    const beak = new THREE.Mesh(new THREE.ConeGeometry(0.022, 0.055, 6), beakM);
-    beak.position.set(0, 0.175, 0.14);
+    // tiny orange beak, a stubby cone poking out the front
+    const beak = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.06, 6), beakM);
+    beak.position.set(0, 0.0, 0.2);
     beak.rotation.x = Math.PI / 2;
     ink(beak, 1.12);
     g.add(beak);
-    g.userData.beak = beak;
-    g.userData.beakBaseY = beak.position.y;
 
-    // teal wing hint, flattened sphere hugging the body's side
-    const wing = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 8), tealM);
-    wing.scale.set(0.7, 1, 1.3);
-    wing.position.set(0.07, 0.1, -0.01);
-    ink(wing, 1.1);
-    g.add(wing);
+    // head group: eye + beak nod together on a tiny tilt
+    const head = new THREE.Group();
+    head.add(eye, beak);
+    g.add(head);
+    g.userData.head = head;
+    g.userData.headBaseRot = 0;
 
-    // long tapered tail, a stretched cone trailing off the back
-    const tail = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.26, 8), tealM);
-    tail.position.set(0, 0.06, -0.16);
-    tail.rotation.x = Math.PI / 2 + 0.15;
+    // long tapered tail, angled up and back off the body
+    const tail = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.28, 8), bodyM);
+    tail.position.set(0, 0.05, -0.22);
+    tail.rotation.x = -Math.PI / 2 - 0.25;
     ink(tail, 1.1);
     g.add(tail);
 
-    // perched on the right ear tip, facing forward (+z, toward camera)
-    g.position.set(0.34, 1.62, 0.0);
+    // perched lower and forward on the right ear tip, clear of the banner, facing +z
+    g.position.set(0.55, 1.35, 0.2);
     return g;
   },
   scale: () => 1,
   tick(g, t) {
-    // little head-bob: head and beak nod together, body stays put on the perch
-    const bob = Math.sin(t * 5) * 0.012;
-    g.userData.head.position.y = g.userData.headBaseY + bob;
-    g.userData.beak.position.y = g.userData.beakBaseY + bob;
-    // gentle whole-body sway, like a bird settling on its feet
-    g.rotation.y = Math.sin(t * 1.3) * 0.08;
+    // tiny idle head-tilt every ~2s, body stays put on the perch
+    g.userData.head.rotation.z = Math.sin(t * Math.PI) * 0.18;
+    g.userData.head.rotation.x = Math.sin(t * Math.PI + 0.6) * 0.08;
   },
 };

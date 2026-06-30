@@ -11,44 +11,51 @@
 import * as THREE from 'three';
 import { toon, ink } from '../materials.js';
 
-const BRAIN = 0xc6a8ff;   // lavender brain-bun
-const HALO = 0xe6d8ff;    // pale glow ring
+const BRAIN = 0xc7b4e8;     // lavender brain-bun
+const GROOVE = 0xa98fd6;    // darker squiggle grooves
+const HALO = 0xf4d873;      // gold glow ring
 
 export default {
   id: 'memory',
   build() {
     const g = new THREE.Group();
     const brainM = toon(BRAIN);
+    const grooveM = toon(GROOVE);
 
-    // main brain-bun lobe
-    const lobe = new THREE.Mesh(new THREE.SphereGeometry(0.13, 12, 10), brainM);
+    // main brain-bun lobe (×0.9 of the old 0.13 radius)
+    const lobe = new THREE.Mesh(new THREE.SphereGeometry(0.117, 12, 10), brainM);
     ink(lobe, 1.08); g.add(lobe);
 
-    // two shallow grooves — squashed spheres tucked into the lobe for a folded look
-    [-0.07, 0.07].forEach((x) => {
-      const groove = new THREE.Mesh(new THREE.SphereGeometry(0.075, 10, 8), brainM);
-      groove.position.set(x, 0.02, 0.05);
-      groove.scale.set(0.8, 0.6, 0.9);
+    // a couple of darker squiggle grooves — thin tube curves hugging the lobe, reads "brain"
+    [-0.04, 0.05].forEach((x, i) => {
+      const curve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(x - 0.05, 0.02, 0.07),
+        new THREE.Vector3(x, 0.05, 0.08),
+        new THREE.Vector3(x + 0.03, -0.01, 0.075),
+        new THREE.Vector3(x + 0.06, 0.03, 0.06),
+      ]);
+      const groove = new THREE.Mesh(new THREE.TubeGeometry(curve, 12, 0.012, 6, false), grooveM);
+      if (i === 1) groove.rotation.y = Math.PI * 0.5;
       ink(groove, 1.08); g.add(groove);
     });
 
-    // thin translucent halo ring, laid roughly flat above the lobe
+    // flat gold halo ring, tilted toward camera so it reads as a ring not a line
     const halo = new THREE.Mesh(
-      new THREE.TorusGeometry(0.17, 0.018, 8, 20),
-      new THREE.MeshBasicMaterial({ color: HALO, transparent: true, opacity: 0.5, depthWrite: false }),
+      new THREE.TorusGeometry(0.32, 0.04, 8, 20),
+      new THREE.MeshBasicMaterial({ color: HALO, transparent: true, opacity: 0.85, depthWrite: false }),
     );
-    halo.rotation.x = Math.PI / 2 - 0.15;
-    halo.position.y = 0.07;
+    halo.rotation.x = THREE.MathUtils.degToRad(70);
+    halo.position.set(0, 0.2, 0);
     g.add(halo);
     g.userData.halo = halo;
 
-    // floats just above the head
-    g.position.set(0, 1.82, 0.05);
+    // hover just above the ears, below the HUD
+    g.position.set(0, 1.85, 0);
     return g;
   },
   scale: (stacks) => 0.92 + 0.12 * stacks,
   tick(g, t) {
-    g.position.y = 1.82 + Math.sin(t * 2.4) * 0.025;
+    g.position.y = 1.85 + Math.sin(t * 2.4) * 0.05;
     g.userData.halo.rotation.z = t * 1.2;
   },
 };

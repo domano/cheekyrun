@@ -13,18 +13,23 @@ import { toon, ink } from '../materials.js';
 
 const PIPE = 0xd6dde4;   // chrome
 const TIP = 0xe8554e;    // cherry-red mouth (warm family, shared with the rocket)
+const CAP = 0x3a3a42;    // dark exhaust opening so each pipe's mouth reads
 
 export default {
   id: 'overdrive',
   build() {
     const g = new THREE.Group();
-    const pipeM = toon(PIPE), tipM = toon(TIP, { flat: true });
+    const pipeM = toon(PIPE), tipM = toon(TIP, { flat: true }), capM = toon(CAP, { flat: true });
     g.userData.puffs = [];
-    [-0.2, 0.2].forEach((x) => {
+    // wider stance (±0.26) so the twin pipes read as two, not one grey lump
+    [-0.26, 0.26].forEach((x) => {
       const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.34, 10), pipeM);
       pipe.position.set(x, 0, 0); pipe.rotation.x = -0.5; ink(pipe, 1.1); g.add(pipe);
       const mouth = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.06, 0.07, 10), tipM);
       mouth.position.set(x, -0.16, -0.09); mouth.rotation.x = -0.5; ink(mouth, 1.12); g.add(mouth);
+      // a dark cap inset in the mouth so the exhaust opening reads
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.02, 10), capM);
+      cap.position.set(x, -0.185, -0.12); cap.rotation.x = -0.5; g.add(cap);
       // a soft exhaust puff that pulses out the back of each pipe
       const puff = new THREE.Mesh(
         new THREE.SphereGeometry(0.09, 10, 10),
@@ -33,7 +38,7 @@ export default {
       puff.position.set(x, -0.24, -0.16); g.add(puff); g.userData.puffs.push(puff);
     });
     // low and centred on the back, mouths kicking out behind the hips
-    g.position.set(0, 0.32, 0.5);
+    g.position.set(0, 0.3, 0.5);
     return g;
   },
   scale: (stacks) => 0.92 + 0.12 * stacks,

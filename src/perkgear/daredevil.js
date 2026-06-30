@@ -11,43 +11,60 @@
 import * as THREE from 'three';
 import { toon, ink } from '../materials.js';
 
-const LENS = 0x1a1a22;   // glossy black
+const FRAME = 0x2a2433;  // very-dark-charcoal, matches the ink — not pure black
+const LENS = 0x1a1622;   // translucent smoke fill
 const GLINT = 0xffffff;  // sparkle
 
 export default {
   id: 'daredevil',
   build() {
     const g = new THREE.Group();
-    const lensM = toon(LENS, { flat: true });
-    [-1, 1].forEach((side) => {
-      // rounded lens — flattened sphere, glossy black, inked
-      const lens = new THREE.Mesh(new THREE.SphereGeometry(0.13, 12, 10), lensM);
-      lens.position.set(0.16 * side, 0, 0);
-      lens.scale.set(1, 0.85, 0.45);
-      ink(lens, 1.1);
-      g.add(lens);
+    const frameM = toon(FRAME, { flat: true });
+    const lensM = new THREE.MeshBasicMaterial({
+      color: LENS, transparent: true, opacity: 0.55, depthWrite: false,
     });
-    // small bridge joining the lenses
-    const bridge = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.1, 8), lensM);
-    bridge.rotation.z = Math.PI / 2;
-    bridge.position.set(0, 0.01, 0.04);
+    const glintM = new THREE.MeshBasicMaterial({
+      color: GLINT, transparent: true, opacity: 0.7, depthWrite: false,
+    });
+    const glints = [];
+    [-1, 1].forEach((side) => {
+      // rounded lens — flattened box, translucent smoke glass, no ink
+      const lens = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.26, 0.02), lensM);
+      lens.position.set(0.26 * side, 0, 0.01);
+      g.add(lens);
+      // thin frame rim around the lens, inked
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.022, 6, 16), frameM);
+      rim.scale.set(1, 0.82, 1);
+      rim.position.set(0.26 * side, 0, 0);
+      ink(rim, 1.1);
+      g.add(rim);
+      // stubby arm hooking back toward the ear
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.03, 0.03), frameM);
+      arm.position.set(0.26 * side + 0.16 * side, 0, -0.06);
+      arm.rotation.y = side * 0.5;
+      ink(arm, 1.15);
+      g.add(arm);
+      // tiny white specular glint, top-left of each lens, no ink — pure highlight
+      const glint = new THREE.Mesh(new THREE.PlaneGeometry(0.05, 0.05), glintM);
+      glint.position.set(0.26 * side - 0.07, 0.07, 0.025);
+      g.add(glint);
+      glints.push(glint);
+    });
+    // visible bridge bar connecting the lenses, inked
+    const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.05, 0.03), frameM);
+    bridge.position.set(0, 0, 0.005);
     ink(bridge, 1.15);
     g.add(bridge);
-    // tiny glint on the left lens (camera's right), no ink — pure highlight
-    const glint = new THREE.Mesh(
-      new THREE.SphereGeometry(0.03, 8, 8),
-      new THREE.MeshBasicMaterial({ color: GLINT, transparent: true, opacity: 0.9, depthWrite: false }),
-    );
-    glint.position.set(-0.12, 0.04, 0.05);
-    g.add(glint);
-    g.userData.glint = glint;
-    // across the cheeks, facing the camera
-    g.position.set(0, 0.86, 0.6);
+    g.userData.glints = glints;
+    // raised to straddle the cheek-tops, facing the camera, tilted to hug the curve
+    g.position.set(0, 0.78, 0.78);
+    g.rotation.x = THREE.MathUtils.degToRad(-8);
     return g;
   },
   scale: (stacks) => 0.95 + 0.08 * stacks,
   tick(g, t) {
     const pulse = Math.abs(Math.sin(t * 2.2));
-    g.userData.glint.scale.setScalar(0.6 + pulse * 0.7);
+    const s = 0.6 + pulse * 0.7;
+    g.userData.glints.forEach((glint) => glint.scale.setScalar(s));
   },
 };

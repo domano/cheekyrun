@@ -11,9 +11,11 @@
 import * as THREE from 'three';
 import { toon, ink } from '../materials.js';
 
-const GOLD = 0xffcf45;   // coin face
-const RIM = 0xf2b51e;    // raised rim, a shade deeper
-const STRAP = 0x4a3624;  // dark leather strap
+const GOLD = 0xf2c14e;    // coin face
+const RIM = 0xc9962e;     // darker raised rim
+const STRAP = 0x7a4b2b;   // saddle-brown strap
+
+const WOBBLE = THREE.MathUtils.degToRad(3); // ±3° coin-catching-light wobble
 
 export default {
   id: 'doubledown',
@@ -21,41 +23,47 @@ export default {
     const g = new THREE.Group();
     const goldM = toon(GOLD), rimM = toon(RIM), strapM = toon(STRAP);
 
-    // strap leading up toward the shoulder, anchored at the coin
-    const strap = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.26, 8), strapM);
-    strap.position.set(-0.06, 0.16, -0.04);
-    strap.rotation.z = 0.5; strap.rotation.x = -0.2;
-    ink(strap, 1.15); g.add(strap);
+    // strap: two thin flat segments bent into a shallow chevron so it reads as a
+    // band looped OVER the cheek (convex against the body), not a stick handle.
+    // Lower segment rises from the coin; upper segment crests over the cheek-top.
+    const strapLo = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.26, 0.015), strapM);
+    strapLo.position.set(-0.05, 0.16, 0.0);
+    strapLo.rotation.z = 0.7; strapLo.rotation.x = -0.2;
+    ink(strapLo, 1.12); g.add(strapLo);
+    const strapHi = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.2, 0.015), strapM);
+    strapHi.position.set(-0.15, 0.34, -0.12);
+    strapHi.rotation.z = 1.35; strapHi.rotation.x = -0.45;
+    ink(strapHi, 1.12); g.add(strapHi);
 
-    // the coin itself: flat gold cylinder, face toward the camera (+z)
-    const coin = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.04, 16), goldM);
+    // the coin itself: flat gold cylinder, face toward the camera (+z) —
+    // rotate so the circular face points down +z
+    const coin = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.06, 20), goldM);
     coin.rotation.x = Math.PI / 2;
     ink(coin, 1.08); g.add(coin);
 
     // raised rim ring sitting just proud of the coin face
-    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.025, 8, 20), rimM);
-    rim.position.z = 0.021;
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.025, 8, 24), rimM);
+    rim.position.z = 0.032;
     ink(rim, 1.1); g.add(rim);
 
-    // tiny embossed mark in the center (a small star-ish cone, point-on)
-    const mark = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.03, 5), rimM);
-    mark.position.z = 0.025;
-    mark.rotation.x = -Math.PI / 2;
+    // embossed mark in the center: an inset ring (×0.10 of coin radius)
+    // standing in for a '$' so the face isn't blank
+    const mark = new THREE.Mesh(new THREE.TorusGeometry(0.022, 0.01, 6, 14), rimM);
+    mark.position.z = 0.033;
     ink(mark, 1.1); g.add(mark);
 
     g.userData.coin = coin;
     g.userData.rim = rim;
     g.userData.mark = mark;
 
-    // right side, riding just below the shoulder gear, clear of the magnet
-    g.position.set(0.6, 0.72, 0.4);
+    // right cheek, flat-facing the camera (anchored tight to the body)
+    g.position.set(0.5, 0.5, 0.82);
     return g;
   },
   scale: () => 1, // caps at 1 stack
   tick(g, t) {
-    // slow coin-flip wobble around its vertical-ish axis
-    const wob = Math.sin(t * 1.6) * 0.5;
-    g.rotation.y = wob;
-    g.rotation.z = Math.sin(t * 1.1) * 0.06;
+    // slow ±3° wobble so the coin catches light
+    g.rotation.y = Math.sin(t * 1.6) * WOBBLE;
+    g.rotation.z = Math.sin(t * 1.1) * WOBBLE;
   },
 };

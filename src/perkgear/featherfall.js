@@ -33,8 +33,9 @@ export default {
     ink(quill, 1.15);
     g.add(quill);
 
-    // tucked beside the left ear, angled outward and up
-    g.position.set(-0.4, 1.35, 0.05);
+    // tucked beside the left ear, angled outward and up (nudged down so it
+    // clears the level banner at the gameplay camera — Pixie's note)
+    g.position.set(-0.4, 1.25, 0.05);
     g.rotation.z = 0.7; // ~40deg outward
     g.rotation.x = -0.2;
     g.userData.baseRotZ = g.rotation.z;

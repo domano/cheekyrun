@@ -1,4 +1,4 @@
-// 🌟 Hot Streak — warm flame tufts licking up the base of the fluffy tail.
+// 🌟 Hot Streak — glowy flame tufts fanned around the base of the white tail.
 // Reference template for a perk-gear prop: default-export an object with
 //   id     — the perk id (must match perks.js); also its key in PERK_GEAR.
 //   build()        → a THREE.Object3D, already positioned/oriented on the body.
@@ -8,52 +8,53 @@
 //   tick(g, t, dt) → optional per-frame animation (t = elapsed secs, dt = frame).
 // Keep the house style: every solid mesh gets toon() + an ink() outline; glows
 // stay translucent with no outline; cheap primitives only; stay readable small.
+// Per Pixie: flames were illegible (too dark/low/few, lost in the tail shadow).
+// Fix landed here — moved up to the white tail base, 2-tone glow, no ink.
 import * as THREE from 'three';
-import { toon, ink } from '../materials.js';
 
-const BASE = 0xffa12e; // orange flame base
-const TIP = 0xffe26a;  // translucent yellow flame tip
+const CORE = 0xffd24a; // bright inner core
+const OUTER = 0xff7a2e; // outer flame colour
 
 export default {
   id: 'hotstreak',
   build() {
     const g = new THREE.Group();
-    const baseM = toon(BASE, { flat: true });
     g.userData.flames = [];
-    // a small fan of flame tufts hugging the lower tail, licking upward
+    // 3-4 cone-ish tufts clustered at the base of the white tail, fanning up and back
     const spots = [
-      { x: -0.1, z: 0.02, h: 0.16 },
-      { x: 0.07, z: 0.04, h: 0.13 },
-      { x: -0.02, z: -0.06, h: 0.19 },
-      { x: 0.14, z: -0.02, h: 0.12 },
+      { x: -0.09, z: -0.04, h: 0.3 },
+      { x: 0, z: 0.04, h: 0.4 },
+      { x: 0.09, z: -0.04, h: 0.3 },
     ];
     spots.forEach(({ x, z, h }, i) => {
       const flame = new THREE.Group();
-      const base = new THREE.Mesh(new THREE.ConeGeometry(0.055, h, 8), baseM);
-      base.position.y = h / 2;
-      ink(base, 1.1);
-      flame.add(base);
-      const tip = new THREE.Mesh(
-        new THREE.ConeGeometry(0.032, h * 0.55, 8),
-        new THREE.MeshBasicMaterial({ color: TIP, transparent: true, opacity: 0.75, depthWrite: false }),
+      const outer = new THREE.Mesh(
+        new THREE.ConeGeometry(0.07, h, 8),
+        new THREE.MeshBasicMaterial({ color: OUTER, transparent: true, opacity: 0.9, depthWrite: false }),
       );
-      tip.position.y = h * 0.85;
-      flame.add(tip);
+      outer.position.y = h / 2;
+      flame.add(outer);
+      const core = new THREE.Mesh(
+        new THREE.ConeGeometry(0.04, h * 0.6, 8),
+        new THREE.MeshBasicMaterial({ color: CORE, transparent: true, opacity: 0.9, depthWrite: false }),
+      );
+      core.position.y = h * 0.6;
+      flame.add(core);
       flame.position.set(x, 0, z);
       g.add(flame);
-      g.userData.flames.push({ group: flame, tip, baseH: h, phase: i * 1.3 });
+      g.userData.flames.push({ group: flame, core, baseH: h, phase: i * 1.3 });
     });
-    // wrapping the base of the fluffy tail, low and centred
-    g.position.set(0, 0.9, 0.5);
+    // clustered at the base of the white tail, popping against it
+    g.position.set(0, 0.55, 0.6);
     return g;
   },
   scale: () => 1,
   tick(g, t) {
-    g.userData.flames.forEach(({ group, tip, phase }) => {
-      const ph = t * 13 + phase;
-      const flick = Math.abs(Math.sin(ph));
-      group.scale.y = 0.75 + flick * 0.4;
-      tip.material.opacity = 0.45 + flick * 0.45;
+    g.userData.flames.forEach(({ group, core, phase }) => {
+      const flick = Math.sin(t * 13 + phase); // ~6Hz-ish dual-lobed flicker per cycle
+      group.scale.y = 1 + flick * 0.08;
+      const shimmer = Math.sin(t * 37.7 + phase * 2);
+      core.material.opacity = 0.85 + shimmer * 0.05;
     });
   },
 };
