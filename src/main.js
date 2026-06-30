@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import { LANES, SPAWN_Z, DESPAWN_Z, INK, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE_RAMP, GATE_COOLDOWN, COMBO_WINDOW, comboMult, NEARMISS_MARGIN, NEARMISS_BONUS, SKIM_MARGIN, SKIM_BONUS, SKIM_WINDOW, SAFE_HAZARD_MIN_DIFF, SAFE_HAZARD_CHANCE, JUMP_BUFFER, HITSTOP_SHIELD, HITSTOP_DEATH, SLOWMO_FACTOR, SLOWMO_TIME, SLOWMO_MIN_MULT, SCORE_FLOW_RATE, HEAT_PER_LEVEL, HEAT_LEVEL_CAP, HEAT_MAX, PHOENIX_COMBO, PHOENIX_INVULN, GREED_CAP, RING_TIME, POWERUP_DURATION, POWERUP_CHANCE, POWERUP_MIN_DIFF, POWERUP_COOLDOWN, POWERUPS, POWERUP_KINDS, DASH_SPEED_MULT, DRAFT_EVERY, DRAFT_CHOICES, DRAFT_ARM, DRAFT_GRACE, mulberry32, dailyKey, dailySeed, $, buzz, shuffle } from './config.js';
 import { makeGradient, toon } from './materials.js';
-import { makeObstacle, makeHurdle, makeGate, makeRoll, makePowerup, makeTree, makeBush, makeFlower, makeCloud, OBSTACLE_KINDS } from './props.js';
+import { makeObstacle, makeHurdle, makeGate, makeFinishLine, makeRoll, makePowerup, makeTree, makeBush, makeFlower, makeCloud, OBSTACLE_KINDS } from './props.js';
 import { createParticles } from './particles.js';
 import { buildPlayer, applyGear } from './player.js';
-import { LEVEL_DIST, biomeOf, obstacleSet, biomePlay, biomeAir, levelFromDistance, levelProgress } from './levels.js';
+import { FINISH_CLEAR, biomeOf, obstacleSet, biomePlay, biomeAir, levelFromDistance, levelStart, levelProgress } from './levels.js';
 import { trackOffset, deformRoad } from './track.js';
 import { UPGRADES, effects, tierOf, nextCost, buy, getWallet, addRolls, DEFAULT_POOL, unlockedPerkIds, META, buyMeta } from './upgrades.js';
 import { PERKS, freshMods, applyPerks, perkById, draftChoices } from './perks.js';
@@ -23,7 +23,8 @@ import {
 let scene, camera, renderer, clock;
 let player, shadowBlob, ears = [], feet = [], tail, particles, playerMats, gear, aura;
 let gearTiers = {}, fartCount = 0;   // worn upgrade tiers (for visuals/tests) + fart-puff counter
-let obstacles = [], rolls = [], pickups = [], scenery = [], stripes = [], clouds = [];
+let obstacles = [], rolls = [], pickups = [], scenery = [], stripes = [], clouds = [], finishes = [];
+let finishSpawned = false;   // whether this level's finish-line banner has been dropped yet
 let groundMat, pathMat, discMat, hillMats = [], roadGround, roadPath;
 let fxRing, ringT = 0, camKick = 0;    // level-up shockwave ring + a one-shot camera FOV punch
 let state = 'menu';
@@ -168,6 +169,14 @@ function init() {
 
 /* ---------------- spawning ---------------- */
 function spawnRow() {
+  // FINISH STRETCH: hold every hazard/roll spawn through the calm corridor around
+  // a level boundary. `arrive` is the distance at which a row spawned now would
+  // reach the player (rows enter at SPAWN_Z and close in at the run speed); if
+  // that lands within FINISH_CLEAR of the boundary, skip the row — leaving a clear
+  // runway in and out of the finish line so a level change never drops the player
+  // onto an obstacle (and an upgrade draft never freezes them onto one).
+  const arrive = distance - SPAWN_Z, boundary = levelStart(level + 1);
+  if (arrive > boundary - FINISH_CLEAR && arrive < boundary + FINISH_CLEAR) return;
   const d = difficulty;
   // `heat` is difficulty that keeps creeping past the 70s cap with the level, so a
   // deep run grows *denser and trickier*, not just faster. At level 1 in the Meadow
@@ -241,6 +250,15 @@ function spawnGate() {
   o.position.set(0, 0, SPAWN_Z); o.userData.halfW = 3.3; o.userData.lx = 0; scene.add(o); obstacles.push(o);
   // A reward roll in a random lane for clearing it cleanly.
   if (rng() < 0.7) { const li = (rng() * 3) | 0; const r = makeRoll(); r.position.set(LANES[li], 0.95, SPAWN_Z); r.userData.lx = LANES[li]; scene.add(r); rolls.push(r); }
+}
+// Drop the finish-line banner so it reaches the player exactly at the level
+// boundary: spawned at z = distance - boundary (a point ahead, since distance <
+// boundary), it closes the same distance the player runs and lands at z≈0 the
+// instant distance === boundary — right as the level ticks over.
+function spawnFinish(boundary) {
+  const o = makeFinishLine();
+  o.position.set(0, 0, distance - boundary);
+  scene.add(o); finishes.push(o);
 }
 function spawnScenery() {
   const x = (Math.random() < 0.5 ? -1 : 1) * (4.4 + Math.random() * 3.5), roll = Math.random();
@@ -359,8 +377,8 @@ function renderDraft() {
 
 /* ---------------- flow ---------------- */
 function resetGame() {
-  [...obstacles, ...rolls, ...pickups, ...scenery].forEach(o => scene.remove(o));
-  obstacles = []; rolls = []; pickups = []; scenery = [];
+  [...obstacles, ...rolls, ...pickups, ...scenery, ...finishes].forEach(o => scene.remove(o));
+  obstacles = []; rolls = []; pickups = []; scenery = []; finishes = []; finishSpawned = false;
   // Daily runs a seeded course with no meta-upgrades so everyone competes evenly.
   rng = daily ? mulberry32(dailySeed(dailyDay)) : Math.random;
   const eff = daily ? { shields: 0, magnet: 0, rollValue: 15, extraJumps: 0, headstart: 0 } : effects();
@@ -369,7 +387,7 @@ function resetGame() {
   perks = []; levelUps = 0; draftArm = 0; recomputeRunMods();   // fresh run: no perks drafted yet
   const boon = !daily && getBoon();               // a chosen starting boon begins drafted (daily is boon-free)
   if (boon && perkById(boon)) applyPerk(boon);
-  speed = 12.5; distance = (level - 1) * LEVEL_DIST; rollCount = 0; rollPoints = 0; rowTimer = 1.8; sceneAcc = 0; dustAcc = 0;
+  speed = 12.5; distance = levelStart(level); rollCount = 0; rollPoints = 0; rowTimer = 1.8; sceneAcc = 0; dustAcc = 0;
   elapsed = Math.min(70, (level - 1) * 9); difficulty = 0; safeLane = 1; forcedGap = 0;
   laneIdx = 1; targetX = 0; vy = 0; grounded = true; jumpsLeft = 2 + extraJumps + mods.extraJumpsBonus; banked = 0; groundY = 0; duckTimer = 0; duckAmt = 0; shakeT = 0;
   jumpBufferT = 0; laneChangeT = -99; hitStopT = 0; slowmoT = 0; worldScale = 1;
@@ -569,8 +587,12 @@ function tick(dt) {
     const T = (1.35 - 0.6 * difficulty) / (1 + 0.04 * (level - 1)) * biomePlay(level).rowMult;  // seconds between rows
     rowTimer -= sdt; if (rowTimer <= 0) { spawnRow(); rowTimer = T; }
     sceneAcc += speed * sdt; if (sceneAcc >= 5) { sceneAcc = 0; spawnScenery(); }
+    // Drop the level's finish-line banner once the boundary is within spawn range
+    // (SPAWN_Z ahead), so it arrives at the player right as the level ticks over.
+    const boundary = levelStart(level + 1);
+    if (!finishSpawned && distance >= boundary + SPAWN_Z) { spawnFinish(boundary); finishSpawned = true; }
     if (power) { powerT -= sdt; if (powerT <= 0) { power = null; updatePowerVisual(); sfxPowerEnd(); } updatePowerHud(); }
-    moveObstacles(sdt); moveRolls(sdt); movePickups(sdt);
+    moveObstacles(sdt); moveRolls(sdt); movePickups(sdt); moveFinishes(sdt);
     if (grounded) {
       dustAcc += sdt; if (dustAcc > 0.11) {
         dustAcc = 0;
@@ -701,6 +723,15 @@ function updatePowerHud() {
     $('powerFill').style.width = Math.max(0, powerT / POWERUP_DURATION * 100) + '%';
   } else box.classList.add('hide');
 }
+// Finish-line banners ride the track like obstacles (frozen by hit-stop/draft via
+// the scaled dt) but never collide; they just slide past and despawn.
+function moveFinishes(dt) {
+  for (let i = finishes.length - 1; i >= 0; i--) {
+    const o = finishes[i]; o.position.z += speed * dt;
+    const off = trackOffset(o.position.z, distance); o.position.x = off.x; o.position.y = off.y;
+    if (o.position.z > DESPAWN_Z) { scene.remove(o); finishes.splice(i, 1); }
+  }
+}
 function moveScenery(dt) {
   const v = (state === 'playing' ? speed * worldScale : 5) * dt;
   for (let i = scenery.length - 1; i >= 0; i--) {
@@ -808,6 +839,7 @@ function onLevelUp() {
   // Front-load the first pick (so a build comes online early), then draft every
   // DRAFT_EVERY-th level-up: with DRAFT_EVERY=2 that's level-ups 1,3,5 (levels 2,4,6).
   levelUps++;
+  finishSpawned = false;   // arm the next level's finish-line banner
   const willDraft = (levelUps === 1 || levelUps % DRAFT_EVERY === 1);
   if (!willDraft) showBanner(`Lvl ${level} · ${b.name}`);   // the draft card owns this moment instead
   sfxLevel(); buzz([15, 30, 15]);
@@ -1002,6 +1034,7 @@ function buildDebugApi() {
       state, score: score(), paused,
       distance: +distance.toFixed(2), speed: +speed.toFixed(2), difficulty: +difficulty.toFixed(3), elapsed: +elapsed.toFixed(2),
       level, biome: biomeOf(level).name, levelProgress: +levelProgress(distance).toFixed(3),
+      finishAt: +levelStart(level + 1).toFixed(2),
       biomeObstacles: [...obstacleSet(level).jump, obstacleSet(level).duck],
       biomePlay: biomePlay(level), fog: { near: +scene.fog.near.toFixed(1), far: +scene.fog.far.toFixed(1) },
       rollCount, rollPoints, combo, comboMult: cmult(combo), comboMax, comboTimer: +comboTimer.toFixed(2),
@@ -1020,7 +1053,7 @@ function buildDebugApi() {
       player: { x: +player.position.x.toFixed(3), groundY: +groundY.toFixed(3), grounded, ducking: duckTimer > 0 },
       gearTiers, auraVisible: !!(aura && aura.visible), fartCount,
       gearVisible: gear ? { shield: gear.shield.visible, spring: gear.spring.visible, magnet: gear.magnet.visible, fortune: gear.fortune.visible, headstart: gear.headstart.visible, shieldPips: gear.shieldPips.filter(p => p.visible).length } : {},
-      counts: { obstacles: obstacles.length, rolls: rolls.length, pickups: pickups.length, scenery: scenery.length },
+      counts: { obstacles: obstacles.length, rolls: rolls.length, pickups: pickups.length, scenery: scenery.length, finishes: finishes.length },
       wallet: getWallet(), daily,
     };
   }
@@ -1044,8 +1077,8 @@ function buildDebugApi() {
 
   // Apply a bag of state overrides (teleport the run), then refresh the HUD.
   const SETTERS = {
-    level: v => { level = v; distance = Math.max(distance, (v - 1) * LEVEL_DIST); applyBiome(level, true); },
-    distance: v => { distance = v; level = levelFromDistance(v); },
+    level: v => { level = v; distance = Math.max(distance, levelStart(v)); finishSpawned = false; applyBiome(level, true); },
+    distance: v => { distance = v; level = levelFromDistance(v); finishSpawned = false; },
     speed: v => { speed = v; }, difficulty: v => { difficulty = v; }, elapsed: v => { elapsed = v; },
     shields: v => { shields = v; }, invuln: v => { invuln = v; }, magnetR: v => { magnetR = v; },
     rollValue: v => { rollValue = v; }, extraJumps: v => { extraJumps = v; }, jumpsLeft: v => { jumpsLeft = v; },

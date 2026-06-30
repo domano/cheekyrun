@@ -4,8 +4,21 @@
 // cycles to the next biome — a fresh palette for the sky, fog, ground, path,
 // hills and the sun/moon disc — and the pace nudges up a notch.
 
-// Distance (in world units) covered per level.
-export const LEVEL_DIST = 250;
+// Distance (in world units) covered by the FIRST level. Levels grow longer as
+// the run speeds up (see levelLength), so a faster stage isn't a shorter one and
+// the level beats stay a comfortable, roughly constant length of time apart.
+export const LEVEL_DIST = 380;
+// How much longer each successive level is. Matched to the per-level speed-up in
+// main.js (speed scales ~+0.045/level): growing length at the same rate as pace
+// keeps each level lasting about the same time even as you rip faster.
+export const LEVEL_GROWTH = 0.045;
+
+// Each level ends in a calm "finish" stretch: hazard spawns pause and a banner
+// crosses the track at the level boundary, so the level change (and any upgrade
+// draft) lands in open space rather than on top of an obstacle. FINISH_CLEAR is
+// the half-width, in world units, of that obstacle-free corridor centred on the
+// line — see spawnRow()'s finish-stretch guard in main.js.
+export const FINISH_CLEAR = 34;
 
 // Visual themes the run rotates through, one per level. Colours are plain hex.
 // `bg` is the four-stop CSS gradient painted behind the (transparent) canvas,
@@ -72,8 +85,19 @@ export const BIOMES = [
 // Default biome gameplay knobs; each BIOMES entry overrides only what it changes.
 const PLAY_DEFAULTS = { gateBias: 1, hazardBias: 1, rollBias: 1, rowMult: 1 };
 
-// Level 1 starts at distance 0; each LEVEL_DIST after that bumps the level.
-export const levelFromDistance = (d) => Math.floor(d / LEVEL_DIST) + 1;
+// Distance a single (1-indexed) level spans. Linear growth keeps the cumulative
+// maths closed-form and the pacing predictable.
+export const levelLength = (n) => LEVEL_DIST * (1 + LEVEL_GROWTH * (n - 1));
+
+// Distance at which level n begins — the closed form of Σ levelLength(1..n-1).
+// levelStart(1) === 0, levelStart(2) === LEVEL_DIST.
+export const levelStart = (n) => {
+  const m = n - 1;                                 // levels completed before n
+  return LEVEL_DIST * (m + (LEVEL_GROWTH * m * (m - 1)) / 2);
+};
+
+// Level 1 starts at distance 0; each successive (growing) level bumps it.
+export const levelFromDistance = (d) => { let n = 1; while (d >= levelStart(n + 1)) n++; return n; };
 
 // Theme for a given level, cycling through BIOMES.
 export const biomeOf = (level) => BIOMES[(level - 1) % BIOMES.length];
@@ -86,5 +110,8 @@ export const biomePlay = (level) => ({ ...PLAY_DEFAULTS, ...(biomeOf(level).play
 // The fog band for a level's biome.
 export const biomeAir = (level) => biomeOf(level).air || { near: 32, far: 64 };
 
-// Fraction (0..1) of the way through the current level.
-export const levelProgress = (d) => (d % LEVEL_DIST) / LEVEL_DIST;
+// Fraction (0..1) of the way through the current (growing) level.
+export const levelProgress = (d) => {
+  const n = levelFromDistance(d);
+  return Math.min(1, Math.max(0, (d - levelStart(n)) / levelLength(n)));
+};

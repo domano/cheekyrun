@@ -114,6 +114,35 @@ export function makeGate() {
   return g;
 }
 
+// A checkered finish-line gantry spanning the track between levels — two posts,
+// a banner across the top, and a checker strip painted on the ground. Purely
+// decorative: the runner passes straight through it (it's never an obstacle).
+export function makeFinishLine() {
+  const g = new THREE.Group();
+  const postM = toon(0xf2efe6), darkM = toon(0x2a2230), lightM = toon(0xffffff);
+  [-3.4, 3.4].forEach(x => {
+    const p = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.16, 3.4, 10), postM);
+    p.position.set(x, 1.7, 0); p.castShadow = true; ink(p, 1.05); g.add(p);
+  });
+  const cols = 10, tw = 6.8 / cols;
+  // Top banner: a dark backing bar inlaid with a row of white checker tiles.
+  const back = new THREE.Mesh(new THREE.BoxGeometry(6.9, 0.72, 0.16), darkM); back.position.set(0, 3.15, 0); ink(back, 1.03); g.add(back);
+  for (let cx = 0; cx < cols; cx++) for (let cy = 0; cy < 2; cy++) {
+    if ((cx + cy) % 2) continue;
+    const tile = new THREE.Mesh(new THREE.BoxGeometry(tw, 0.34, 0.06), lightM);
+    tile.position.set(-3.4 + tw * (cx + 0.5), 3.15 - 0.17 + cy * 0.34, 0.1); g.add(tile);
+  }
+  // Ground strip — the line itself: a dark base flecked with white checkers.
+  const base = new THREE.Mesh(new THREE.BoxGeometry(6.9, 0.04, 1.0), darkM); base.position.y = 0.03; g.add(base);
+  for (let cx = 0; cx < cols; cx++) for (let cz = 0; cz < 2; cz++) {
+    if ((cx + cz) % 2) continue;
+    const t = new THREE.Mesh(new THREE.BoxGeometry(tw, 0.05, 0.5), lightM);
+    t.position.set(-3.4 + tw * (cx + 0.5), 0.05, -0.25 + cz * 0.5); g.add(t);
+  }
+  g.userData.kind = 'finish';
+  return g;
+}
+
 export function makeRoll() {
   const g = new THREE.Group();
   const paper = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.5, 22), toon(0xffffff, { emissive: 0x222222 }));
