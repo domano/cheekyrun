@@ -1,6 +1,16 @@
 import * as THREE from 'three';
 import { toon, ink } from './materials.js';
 
+// Auto-loaded perk-gear definitions: one file per perk under ./perkgear/.
+// Each default-exports { id, build(), scale?(stacks), tick?(group, t, dt) }.
+// Dropping a new file in that folder is all it takes to give a perk a worn
+// prop — buildGear() builds it hidden, applyGear() reveals/scales it by stack
+// count, and tickGear() runs its animation. No other edits, so the props are
+// collision-free to author in parallel.
+const PERK_GEAR_DEFS = Object.values(
+  import.meta.glob('./perkgear/*.js', { eager: true }),
+).map((m) => m.default).filter(Boolean);
+
 // Builds the star of the show — a butt with ears — and returns the group plus
 // the animated sub-parts the game loop needs to wiggle each frame.
 export function buildPlayer(scene) {
@@ -117,6 +127,16 @@ function buildGear(player) {
   rocket.position.set(0, 0.5, 0.66); rocket.rotation.x = 0.45; rocket.visible = false; player.add(rocket);
   gear.headstart = rocket; gear.flame = flame;
 
+  // Dynamic perk props (one file each under ./perkgear/). Built hidden and
+  // keyed by perk id; applyGear() reveals/scales them, tickGear() animates them.
+  gear._defs = PERK_GEAR_DEFS;
+  for (const def of PERK_GEAR_DEFS) {
+    const g = def.build();
+    g.visible = false;
+    player.add(g);
+    gear[def.id] = g;
+  }
+
   return gear;
 }
 
@@ -162,4 +182,22 @@ export function applyGear(gear, t = {}) {
 
   gear.headstart.visible = k('headstart') > 0;
   if (gear.headstart.visible) gear.headstart.scale.setScalar(0.62 + 0.1 * k('headstart'));
+
+  // Dynamic perk props: shown when their perk is drafted, scaled by stacks.
+  for (const def of gear._defs || []) {
+    const g = gear[def.id]; if (!g) continue;
+    const n = k(def.id);
+    g.visible = n > 0;
+    if (g.visible) g.scale.setScalar(def.scale ? def.scale(n) : 1);
+  }
+}
+
+// Per-frame animation for the dynamic perk props that opt in via def.tick.
+// Called from the main loop with the elapsed time and frame dt.
+export function tickGear(gear, t, dt) {
+  for (const def of (gear && gear._defs) || []) {
+    if (!def.tick) continue;
+    const g = gear[def.id];
+    if (g && g.visible) def.tick(g, t, dt);
+  }
 }
