@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { LANES, SPAWN_Z, DESPAWN_Z, INK, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE_RAMP, GATE_COOLDOWN, COMBO_WINDOW, comboMult, NEARMISS_MARGIN, NEARMISS_BONUS, SKIM_MARGIN, SKIM_BONUS, SKIM_WINDOW, SAFE_HAZARD_MIN_DIFF, SAFE_HAZARD_CHANCE, JUMP_BUFFER, HITSTOP_SHIELD, HITSTOP_DEATH, SLOWMO_FACTOR, SLOWMO_TIME, SLOWMO_MIN_MULT, SLOWMO_TIGHT_MARGIN, SLOWMO_TIGHT_TIME, DIFF_RAMP, ROW_MIN_GAP, COMBO_DECAY_STEP, COMBO_STEP, SCORE_FLOW_RATE, HEAT_PER_LEVEL, HEAT_LEVEL_CAP, HEAT_MAX, PHOENIX_COMBO, PHOENIX_INVULN, GREED_CAP, RING_TIME, POWERUP_DURATION, POWERUP_CHANCE, POWERUP_MIN_DIFF, POWERUP_COOLDOWN, POWERUPS, POWERUP_KINDS, DASH_SPEED_MULT, DRAFT_EVERY, DRAFT_CHOICES, DRAFT_ARM, DRAFT_GRACE, mulberry32, dailyKey, dailySeed, $, buzz, shuffle } from './config.js';
 import { makeGradient, toon } from './materials.js';
-import { makeObstacle, makeHurdle, makeGate, makeRoll, makePowerup, makeTree, makeBush, makeFlower, makeCloud, makeFinishLine, OBSTACLE_KINDS } from './props.js';
+import { makeObstacle, makeHurdle, makeGate, makeRoll, makePowerup, makeTree, makeBush, makeFlower, makeCloud, makeFinishLine, makeCheerCrowd, tickCheerCrowd, OBSTACLE_KINDS } from './props.js';
 import { createParticles } from './particles.js';
 import { buildPlayer, applyGear, tickGear } from './player.js';
 import { STAGE_BASE, STAGE_LEAD, stageLength, biomeOf, obstacleSet, biomePlay, biomeAir } from './levels.js';
@@ -808,6 +808,9 @@ function moveScenery(dt) {
 // time — the live banner blocks a new one until it's despawned.
 function placeFinishLine(z) {
   finishLine = makeFinishLine();
+  // A fresh roadside crowd rides along on the banner, freshly rearranged each
+  // stage — they cheer the runner across and despawn with the line.
+  const crowd = makeCheerCrowd(); finishLine.add(crowd); finishLine.userData.crowd = crowd;
   finishLine.position.set(0, 0, z); finishLine.userData.lx = 0;
   scene.add(finishLine); finishArmed = true;
 }
@@ -820,6 +823,7 @@ function moveFinishLine(dt) {
   finishLine.position.z += speed * dt;
   const off = trackOffset(finishLine.position.z, distance);
   finishLine.position.x = finishLine.userData.lx + off.x; finishLine.position.y = off.y;
+  if (finishLine.userData.crowd) tickCheerCrowd(finishLine.userData.crowd, simTime);
   if (finishArmed && prevZ < player.position.z && finishLine.position.z >= player.position.z) {
     finishArmed = false;
     level++; stageStart = distance; stageLen = stageLength(speed);
@@ -1148,7 +1152,8 @@ function buildDebugApi() {
       gearTiers, auraVisible: !!(aura && aura.visible), fartCount,
       gearVisible: gear ? { shield: gear.shield.visible, spring: gear.spring.visible, magnet: gear.magnet.visible, fortune: gear.fortune.visible, headstart: gear.headstart.visible, shieldPips: gear.shieldPips.filter(p => p.visible).length,
         ...Object.fromEntries((gear._defs || []).map(d => [d.id, gear[d.id].visible])) } : {},
-      counts: { obstacles: obstacles.length, rolls: rolls.length, pickups: pickups.length, scenery: scenery.length, finish: finishLine ? 1 : 0 },
+      counts: { obstacles: obstacles.length, rolls: rolls.length, pickups: pickups.length, scenery: scenery.length, finish: finishLine ? 1 : 0,
+        cheerers: finishLine && finishLine.userData.crowd ? finishLine.userData.crowd.userData.fans.length : 0 },
       wallet: getWallet(), daily,
     };
   }

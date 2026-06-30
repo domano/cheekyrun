@@ -82,6 +82,24 @@ const SCENARIOS = [
     },
   },
   {
+    name: 'stage-end-cheer-crowd',
+    fn: (c, assert) => {
+      c.start();
+      assert(c.state().counts.cheerers === 0, 'no roadside crowd mid-stage');
+      c.forceFinish();                            // drop the finish line + its crowd
+      const n = c.state().counts.cheerers;
+      assert(n >= 4 && n <= 8, `the finish line brings a roadside crowd (${n} fans)`);
+      c.step(2);                                  // the crowd hops/waves without erroring
+      assert(c.state().counts.cheerers === n, 'the crowd persists while the line is up');
+      let s; for (let i = 0; i < 40; i++) { s = c.step(6); if (s.level === 2) break; }
+      assert(s.level === 2, 'the runner crosses the line');
+      if (c.state().state === 'draft') { c.set({ draftArm: 0 }); c.pick(0); }   // crossing drafts a perk; resume the run
+      c.set({ stageLen: 1e6 });                   // hold the next stage open so only the old line clears
+      for (let i = 0; i < 80 && c.state().finishLine !== null; i++) c.step(6);
+      assert(c.state().counts.cheerers === 0, 'the crowd despawns with the finish line');
+    },
+  },
+  {
     name: 'stage-length-scales-with-speed',
     fn: (c, assert) => {
       c.start();
