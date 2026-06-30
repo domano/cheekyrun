@@ -134,14 +134,20 @@ else is a focused module it pulls from. State lives in module-scope `let`s in
   that drifts by at most one lane per row, so a single lane-change is always a
   valid dodge. Bars (duck) phase in after a warm-up.
 
-- **Levels (`levels.js`):** `levelFromDistance(distance)` divides a run into
-  levels of `LEVEL_DIST` units. Each level maps to a `BIOMES` entry (cycling
-  Meadow → Sunset → Twilight → Candyland). The loop detects a level increase,
-  fires `onLevelUp()` (banner + SFX + particles), and `applyBiome()` retargets
-  the biome colours; `tweenBiome()` lerps the live scene colours toward the
-  target each frame. The sky is the CSS `body` gradient behind the transparent
-  canvas, so biomes set both `document.body.style.background` and the 3D
-  fog/ground/path/hills/disc material colours.
+- **Levels / stages (`levels.js`):** a run is split into *stages*, each one a
+  `BIOMES` entry (cycling Meadow → Sunset → Twilight → Candyland). Stages size
+  themselves to pace: `stageLength(speed)` grows with the live speed, so a fast
+  run gets longer stages (roughly constant *time* each) instead of blitzing
+  through them. The loop (`main.js`) tracks the live stage window (`stageStart` +
+  `stageLen`); once past the body it stops spawning for the last `STAGE_LEAD`
+  units and drops a `makeFinishLine()` banner at the horizon. Crossing the banner
+  (`moveFinishLine`) is what bumps the level — so the level-up, its `onLevelUp()`
+  beat (banner + SFX + particles) and any perk draft all land on clear road, not
+  on top of a hazard. `applyBiome()` retargets the biome colours and
+  `tweenBiome()` lerps the live scene colours toward the target each frame. The
+  sky is the CSS `body` gradient behind the transparent canvas, so biomes set
+  both `document.body.style.background` and the 3D fog/ground/path/hills/disc
+  material colours.
 
 - **Save (`save.js`):** one versioned localStorage blob (`cheekyrun.save`) is the
   single source of persistent state — wallet, owned upgrade tiers, best, stats,

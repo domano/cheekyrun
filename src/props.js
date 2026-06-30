@@ -114,6 +114,38 @@ export function makeGate() {
   return g;
 }
 
+// A finish line marking a stage boundary: a checkered ground strip + a banner on
+// two posts, spanning the whole track. It's decoration, not a hazard — you run
+// straight through it, and crossing it ends the stage (level-up + biome change).
+export function makeFinishLine() {
+  const g = new THREE.Group();
+  const dark = toon(0x2a2030), light = toon(0xf6f1ea);
+  const W = 7.2, cols = 9, cw = W / cols;
+  // Ground checker: two rows of alternating squares painted flat on the road.
+  for (let r = 0; r < 2; r++) {
+    for (let i = 0; i < cols; i++) {
+      const sq = new THREE.Mesh(new THREE.BoxGeometry(cw, 0.06, cw), (i + r) % 2 ? light : dark);
+      sq.position.set(-W / 2 + cw * (i + 0.5), 0.04, -cw / 2 + r * cw);
+      g.add(sq);
+    }
+  }
+  // Two posts holding up the banner.
+  const postM = toon(0xe0d3c0);
+  [-W / 2 - 0.1, W / 2 + 0.1].forEach(x => {
+    const p = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 2.8, 10), postM); p.position.set(x, 1.4, 0); p.castShadow = true; ink(p, 1.06); g.add(p);
+  });
+  // Checkered banner strung between the posts (a dark backing gives it an ink frame).
+  const bw = W + 0.4;
+  const back = new THREE.Mesh(new THREE.BoxGeometry(bw, 0.62, 0.1), toon(0x2a2030)); back.position.set(0, 2.65, -0.04); ink(back, 1.04); g.add(back);
+  const bcols = 12, bcw = bw / bcols;
+  for (let i = 0; i < bcols; i++) {
+    const sq = new THREE.Mesh(new THREE.BoxGeometry(bcw, 0.5, 0.12), i % 2 ? light : dark);
+    sq.position.set(-bw / 2 + bcw * (i + 0.5), 2.65, 0); g.add(sq);
+  }
+  g.userData.kind = 'finish';
+  return g;
+}
+
 export function makeRoll() {
   const g = new THREE.Group();
   const paper = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.5, 22), toon(0xffffff, { emissive: 0x222222 }));

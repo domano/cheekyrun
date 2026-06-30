@@ -4,8 +4,25 @@
 // cycles to the next biome — a fresh palette for the sky, fog, ground, path,
 // hills and the sun/moon disc — and the pace nudges up a notch.
 
-// Distance (in world units) covered per level.
+// Distance (in world units) covered per level. Legacy fixed grid — stages now
+// size themselves to your speed (see stageLength below); kept for the headstart
+// head-distance and any external reference.
 export const LEVEL_DIST = 250;
+
+// --- Stage length ---
+// A stage's run of obstacles grows with how fast you're going, so a quick run
+// gets longer stages (roughly constant *time* on each) instead of blitzing
+// through them. Computed once when a stage begins, from the live speed.
+export const STAGE_BASE = 360;        // a stage's length (world units) at base speed
+export const STAGE_PER_SPEED = 14;    // extra length per unit of speed over the base
+export const STAGE_BASE_SPEED = 12.5; // the run's starting speed — no bonus at/below it
+export const stageLength = (speed) =>
+  STAGE_BASE + STAGE_PER_SPEED * Math.max(0, speed - STAGE_BASE_SPEED);
+
+// The clear run-up reserved at a stage's tail: obstacle spawning stops this far
+// before the finish line, so the line — and the level-up draft it triggers —
+// lands on empty road instead of on top of a hazard.
+export const STAGE_LEAD = 40;
 
 // Visual themes the run rotates through, one per level. Colours are plain hex.
 // `bg` is the four-stop CSS gradient painted behind the (transparent) canvas,
