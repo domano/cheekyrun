@@ -51,6 +51,23 @@ export const HITSTOP_DEATH = 0.14;    // the crash — a longer freeze so the wi
 export const SLOWMO_FACTOR = 0.45;    // world runs at this fraction of real time
 export const SLOWMO_TIME = 0.13;      // seconds the dilation lasts
 export const SLOWMO_MIN_MULT = 2;     // combo multiplier needed to trigger it (lower = fires more often)
+// A *tight* clean dodge (threaded right through a hazard's lane) earns a brief
+// dilation even with no combo going — so the most skilful moment always lands a
+// micro-reward, not just the optimised chain. Shorter than the combo slow-mo.
+export const SLOWMO_TIGHT_MARGIN = 0.22;   // dx under this beyond half-width counts as a true near-miss
+export const SLOWMO_TIGHT_TIME = 0.08;     // seconds the no-combo dilation lasts
+
+// Pacing / flow tuning.
+// The warm-up difficulty ramps to full over this many seconds. Longer = a gentler
+// early curve, so a fast learner isn't slammed by the speed+level compound spike.
+export const DIFF_RAMP = 90;
+// Floor on the gap between obstacle rows (seconds), independent of speed/level, so
+// reaction time never drops below a human-fair threshold deep in a run.
+export const ROW_MIN_GAP = 0.42;
+// Losing a streak steps the multiplier down one tier instead of nuking it: a
+// single missed pickup bleeds momentum rather than ending it, so a long chain is
+// worth defending and a stumble is recoverable.
+export const COMBO_DECAY_STEP = COMBO_STEP;   // hits dropped per window-expiry tier
 
 // Difficulty "heat": the warm-up difficulty caps at 1.0 after ~70s, so without
 // this a long run only gets *faster*, never denser. heat keeps creeping with the

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { LANES, SPAWN_Z, DESPAWN_Z, INK, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE_RAMP, GATE_COOLDOWN, COMBO_WINDOW, comboMult, NEARMISS_MARGIN, NEARMISS_BONUS, SKIM_MARGIN, SKIM_BONUS, SKIM_WINDOW, SAFE_HAZARD_MIN_DIFF, SAFE_HAZARD_CHANCE, JUMP_BUFFER, HITSTOP_SHIELD, HITSTOP_DEATH, SLOWMO_FACTOR, SLOWMO_TIME, SLOWMO_MIN_MULT, SCORE_FLOW_RATE, HEAT_PER_LEVEL, HEAT_LEVEL_CAP, HEAT_MAX, PHOENIX_COMBO, PHOENIX_INVULN, GREED_CAP, RING_TIME, POWERUP_DURATION, POWERUP_CHANCE, POWERUP_MIN_DIFF, POWERUP_COOLDOWN, POWERUPS, POWERUP_KINDS, DASH_SPEED_MULT, DRAFT_EVERY, DRAFT_CHOICES, DRAFT_ARM, DRAFT_GRACE, mulberry32, dailyKey, dailySeed, $, buzz, shuffle } from './config.js';
+import { LANES, SPAWN_Z, DESPAWN_Z, INK, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE_RAMP, GATE_COOLDOWN, COMBO_WINDOW, comboMult, NEARMISS_MARGIN, NEARMISS_BONUS, SKIM_MARGIN, SKIM_BONUS, SKIM_WINDOW, SAFE_HAZARD_MIN_DIFF, SAFE_HAZARD_CHANCE, JUMP_BUFFER, HITSTOP_SHIELD, HITSTOP_DEATH, SLOWMO_FACTOR, SLOWMO_TIME, SLOWMO_MIN_MULT, SLOWMO_TIGHT_MARGIN, SLOWMO_TIGHT_TIME, DIFF_RAMP, ROW_MIN_GAP, COMBO_DECAY_STEP, COMBO_STEP, SCORE_FLOW_RATE, HEAT_PER_LEVEL, HEAT_LEVEL_CAP, HEAT_MAX, PHOENIX_COMBO, PHOENIX_INVULN, GREED_CAP, RING_TIME, POWERUP_DURATION, POWERUP_CHANCE, POWERUP_MIN_DIFF, POWERUP_COOLDOWN, POWERUPS, POWERUP_KINDS, DASH_SPEED_MULT, DRAFT_EVERY, DRAFT_CHOICES, DRAFT_ARM, DRAFT_GRACE, mulberry32, dailyKey, dailySeed, $, buzz, shuffle } from './config.js';
 import { makeGradient, toon } from './materials.js';
 import { makeObstacle, makeHurdle, makeGate, makeRoll, makePowerup, makeTree, makeBush, makeFlower, makeCloud, makeFinishLine, OBSTACLE_KINDS } from './props.js';
 import { createParticles } from './particles.js';
@@ -56,6 +56,10 @@ let level, shields, invuln, magnetR, rollValue, extraJumps;
 // Phoenix comeback: `phoenix` is an armed save (earned at a hot combo); once spent
 // `phoenixUsed` blocks re-arming, so it's strictly once per run.
 let phoenix = false, phoenixUsed = false;
+let lastRowGap = 0;   // the most recent computed seconds-between-rows (surfaced for tests)
+// The last run's game-over framing (best / so-close / wipe), surfaced to the debug
+// bridge so the "one more run" messaging is deterministically testable.
+let lastRun = null;
 // Roguelite draft: perks[] picked this run ({id,stacks}); mods derives the run
 // modifiers from them; levelUps counts level-up events to time the every-2nd draft.
 let perks = [], mods = freshMods(), levelUps = 0, draftCards = [], draftArm = 0;
@@ -211,8 +215,11 @@ function spawnRow() {
   // COMPOUND ROW: once there's heat, the open lane sometimes also holds a
   // jumpable/duckable hazard — so reaching safety needs a lane-change AND a clear
   // in the same beat. Still fair (one move + one action); telegraphed like any row.
+  // ...but never on a row still inside a gate's cooldown (forcedGap counting
+  // down), so a full-width gate's jump/duck recovery is never immediately stacked
+  // onto a same-beat lane-change-and-clear — that back-to-back demand reads unfair.
   let safeHazard = false;
-  if (heat > SAFE_HAZARD_MIN_DIFF && rng() < SAFE_HAZARD_CHANCE * heat * bp.hazardBias) {
+  if (forcedGap === 0 && heat > SAFE_HAZARD_MIN_DIFF && rng() < SAFE_HAZARD_CHANCE * heat * bp.hazardBias) {
     const h = makeObstacle(kinds[(rng() * kinds.length) | 0]);
     h.position.set(LANES[nextSafe], 0, SPAWN_Z); h.userData.lane = nextSafe; h.userData.lx = LANES[nextSafe]; scene.add(h); obstacles.push(h);
     safeHazard = true; safeHazardCount++;
@@ -402,6 +409,10 @@ function gameOver() {
   // Capture the bar to beat BEFORE banking this score, so we can celebrate a new
   // personal best — the single strongest "one more run" hook in a runner.
   const sc = score(), prevBest = getBest(), isBest = sc > prevBest && sc > 0;
+  // A run that fell just short of your best gets its own "so close" beat — the gap
+  // is the hook that reloads you into another attempt, not a flat "Best: N".
+  const soClose = !isBest && prevBest > 0 && sc > prevBest * 0.9;
+  lastRun = { score: sc, prevBest, isBest, soClose };
   setBest(sc);
   setTimeout(isBest ? sfxFanfare : sfxOver, 260);
   if (daily) { setDailyBest(dailyDay, sc); renderDaily(); }
@@ -414,10 +425,13 @@ function gameOver() {
   $('gameover').classList.toggle('newbest', isBest);
   $('bestLine').textContent = isBest
     ? (prevBest > 0 ? `🏆 +${sc - prevBest} over your old best!` : '🏆 Your first record!')
-    : 'Best: ' + getBest();
+    : soClose ? `😤 So close — just ${prevBest - sc} from your best!`
+              : 'Best: ' + getBest();
   if (isBest) {                    // a gold pop + confetti so the record is felt, not just read
     setTimeout(() => flash('#ffd23f'), 180);
     particles.emit(player.position.clone().add(new THREE.Vector3(0, 1.0, 0)), { count: 20, color: 0xffd23f, speed: 5, up: 6, life: 1.1, grav: 9 });
+  } else if (soClose) {            // a soft amber pulse — present, but not the gold fanfare
+    setTimeout(() => flash('#ffe08a'), 180);
   }
   $('earned').textContent = rollCount; renderShop(); renderStats(); renderCosmetics();
   renderAchievements(unlocked.map(a => a.id));   // glow any earned this run, right on the card
@@ -482,6 +496,15 @@ function breakCombo() {
   const box = $('comboHud'); sfxComboBreak();
   box.classList.remove('lose'); void box.offsetWidth; box.classList.add('lose');
   clearTimeout(comboHideT); comboHideT = setTimeout(() => { box.classList.add('hide'); box.classList.remove('lose'); }, 300);
+}
+// Window expiry doesn't nuke a streak — it steps the multiplier down one tier and
+// refreshes the window, so a single missed pickup bleeds momentum instead of
+// ending the chain. A hit (crash/shield) still calls breakCombo() for a full reset;
+// only running dry decays. Once the streak drops below a tier, it breaks for real.
+function decayCombo() {
+  combo = Math.max(0, combo - COMBO_DECAY_STEP);
+  if (combo >= 2) { comboTimer = COMBO_WINDOW * mods.comboWindowMult; updateComboHud(true); }  // taper at the lower tier
+  else { combo = 0; updateComboHud(false); }                                                   // dropped under a tier — quietly done
 }
 function updateComboHud(pulse) {
   const box = $('comboHud');
@@ -563,8 +586,11 @@ function tick(dt) {
   if (state === 'playing') {
     elapsed += sdt;
     invuln = Math.max(0, invuln - sdt);
-    difficulty = Math.min(1, elapsed / 70);           // warm up over ~70s
-    speed = (12.5 + 13.5 * difficulty) * (1 + 0.045 * (level - 1)) * mods.speedMult;  // levels + perks nudge the pace
+    difficulty = Math.min(1, elapsed / DIFF_RAMP);    // warm up over ~90s — a gentler early curve
+    // Lean a touch more on the level term and less on raw difficulty, so the
+    // first seconds aren't a compound spike and the pace keeps climbing past the
+    // difficulty plateau instead of flatlining.
+    speed = (12.5 + 11 * difficulty) * (1 + 0.055 * (level - 1)) * mods.speedMult;  // levels + perks nudge the pace
     if (power === 'dash') speed *= DASH_SPEED_MULT;                  // Boost: a brief speed surge (you're invuln while it lasts)
     distance += speed * sdt;
     // Stage flow: once past the stage body, drop the finish line at the horizon;
@@ -572,13 +598,13 @@ function tick(dt) {
     // from the run-up onward so the line lands on clear road.
     const into = distance - stageStart;
     if (into >= stageLen && !finishLine) placeFinishLine(SPAWN_Z);
-    if (comboTimer > 0) { comboTimer -= sdt; if (comboTimer <= 0) breakCombo(); }
+    if (comboTimer > 0) { comboTimer -= sdt; if (comboTimer <= 0) decayCombo(); }
     // Earn the once-per-run Phoenix save when the streak gets hot enough.
     if (!phoenix && !phoenixUsed && combo >= PHOENIX_COMBO) armPhoenix();
     // Flow scoring: a hot combo drips bonus score as you run, so a greedy chained
     // run visibly out-scores a cautious one (kept fractional for clean integers).
     if (combo >= 2) { flowAcc += speed * sdt * (cmult(combo) - 1) * SCORE_FLOW_RATE; const w = Math.floor(flowAcc); if (w) { rollPoints += w; flowAcc -= w; } }
-    const T = (1.35 - 0.6 * difficulty) / (1 + 0.04 * (level - 1)) * biomePlay(level).rowMult;  // seconds between rows
+    const T = lastRowGap = Math.max(ROW_MIN_GAP, (1.35 - 0.6 * difficulty) / (1 + 0.04 * (level - 1)) * biomePlay(level).rowMult);  // seconds between rows, floored fair
     // Keep the row cadence ticking, but hold spawns through the stage's run-up so
     // the finish line and the upgrade screen land on empty road.
     rowTimer -= sdt; if (rowTimer <= 0) { if (into < stageLen - STAGE_LEAD) spawnRow(); rowTimer = T; }
@@ -594,8 +620,10 @@ function tick(dt) {
     updateHud(); updateLevelHud(); updateComboBar();
     // Drive the soundtrack's intensity from raw pace + how hot the combo is.
     setIntensity((speed - 12.5) / 14 + Math.max(0, cmult(combo) - 1) * 0.12);
-    // speed lines ramp in with combo and raw pace, as a high-intensity reward
-    speedLines.style.opacity = Math.min(0.6, Math.max(0, cmult(combo) - 1) * 0.15 + Math.max(0, speed - 22) * 0.012);
+    // speed lines ramp in with combo and raw pace, as a high-intensity reward.
+    // They keep climbing at very high speed (no early cap) so a deep, fast run
+    // *feels* faster instead of flatlining once past the warm-up.
+    speedLines.style.opacity = Math.min(0.85, Math.max(0, cmult(combo) - 1) * 0.15 + Math.max(0, speed - 20) * 0.016);
   } else if (speedLines.style.opacity !== '0') speedLines.style.opacity = 0;
   moveScenery(dt); scrollStripes(dt); driftClouds(dt); tweenBiome(dt);
   deformRoad(roadPath, distance); deformRoad(roadGround, distance);
@@ -607,8 +635,13 @@ function moveObstacles(dt) {
   for (let i = obstacles.length - 1; i >= 0; i--) {
     const o = obstacles[i]; const prevZ = o.position.z; o.position.z += speed * dt;
     const lx = o.userData.lx, halfW = o.userData.halfW || 0.95;
-    const dz = Math.abs(o.position.z - player.position.z), dx = Math.abs(lx - player.position.x);
-    if (dz < 0.8 && dx < halfW) {
+    const sz = o.position.z - player.position.z, dx = Math.abs(lx - player.position.x);
+    // Forgiving, forward-biased hitbox: collide while the hazard is approaching or
+    // right at the player, but stop counting hits well before the old symmetric
+    // window let its back face clip you — so a tight dodge you *felt* you cleared
+    // never registers a late hit. A sliver of lateral grace keeps the verdict
+    // matching the visual. (sz > 0 means the hazard centre is already past you.)
+    if (sz > -0.8 && sz < 0.5 && dx < halfW - 0.06) {
       const safe = o.userData.duck ? (duckTimer > 0) : (groundY > 1.0);
       if (!safe && invuln <= 0) {
         if (shields > 0 && !mods.noShields) {
@@ -640,8 +673,13 @@ function moveObstacles(dt) {
         // A streak trailing behind (toward the camera) sells the "whoosh past it".
         particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.9, 0)),
           { count: 7, color: through ? 0xeaffff : 0xbfffe0, speed: 3, up: 1, life: .4, grav: 3, size: 0.4, dir: new THREE.Vector3(0, 0, 1) });
-        // On a hot streak, a brief slow-mo makes the close call land.
-        if (!reduceMotion && m >= SLOWMO_MIN_MULT && hitStopT <= 0) slowmoT = Math.max(slowmoT, SLOWMO_TIME);
+        // Slow-mo on the close call: the full beat on a hot streak, plus a brief
+        // one for any genuinely *tight* clean thread even at combo 1 — so the most
+        // skilful moment always lands a micro-reward, not just the optimised chain.
+        if (!reduceMotion && hitStopT <= 0) {
+          if (m >= SLOWMO_MIN_MULT) slowmoT = Math.max(slowmoT, SLOWMO_TIME);
+          else if (through && dx < halfW + SLOWMO_TIGHT_MARGIN) slowmoT = Math.max(slowmoT, SLOWMO_TIGHT_TIME);
+        }
       }
     }
     const off = trackOffset(o.position.z, distance); o.position.x = lx + off.x; o.position.y = off.y;
@@ -748,7 +786,13 @@ function moveFinishLine(dt) {
 }
 
 function updatePlayer(dt, t) {
-  player.position.x += (targetX - player.position.x) * Math.min(1, dt * 13);
+  // Lane snap is speed-aware: at a fast pace an obstacle closes the Z gap quickly,
+  // so the dodge must settle quickly too or a clean lane-change feels like a clip.
+  // Hard-snap the last sliver to kill the asymptotic residual (collision reads
+  // this X, so a lazy settle directly shrinks the real dodge window).
+  const snapRate = state === 'playing' ? 14 + speed * 0.18 : 13;
+  player.position.x += (targetX - player.position.x) * Math.min(1, dt * snapRate);
+  if (Math.abs(targetX - player.position.x) < 0.04) player.position.x = targetX;
   banked += (((targetX - player.position.x) * 0.5) - banked) * Math.min(1, dt * 11); player.rotation.z = banked;
   jumpBufferT = Math.max(0, jumpBufferT - dt);
   if (!grounded) {
@@ -813,7 +857,7 @@ function updateCamera(dt, t) {
   // A one-shot FOV "punch" on big beats (level-up, a Phoenix save, the crash) eases
   // back to 0; suppressed under reduce-motion since it's vestibular.
   const kick = reduceMotion ? 0 : camKick; camKick = Math.max(0, camKick - dt * 22);
-  const fov = 62 + Math.min(Math.max(speed - 12.5, 0), 16) * 0.5 + kick;
+  const fov = 62 + Math.min(Math.max(speed - 12.5, 0), 24) * 0.5 + kick;   // widens further at top speed so the world stretches
   if (Math.abs(camera.fov - fov) > 0.05) { camera.fov = fov; camera.updateProjectionMatrix(); }
   if (shakeT > 0) { shakeT -= dt; const s = shakeT * 1.2; camera.position.x += (Math.random() - 0.5) * s; camera.position.y = 5.4 + (Math.random() - 0.5) * s; }
   else camera.position.y += (5.4 - camera.position.y) * Math.min(1, dt * 8);
@@ -1052,7 +1096,7 @@ function buildDebugApi() {
       perks: perks.map(p => ({ id: p.id, stacks: p.stacks })), mods, levelUps,
       draft: draftCards.map(p => p.id), draftArm: +draftArm.toFixed(2),
       meta: { rerolls: getRerolls(), banishes: getBanishes(), boon: getBoon(), eligible: eligiblePool() },
-      power, powerT: +powerT.toFixed(2),
+      power, powerT: +powerT.toFixed(2), lastRun, rowGap: +lastRowGap.toFixed(3),
       emote: +emoteT.toFixed(2), spin: +spin.toFixed(2),
       laneIdx, targetX,
       track: trackSnapshot(),
@@ -1089,7 +1133,7 @@ function buildDebugApi() {
     speed: v => { speed = v; }, difficulty: v => { difficulty = v; }, elapsed: v => { elapsed = v; },
     shields: v => { shields = v; }, invuln: v => { invuln = v; }, magnetR: v => { magnetR = v; },
     rollValue: v => { rollValue = v; }, extraJumps: v => { extraJumps = v; }, jumpsLeft: v => { jumpsLeft = v; },
-    combo: v => { combo = v; }, rollCount: v => { rollCount = v; }, rollPoints: v => { rollPoints = v; },
+    combo: v => { combo = v; }, comboTimer: v => { comboTimer = v; }, rollCount: v => { rollCount = v; }, rollPoints: v => { rollPoints = v; },
     phoenix: v => { phoenix = !!v; if (phoenix) phoenixUsed = false; }, phoenixUsed: v => { phoenixUsed = !!v; },
     power: v => { power = v; if (v && powerT <= 0) powerT = POWERUP_DURATION; if (v === 'ghost' || v === 'dash') invuln = Math.max(invuln, POWERUP_DURATION); },
     powerT: v => { powerT = v; }, safeLane: v => { safeLane = v; }, forcedGap: v => { forcedGap = v; },
