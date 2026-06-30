@@ -44,6 +44,11 @@ let emoteT, spin;   // emoteT: brief happy-squish timer (rolls/near-miss). spin:
 // `paused` freezes the rAF loop for deterministic stepping. Declared up here so
 // they're initialised before the top-level animate() call (avoids a TDZ throw).
 let simTime = 0, paused = false;
+// When stepping the sim deterministically (debug bridge), skip the per-frame
+// WebGL render: feature tests only read state JSON, and software-WebGL renders
+// cost ~70ms each — they were the whole bottleneck. step() renders once at the
+// end instead, so a screenshot after stepping still shows the final frame.
+let skipRender = false;
 // Respect the OS "reduce motion" preference for the in-canvas juice (slow-mo,
 // hit-stop) the way the CSS already does for DOM animations.
 let reduceMotion = false;
@@ -642,7 +647,7 @@ function tick(dt) {
   moveScenery(dt); scrollStripes(dt); driftClouds(dt); tweenBiome(dt);
   deformRoad(roadPath, distance); deformRoad(roadGround, distance);
   updatePlayer(dt, t); particles.update(dt); updateFx(dt); updateCamera(dt, t);
-  renderer.render(scene, camera);
+  if (!skipRender) renderer.render(scene, camera);
 }
 const hitColor = (o) => o.userData.color || 0xff8a6a;
 function moveObstacles(dt) {
@@ -1188,7 +1193,7 @@ function buildDebugApi() {
     // ---- deterministic time ----
     pause: () => { paused = true; return snapshot(); },
     resume: () => { paused = false; clock.getDelta(); return snapshot(); },   // drop the accumulated gap
-    step: (frames = 1, dt = 1 / 60) => { paused = true; for (let i = 0; i < frames; i++) tick(dt); return snapshot(); },
+    step: (frames = 1, dt = 1 / 60) => { paused = true; skipRender = true; for (let i = 0; i < frames; i++) tick(dt); skipRender = false; renderer.render(scene, camera); return snapshot(); },
     seed: (n) => { rng = mulberry32(n >>> 0); return n >>> 0; },              // deterministic spawns (apply after start)
     // ---- teleport ----
     set,
