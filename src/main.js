@@ -9,7 +9,7 @@ import { trackOffset, deformRoad } from './track.js';
 import { UPGRADES, effects, tierOf, nextCost, buy, getWallet, addRolls, DEFAULT_POOL, unlockedPerkIds, META, buyMeta } from './upgrades.js';
 import { PERKS, freshMods, applyPerks, perkById, draftChoices } from './perks.js';
 import { save, getRerolls, useReroll, getBanishes, useBanish, getBoon, setBoon, banishPerk, poolHas } from './save.js';
-import { getBest, setBest, getStats, bumpStats, resetSave, reload } from './save.js';
+import { getBest, setBest, getStats, bumpStats, resetSave, reload, requestPersistence, onExternalChange } from './save.js';
 import { hasAch, unlock } from './save.js';
 import { ACHIEVEMENTS, checkAchievements } from './achievements.js';
 import { selectedSkin, selectSkin, getDailyBest, setDailyBest, getDailyStreak } from './save.js';
@@ -76,20 +76,27 @@ initAudio(() => state);
 safeInit();
 animate();
 
-// Start up against the stored save, but never let a corrupt or incompatible
-// legacy save leave a dead page. load() already coerces field *types*, but a bad
-// *value* (e.g. a negative upgrade tier → a negative level → biomeOf() undefined)
-// can still throw deep in init(). If anything throws, wipe the save to defaults
-// and boot once more on a clean slate — an unreadable save is unrecoverable
-// anyway, and a playable game beats a black screen.
+// Start up against the stored save, but never let a corrupt save — or a transient
+// init hiccup — leave a dead page. A throw in init() does NOT mean the save is
+// bad: load() (save.js) has already coerced types and clamped values, so most
+// failures are unrelated (a WebGL/context blip, an audio init throw). So retry
+// once on the SAME save first; only if it *still* throws do we treat the save as
+// the culprit and reset. This keeps a one-off crash from nuking good progress —
+// the old "wipe on any throw" was a silent save-killer.
 function safeInit() {
   try {
     init();
   } catch (e) {
-    console.warn('Cheeky Run: corrupt save detected at startup — resetting to defaults', e);
-    try { resetSave(); } catch { /* ignore */ }
+    console.warn('Cheeky Run: init failed — retrying once without touching the save', e);
     try { $('game').replaceChildren(); } catch { /* ignore */ }   // drop a half-built canvas before re-init
-    init();
+    try {
+      init();
+    } catch (e2) {
+      console.warn('Cheeky Run: init failed again — resetting save to defaults as a last resort', e2);
+      try { resetSave(); } catch { /* ignore */ }
+      try { $('game').replaceChildren(); } catch { /* ignore */ }
+      init();
+    }
   }
 }
 
@@ -97,6 +104,13 @@ function safeInit() {
 function init() {
   const mm = matchMedia('(prefers-reduced-motion: reduce)');
   reduceMotion = mm.matches; mm.addEventListener?.('change', e => { reduceMotion = e.matches; });
+  // Ask for durable (non-evictable) storage on the first real interaction — that's
+  // when a browser is most willing to grant it. Guards itself, so firing on both is fine.
+  const askPersist = () => requestPersistence();
+  addEventListener('pointerdown', askPersist, { once: true });
+  addEventListener('keydown', askPersist, { once: true });
+  // Reconcile when another tab saves, so two tabs don't clobber each other's progress.
+  onExternalChange(() => { refreshHud(); renderShop(); });
   makeGradient();
   scene = new THREE.Scene();
   scene.fog = new THREE.Fog(0xffe1d6, 32, 64);
