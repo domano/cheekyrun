@@ -27,6 +27,7 @@
 import { prevKey } from './config.js';
 
 const KEY = 'cheekyrun.save';
+const BAK = 'cheekyrun.save.bak';            // shadow copy: a second slot to survive eviction / a torn write
 const LEGACY_KEYS = ['cheekyrun.save.v1'];   // pre-versioning saves; cleared on first load
 const VERSION = 1;                           // bump + add a MIGRATIONS step per breaking schema change
 
@@ -112,10 +113,18 @@ function dropLegacy() {
   try { for (const k of LEGACY_KEYS) localStorage.removeItem(k); } catch { /* ignore */ }
 }
 
+// Parse one storage slot into a raw blob (or null if missing/unparseable).
+function readSlot(key) {
+  try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch { return null; }
+}
+
 export let save = load();
 function load() {
-  let raw = null;
-  try { raw = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch { /* corrupt JSON */ }
+  // Prefer the primary slot; fall back to the shadow copy when the primary is
+  // gone (evicted) or a write was interrupted mid-blob. Only a real object counts
+  // — a null/garbage primary shouldn't shadow a good backup.
+  let raw = readSlot(KEY);
+  if (!isObj(raw)) { const bak = readSlot(BAK); if (isObj(bak)) raw = bak; }
   let result;
   try { result = normalize(migrate(raw)); }
   catch (e) { console.warn('Cheeky Run: save unreadable; starting fresh', e); result = defaults(); }
@@ -126,15 +135,55 @@ function load() {
 // importer's reference stays valid). Mirrors the import-time load + lets tests
 // exercise loading a hand-written save without a full page reload.
 export function reload() { Object.assign(save, load()); return save; }
+
+// True after the last persist() succeeded. Flips false on a quota/security
+// failure (e.g. a full disk, or Safari private mode where setItem throws) so a
+// caller can tell "saved" from "looked saved but didn't" instead of guessing.
+export let persistOk = true;
 export function persist() {
-  try { localStorage.setItem(KEY, JSON.stringify(save)); } catch { /* ignore */ }
+  let blob;
+  try { blob = JSON.stringify(save); } catch { return; }
+  try {
+    localStorage.setItem(KEY, blob);
+    persistOk = true;
+    // Mirror to the shadow slot. Best-effort: if only the backup write fails the
+    // primary still landed, so don't flip persistOk on it.
+    try { localStorage.setItem(BAK, blob); } catch { /* shadow is best-effort */ }
+  } catch (e) {
+    if (persistOk) console.warn('Cheeky Run: could not save progress (storage full or blocked)', e);
+    persistOk = false;
+  }
+}
+
+// Ask the browser to keep our storage from being evicted under pressure. Without
+// this, localStorage on a shared origin (e.g. *.github.io) is best-effort and can
+// be cleared "after a while" with no user action. Idempotent + feature-detected,
+// so it's a no-op where unsupported; best called from the first user gesture.
+let persistenceAsked = false;
+export function requestPersistence() {
+  if (persistenceAsked) return;
+  persistenceAsked = true;
+  try { navigator.storage?.persist?.(); } catch { /* ignore */ }
+}
+
+// Keep multiple tabs coherent: when another tab rewrites the save, re-read it
+// into our singleton (mutated in place, so every importer's reference stays live)
+// and let the caller refresh UI. Without this, the last tab to persist silently
+// clobbers a sibling's committed progress. Wires once.
+let externalWired = false;
+export function onExternalChange(cb) {
+  if (externalWired) return;
+  externalWired = true;
+  try {
+    addEventListener('storage', (e) => { if (e.key === KEY) { reload(); cb?.(); } });
+  } catch { /* no window (non-browser import) */ }
 }
 
 // Wipe persistent state back to defaults — both the stored blob and the live
 // in-memory singleton (mutated in place so every importer's reference stays
 // valid). Lets the feature harness isolate scenarios without reloading the page.
 export function resetSave() {
-  try { localStorage.removeItem(KEY); } catch { /* ignore */ }
+  try { localStorage.removeItem(KEY); localStorage.removeItem(BAK); } catch { /* ignore */ }
   Object.assign(save, defaults());
 }
 

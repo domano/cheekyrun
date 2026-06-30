@@ -22,8 +22,16 @@ export function toon(color, opts = {}) {
 }
 
 // Inverted-hull ink outline added as a child (auto-follows animation).
-export function ink(mesh, factor = 1.07) {
-  const o = new THREE.Mesh(mesh.geometry, inkMat);
+// `color` overrides the shared dark ink — needed when the default would vanish
+// against the ground (e.g. a dark prop on a dark Ember floor wants a light edge).
+const inkMats = new Map();
+export function ink(mesh, factor = 1.07, color) {
+  let mat = inkMat;
+  if (color !== undefined) {
+    mat = inkMats.get(color);
+    if (!mat) { mat = new THREE.MeshBasicMaterial({ color, side: THREE.BackSide }); inkMats.set(color, mat); }
+  }
+  const o = new THREE.Mesh(mesh.geometry, mat);
   o.scale.setScalar(factor);
   o.castShadow = false;
   o.receiveShadow = false;
