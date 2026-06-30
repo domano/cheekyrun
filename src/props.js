@@ -79,6 +79,84 @@ const OBSTACLES = {
     const d = new THREE.Mesh(new THREE.ConeGeometry(0.6, 1.2, 18), toon(0xff8ad0, { emissive: 0x3a0022 })); d.position.y = 0.6; d.castShadow = true; ink(d, 1.06); g.add(d); return g;
   } },
   licorice: { action: 'duck', color: 0x3a2a4a, build: () => duckBar(toon(0x3a2a4a), toon(0xffd23f)) },
+
+  // Frostpeak — icy tundra. Pale sky + snow ground, so props lean saturated and
+  // keep the dark ink edge — white-on-white would vanish.
+  icespike: { action: 'jump', color: 0x7fb8e6, build: () => {
+    const m = toon(0x7fb8e6, { emissive: 0x1f3a5a, flat: true }), g = new THREE.Group();
+    const main = new THREE.Mesh(new THREE.ConeGeometry(0.46, 1.9, 6), m); main.position.y = 0.95; main.castShadow = true; ink(main, 1.08, 0x3a4a5a); g.add(main);
+    [[-0.46, 0.55, 0.34], [0.44, 0.48, -0.36]].forEach(([x, h, z]) => { const c = new THREE.Mesh(new THREE.ConeGeometry(0.22, h * 2, 6), m); c.position.set(x, h, z); c.castShadow = true; ink(c, 1.12, 0x3a4a5a); g.add(c); });
+    return g;
+  } },
+  snowman: { action: 'jump', color: 0xd6e6f2, build: () => {
+    // Pale-blue body (not white) so it separates from the snow; dark coal eyes,
+    // buttons and twig arms are what make it read at distance.
+    const g = new THREE.Group(), m = toon(0xd6e6f2);
+    const base = new THREE.Mesh(new THREE.SphereGeometry(0.55, 14, 14), m); base.position.y = 0.55; base.castShadow = true; ink(base, 1.1);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.38, 14, 14), m); head.position.y = 1.32; head.castShadow = true; ink(head, 1.12);
+    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.32, 8), toon(0xff8a3d)); nose.position.set(0, 1.32, 0.4); nose.rotation.x = Math.PI / 2; g.add(nose);
+    const coal = toon(0x3a4a5a);
+    [[-0.13, 1.4, 0.32, 0.05], [0.13, 1.4, 0.32, 0.05], [0, 0.72, 0.5, 0.06], [0, 0.46, 0.52, 0.06]].forEach(([x, y, z, r]) => { const c = new THREE.Mesh(new THREE.SphereGeometry(r, 8, 8), coal); c.position.set(x, y, z); g.add(c); });
+    const twig = toon(0x5a4632);
+    [-1, 1].forEach(s => { const a = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.62, 6), twig); a.position.set(s * 0.5, 0.72, 0); a.rotation.z = s * 0.9; a.castShadow = true; g.add(a); });
+    g.add(base, head); return g;
+  } },
+  frostbar: { action: 'duck', color: 0xafd4f0, build: () => {
+    const g = duckBar(toon(0xafd4f0, { emissive: 0x24465e }), toon(0xcfe6f2));
+    const iceM = toon(0xcfeaff);
+    [-0.5, 0.1, 0.6].forEach(x => { const ic = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.55, 7), iceM); ic.position.set(x, 1.26, 0); ic.rotation.x = Math.PI; ic.castShadow = true; ink(ic, 1.1, 0x3a4a5a); g.add(ic); });
+    return g;
+  } },
+
+  // Ember — volcanic ashlands. Dark ground, so the cooled-lava boulder lightens
+  // to warm basalt and takes a *light* ink edge (a dark outline would vanish);
+  // glowing cracks are the icon that reads "lava" instantly.
+  lavarock: { action: 'jump', color: 0x6e5a52, build: () => {
+    const g = new THREE.Group();
+    const r = new THREE.Mesh(new THREE.IcosahedronGeometry(0.66, 0), toon(0x6e5a52, { flat: true })); r.position.y = 0.55; r.scale.set(1.3, 0.9, 1.1); r.castShadow = true; ink(r, 1.08, 0x9a8478); g.add(r);
+    const lava = toon(0xff6a2a, { emissive: 0xff5a10, flat: true });
+    const crackM = toon(0xff6a2a, { emissive: 0xff6a2a, flat: true });
+    const glow = new THREE.Mesh(new THREE.IcosahedronGeometry(0.22, 0), lava); glow.position.set(0.05, 0.78, 0.18); g.add(glow);
+    [[-0.22, 0.55, 0.52, 0.5], [0.27, 0.6, 0.46, -0.4]].forEach(([x, y, z, rz]) => { const c = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.11, 0.07), crackM); c.position.set(x, y, z); c.rotation.z = rz; g.add(c); });
+    return g;
+  } },
+  emberspire: { action: 'jump', color: 0xc23a1a, build: () => {
+    const g = new THREE.Group(), m = toon(0xc23a1a, { emissive: 0x7a2008, flat: true });
+    const spire = new THREE.Mesh(new THREE.ConeGeometry(0.46, 1.9, 7), m); spire.position.y = 0.95; spire.castShadow = true; ink(spire, 1.06); g.add(spire);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.55, 7), toon(0xff8a2d, { emissive: 0xff8a2d })); tip.position.y = 1.75; ink(tip, 1.1); g.add(tip);
+    return g;
+  } },
+  emberbar: { action: 'duck', color: 0xc24a1e, build: () => {
+    const g = duckBar(toon(0xc24a1e, { emissive: 0x8a3a10 }), toon(0x4a2620), [1.7, 0.34, 0.34]);
+    const dripM = toon(0xff7a2a, { emissive: 0xff7a2a });
+    [-0.5, 0.1, 0.6].forEach(x => { const d = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.4, 7), dripM); d.position.set(x, 1.3, 0); d.rotation.x = Math.PI; d.castShadow = true; ink(d, 1.1); g.add(d); });
+    return g;
+  } },
+
+  // Reef — sunlit coral seabed. Strong palette already; props just need bulk and
+  // a deeper pink so they don't wash out on the pale sand.
+  coral: { action: 'jump', color: 0xff7aa8, build: () => {
+    const g = new THREE.Group(), m = toon(0xff7aa8, { emissive: 0x3a0a18 }), tipM = toon(0xffc2da);
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.3, 0.85, 8), m); trunk.position.y = 0.42; trunk.castShadow = true; ink(trunk, 1.07); g.add(trunk);
+    [[-0.32, 1.0, 0.55], [0.34, 1.1, -0.45], [0, 1.4, 0]].forEach(([x, y, rz]) => {
+      const b = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.21, 0.8, 8), m); b.position.set(x, y, 0); b.rotation.z = rz; b.castShadow = true; ink(b, 1.1); g.add(b);
+      const nub = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 10), tipM); nub.position.set(x - Math.sin(rz) * 0.4, y + Math.cos(rz) * 0.4, 0); ink(nub, 1.1); g.add(nub);
+    });
+    return g;
+  } },
+  clam: { action: 'jump', color: 0xff8fb0, build: () => {
+    const g = new THREE.Group(), m = toon(0xff8fb0);
+    const lower = new THREE.Mesh(new THREE.SphereGeometry(0.62, 16, 8, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), m); lower.position.y = 0.6; lower.castShadow = true; ink(lower, 1.06);
+    const upper = new THREE.Mesh(new THREE.SphereGeometry(0.62, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), m); upper.position.y = 0.68; upper.rotation.x = -0.55; upper.castShadow = true; ink(upper, 1.06);
+    const pearl = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 12), toon(0xfff4ff, { emissive: 0xddc8dd })); pearl.position.y = 0.6;
+    g.add(lower, upper, pearl); return g;
+  } },
+  kelp: { action: 'duck', color: 0x2f9f6a, build: () => {
+    const g = duckBar(toon(0x2f9f6a, { emissive: 0x0a3a22 }), toon(0x3a6a4a));
+    const bladeM = toon(0x3fb58a);
+    [-0.6, -0.1, 0.4, 0.7].forEach((x, i) => { const k = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.62, 0.06), bladeM); k.position.set(x, 1.25, 0); k.rotation.z = (i % 2 ? 0.2 : -0.2); k.castShadow = true; ink(k, 1.1); g.add(k); });
+    return g;
+  } },
 };
 
 export function makeObstacle(kind) {
