@@ -84,6 +84,42 @@ export const BIOMES = [
     air: { near: 34, far: 66 },                 // bright, airy
     play: { rollBias: 1.4, rowMult: 0.92 },     // sugar rush: dense rolls, tighter spacing
   },
+  {
+    name: 'Frostpeak',
+    bg: ['#cdeeff', '#a9d8f0', '#dfeefc', '#cfe0ff'],
+    fog: 0xdaf0ff,
+    ground: 0xdfeef7,
+    path: 0x9fbcd0,
+    hills: [0xbcd9ec, 0xa9cce0, 0xd6e9f5],
+    disc: 0xeaf6ff,
+    obstacles: { jump: ['icespike', 'snowman'], duck: 'frostbar' },
+    air: { near: 26, far: 56 },                 // a crisp, biting blue haze
+    play: { hazardBias: 1.15 },                 // frostbite: more compound hazards
+  },
+  {
+    name: 'Ember',
+    bg: ['#3a1410', '#6e2410', '#b8431a', '#e08a2a'],
+    fog: 0x5a2418,
+    ground: 0x4a2620,
+    path: 0x7a5042,
+    hills: [0x5a2418, 0x7a2e1a, 0x9a3a1a],
+    disc: 0xff8a3a,
+    obstacles: { jump: ['lavarock', 'emberspire'], duck: 'emberbar' },
+    air: { near: 20, far: 44 },                 // choking ash — hazards loom late
+    play: { hazardBias: 1.3, rollBias: 0.85 },  // brutal: dense hazards, scarce rolls
+  },
+  {
+    name: 'Reef',
+    bg: ['#0a6e8a', '#1894b0', '#5fc8d8', '#bdeef0'],
+    fog: 0x3aa9c0,
+    ground: 0xe6d8a0,
+    path: 0xccb878,
+    hills: [0x2f9fb8, 0x49b8c8, 0x7fd0d8],
+    disc: 0xfff6c0,
+    obstacles: { jump: ['coral', 'clam'], duck: 'kelp' },
+    air: { near: 30, far: 60 },                 // clear, sunlit shallows
+    play: { rollBias: 1.25, rowMult: 0.95 },    // current sweep: dense rolls, flowing rows
+  },
 ];
 
 // Default biome gameplay knobs; each BIOMES entry overrides only what it changes.

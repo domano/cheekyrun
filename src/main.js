@@ -37,6 +37,7 @@ let jumpBufferT, laneChangeT;          // buffered-jump timer + time of the last
 let hitStopT, slowmoT, worldScale;     // hit-stop freeze / near-miss slow-mo timers + the live sim time-scale
 let combo, comboTimer, comboMax, flowAcc, safeHazardCount;   // flowAcc: fractional combo-flow score; safeHazardCount: compound rows spawned
 let squash;   // signed squash-&-stretch impulse: + on landing, - on launch, decays to 0
+let scoreHeat = 0;   // 0..1 — how "on fire" the score HUD is, eased from live pace + combo
 let emoteT, spin;   // emoteT: brief happy-squish timer (rolls/near-miss). spin: remaining radians of a level-up cheer twirl.
 // `simTime` is the animation clock (sum of per-frame dt). Driving it ourselves
 // — rather than reading clock.elapsedTime — lets the debug bridge advance the
@@ -409,6 +410,7 @@ function resetGame() {
   laneIdx = 1; targetX = 0; vy = 0; grounded = true; jumpsLeft = 2 + extraJumps + mods.extraJumpsBonus; banked = 0; groundY = 0; duckTimer = 0; duckAmt = 0; shakeT = 0;
   jumpBufferT = 0; laneChangeT = -99; hitStopT = 0; slowmoT = 0; worldScale = 1;
   combo = 0; comboTimer = 0; comboMax = 0; flowAcc = 0; safeHazardCount = 0; squash = 0; emoteT = 0; spin = 0; power = null; powerT = 0; powerCD = 6; gotPower = false;
+  scoreHeat = 0;
   phoenix = false; phoenixUsed = false; ringT = 0; camKick = 0;
   player.position.set(0, 0, 0); player.rotation.set(0, 0, 0); player.scale.set(1, 1, 1);
   applySkin(playerMats, selectedSkin());
@@ -462,7 +464,18 @@ function gameOver() {
   setTimeout(() => { $('hud').classList.add('hide'); $('gameover').classList.remove('hide'); }, 420);
 }
 const score = () => Math.floor(distance) + rollPoints;
-function updateHud() { $('score').textContent = score(); $('rolls').textContent = rollCount; }
+function updateHud() { $('score').textContent = score(); $('rolls').textContent = rollCount; applyScoreHeat(); }
+// Paint the score's "on fire" state: a continuous --heat (glow/flame/scale) plus
+// a discrete tier class (gold → orange → red-hot) so a fast, chained run visibly
+// burns where a cautious one stays cool.
+function applyScoreHeat() {
+  const p = $('scorepill'); if (!p) return;
+  p.style.setProperty('--heat', scoreHeat.toFixed(3));
+  p.classList.toggle('warm', scoreHeat >= 0.25 && scoreHeat < 0.55);
+  p.classList.toggle('hot', scoreHeat >= 0.55 && scoreHeat < 0.8);
+  p.classList.toggle('blaze', scoreHeat >= 0.8);
+  p.classList.toggle('quake', scoreHeat >= 0.9);   // a tremble only at the very top of the curve
+}
 // Fraction (0..1) of the way through the current stage; pins at 1 through the
 // run-up/finish-line breather until crossing starts the next stage.
 const stageProgress = () => stageLen > 0 ? Math.min(1, Math.max(0, (distance - stageStart) / stageLen)) : 0;
@@ -501,7 +514,10 @@ function usePhoenix() {
 }
 // `nm` tints near-misses cyan so the two reward channels read apart from the
 // gold roll pops.
-function popScore(v, mult, nm) { const e = $('scorePop'); e.textContent = '+' + v + (mult > 1 ? ' x' + mult : ''); e.classList.toggle('nm', !!nm); e.style.opacity = 1; clearTimeout(popScore._t); popScore._t = setTimeout(() => e.style.opacity = 0, 260); }
+function popScore(v, mult, nm) { const e = $('scorePop'); e.textContent = '+' + v + (mult > 1 ? ' x' + mult : ''); e.classList.toggle('nm', !!nm); e.style.opacity = 1; clearTimeout(popScore._t); popScore._t = setTimeout(() => e.style.opacity = 0, 260); kickScore(); }
+// A quick scale-punch on the live score number whenever it visibly jumps (a roll
+// or near-miss) — restarts the CSS animation by forcing a reflow between toggles.
+function kickScore() { const s = $('score'); if (!s) return; s.classList.remove('kick'); void s.offsetWidth; s.classList.add('kick'); }
 // The combo chip's drain bar — reflects how much of the window is left, so the
 // player feels the clock ticking on their streak and chases the next pickup.
 function updateComboBar() { if (combo >= 2) { const w = COMBO_WINDOW * mods.comboWindowMult; $('comboBar').style.width = Math.max(0, Math.min(1, comboTimer / w)) * 100 + '%'; } }
@@ -639,6 +655,11 @@ function tick(dt) {
         particles.emit(new THREE.Vector3(player.position.x, 0.06, player.position.z + 0.3), { count: 2, color: 0xe7d8be, speed: 1.2, up: 0.8, life: .45, grav: 5, size: 0.4 });
       }
     }
+    // Score heat: how fast the score is climbing — raw pace plus how hot the
+    // combo multiplier is — eased so the fire breathes in and out instead of
+    // snapping. The HUD reads it to glow, flame and shake the score number.
+    const heatTgt = Math.min(1, Math.max(0, (speed - 13) / 14) * 0.6 + Math.max(0, cmult(combo) - 1) / 4 * 0.7);
+    scoreHeat += (heatTgt - scoreHeat) * Math.min(1, dt * 3);
     updateHud(); updateLevelHud(); updateComboBar();
     // Drive the soundtrack's intensity from raw pace + how hot the combo is.
     setIntensity((speed - 12.5) / 14 + Math.max(0, cmult(combo) - 1) * 0.12);
@@ -1115,7 +1136,7 @@ function buildDebugApi() {
       phoenix, phoenixUsed, ringT: +ringT.toFixed(3), camKick: +camKick.toFixed(2),
       dailyStreak: getDailyStreak(dailyKey()),
       jumpBufferT: +jumpBufferT.toFixed(3), hitStopT: +hitStopT.toFixed(3), slowmoT: +slowmoT.toFixed(3),
-      safeHazards: safeHazardCount, musicIntensity: +getIntensity().toFixed(3),
+      safeHazards: safeHazardCount, musicIntensity: +getIntensity().toFixed(3), scoreHeat: +scoreHeat.toFixed(3),
       perks: perks.map(p => ({ id: p.id, stacks: p.stacks })), mods, levelUps,
       draft: draftCards.map(p => p.id), draftArm: +draftArm.toFixed(2),
       meta: { rerolls: getRerolls(), banishes: getBanishes(), boon: getBoon(), eligible: eligiblePool() },

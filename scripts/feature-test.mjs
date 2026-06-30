@@ -174,6 +174,39 @@ const SCENARIOS = [
     },
   },
   {
+    name: 'new-stages-frostpeak-ember-reef',
+    fn: (c, assert) => {
+      // The biome cycle now runs eight stages deep; levels 5/6/7 are the new trio.
+      c.start();
+      c.set({ level: 5 }); const frost = c.state();
+      assert(frost.biome === 'Frostpeak', 'level 5 is the Frostpeak biome');
+      assert(frost.biomeObstacles.includes('icespike') && frost.biomeObstacles.includes('frostbar'), 'Frostpeak draws from its icy props');
+
+      c.set({ level: 6 }); const ember = c.state();
+      assert(ember.biome === 'Ember', 'level 6 is the Ember biome');
+      assert(ember.biomeObstacles.includes('lavarock') && ember.biomeObstacles.includes('emberbar'), 'Ember draws from its volcanic props');
+
+      c.set({ level: 7 }); const reef = c.state();
+      assert(reef.biome === 'Reef', 'level 7 is the Reef biome');
+      assert(reef.biomeObstacles.includes('coral') && reef.biomeObstacles.includes('kelp'), 'Reef draws from its coral props');
+
+      // Each set is distinct, so the three new stages look like different places.
+      const sets = [frost, ember, reef].map(s => JSON.stringify(s.biomeObstacles));
+      assert(new Set(sets).size === 3, 'the three new stages each have their own obstacle set');
+
+      // A new jump-obstacle still crashes you if you do nothing...
+      c.start(); c.clearField();
+      c.spawn('lavarock', 1, -4);
+      assert(c.step(60).state === 'over', 'an Ember lavarock crashes the run');
+
+      // ...and a new duck-bar is cleared by sliding under it.
+      c.start(); c.clearField();
+      c.spawn('kelp', 1, -3);                      // Reef's slide-under prop
+      c.duck();
+      assert(c.step(25).state === 'playing', 'ducking clears a Reef kelp bar');
+    },
+  },
+  {
     name: 'shield-absorbs-hit',
     fn: (c, assert) => {
       c.start(); c.set({ shields: 1 }); c.clearField();
@@ -986,6 +1019,22 @@ const SCENARIOS = [
       assert(hot > slow, 'a hot combo lifts the music intensity');
       c.start({ magnetR: 0 }); c.set({ elapsed: 100 }); const fast = c.step(2).musicIntensity;
       assert(fast > slow, 'a faster run lifts the music intensity');
+    },
+  },
+  {
+    // The score HUD catches fire as the score climbs faster: raw pace and a hot
+    // combo both lift `scoreHeat` (0..1), which drives the glow/flames/shake.
+    name: 'score-heat-on-fire',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.clearField();
+      const cold = c.step(4).scoreHeat;
+      assert(cold < 0.2, `a fresh, slow run keeps the score cool (${cold})`);
+      c.set({ combo: 40, comboTimer: 99 }); const hotCombo = c.step(40).scoreHeat;
+      assert(hotCombo > cold + 0.1, `a hot combo sets the score alight (${cold} → ${hotCombo})`);
+      c.start({ magnetR: 0 }); c.clearField(); c.set({ elapsed: 200 });
+      const fast = c.step(40).scoreHeat;
+      assert(fast > cold + 0.1, `a fast run heats the score (${cold} → ${fast})`);
+      assert(hotCombo <= 1.0001 && fast <= 1.0001, 'heat stays within 0..1');
     },
   },
   {
