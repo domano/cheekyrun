@@ -337,6 +337,27 @@ const SCENARIOS = [
     },
   },
   {
+    name: 'save-survives-eviction',
+    fn: (c, assert) => {
+      // "Drops savegames after a while": a browser can evict the primary
+      // localStorage slot under storage pressure. persist() now mirrors every
+      // write into a shadow slot, and load() falls back to it — so an evicted
+      // primary recovers the save instead of resetting to a blank one.
+      c.fund(140);                                       // a mutation -> persist() writes both slots
+      const prim = JSON.parse(localStorage.getItem('cheekyrun.save'));
+      const bak = JSON.parse(localStorage.getItem('cheekyrun.save.bak'));
+      assert(prim && prim.wallet === 140, 'the primary slot holds the saved wallet');
+      assert(bak && bak.wallet === 140, 'persist() mirrors the save into the shadow backup slot');
+
+      localStorage.removeItem('cheekyrun.save');         // simulate the browser evicting the primary
+      const s = c.reloadSave();
+      assert(s.recovered === false, 'the evicted save recovers from the backup — no reset to defaults');
+      assert(c.wallet() === 140, 'the wallet is restored from the shadow backup, not lost');
+      const r = c.start();
+      assert(r.state === 'playing', 'a run still starts on the recovered save');
+    },
+  },
+  {
     name: 'powerup-visual',
     fn: (c, assert) => {
       c.start();
