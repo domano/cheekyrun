@@ -6,12 +6,12 @@ import { createParticles } from './particles.js';
 import { buildPlayer, applyGear, tickGear } from './player.js';
 import { STAGE_BASE, STAGE_LEAD, stageLength, biomeOf, obstacleSet, biomePlay, biomeAir } from './levels.js';
 import { trackOffset, deformRoad } from './track.js';
-import { UPGRADES, effects, tierOf, nextCost, buy, getWallet, addRolls, DEFAULT_POOL, unlockedPerkIds, META, buyMeta } from './upgrades.js';
+import { UPGRADES, effects, tierOf, nextCost, nextGate, buy, getWallet, addRolls, DEFAULT_POOL, unlockedPerkIds, META, buyMeta } from './upgrades.js';
 import { PERKS, freshMods, applyPerks, perkById, draftChoices } from './perks.js';
 import { save, getRerolls, useReroll, getBanishes, useBanish, getBoon, setBoon, banishPerk, poolHas } from './save.js';
-import { getBest, setBest, getStats, bumpStats, resetSave, reload, requestPersistence, onExternalChange } from './save.js';
+import { getBest, setBest, getStats, bumpStats, getHistory, pushHistory, resetSave, reload, requestPersistence, onExternalChange } from './save.js';
 import { hasAch, unlock } from './save.js';
-import { ACHIEVEMENTS, checkAchievements } from './achievements.js';
+import { ACHIEVEMENTS, checkAchievements, rewardFor } from './achievements.js';
 import { selectedSkin, selectSkin, getDailyBest, setDailyBest, getDailyStreak } from './save.js';
 import { SKINS, skinById, skinUnlocked, buySkin, applySkin } from './cosmetics.js';
 import { installDebug } from './debug.js';
@@ -36,6 +36,7 @@ let laneIdx, targetX, vy, grounded, jumpsLeft, banked, groundY, duckTimer, duckA
 let jumpBufferT, laneChangeT;          // buffered-jump timer + time of the last lane change (for skims)
 let hitStopT, slowmoT, worldScale;     // hit-stop freeze / near-miss slow-mo timers + the live sim time-scale
 let combo, comboTimer, comboMax, flowAcc, safeHazardCount;   // flowAcc: fractional combo-flow score; safeHazardCount: compound rows spawned
+let peakSpeed, tightestGap;   // run maxima for the game-over highlight strip: top speed reached, closest clean dodge (margin beyond half-width)
 let squash;   // signed squash-&-stretch impulse: + on landing, - on launch, decays to 0
 let scoreHeat = 0;   // 0..1 — how "on fire" the score HUD is, eased from live pace + combo
 let emoteT, spin;   // emoteT: brief happy-squish timer (rolls/near-miss). spin: remaining radians of a level-up cheer twirl.
@@ -410,6 +411,7 @@ function resetGame() {
   laneIdx = 1; targetX = 0; vy = 0; grounded = true; jumpsLeft = 2 + extraJumps + mods.extraJumpsBonus; banked = 0; groundY = 0; duckTimer = 0; duckAmt = 0; shakeT = 0;
   jumpBufferT = 0; laneChangeT = -99; hitStopT = 0; slowmoT = 0; worldScale = 1;
   combo = 0; comboTimer = 0; comboMax = 0; flowAcc = 0; safeHazardCount = 0; squash = 0; emoteT = 0; spin = 0; power = null; powerT = 0; powerCD = 6; gotPower = false;
+  peakSpeed = speed; tightestGap = Infinity;
   scoreHeat = 0;
   phoenix = false; phoenixUsed = false; ringT = 0; camKick = 0;
   player.position.set(0, 0, 0); player.rotation.set(0, 0, 0); player.scale.set(1, 1, 1);
@@ -436,13 +438,16 @@ function gameOver() {
   // A run that fell just short of your best gets its own "so close" beat — the gap
   // is the hook that reloads you into another attempt, not a flat "Best: N".
   const soClose = !isBest && prevBest > 0 && sc > prevBest * 0.9;
-  lastRun = { score: sc, prevBest, isBest, soClose };
+  const highlights = runHighlights();
+  lastRun = { score: sc, prevBest, isBest, soClose, level, comboMax, peakSpeed: +peakSpeed.toFixed(1), tightestGap: tightestGap === Infinity ? null : +tightestGap.toFixed(3), highlights };
   setBest(sc);
   setTimeout(isBest ? sfxFanfare : sfxOver, 260);
   if (daily) { setDailyBest(dailyDay, sc); renderDaily(); }
   bumpStats({ runs: 1, dist: Math.floor(distance), rolls: rollCount, maxCombo: comboMax, maxLevel: level });
   const unlocked = checkAchievements({ run: { level, score: sc, comboMax, rollCount, gotPower }, stats: getStats() });
-  addRolls(rollCount);             // bank this run's rolls into the shop wallet
+  const achBonus = rewardFor(unlocked);                            // one-time roll payout for badges earned this run
+  addRolls(rollCount + achBonus);  // bank this run's rolls (+ any achievement bonus) into the shop wallet
+  pushHistory({ day: dailyKey(), score: sc, level, dist: Math.floor(distance) });
   $('finalScore').textContent = sc;
   $('goFace').textContent = isBest ? '🏆🍑' : '😵🍑';
   $('goTitle').textContent = isBest ? 'New Best!' : 'Wiped out!';
@@ -457,7 +462,9 @@ function gameOver() {
   } else if (soClose) {            // a soft amber pulse — present, but not the gold fanfare
     setTimeout(() => flash('#ffe08a'), 180);
   }
-  $('earned').textContent = rollCount; renderShop(); renderStats(); renderCosmetics();
+  $('bankedLine').innerHTML = `🧻 +${rollCount} banked` + (achBonus ? ` <span class="achbonus">+${achBonus} 🏅</span>` : '');
+  renderHighlights(highlights);
+  renderShop(); renderStats(); renderCosmetics();
   renderAchievements(unlocked.map(a => a.id));   // glow any earned this run, right on the card
   if (unlocked.length) { sfxLevel(); buzz([10, 30, 10]); }
   $('perktray').classList.add('hide');
@@ -630,6 +637,7 @@ function tick(dt) {
     // difficulty plateau instead of flatlining.
     speed = (12.5 + 11 * difficulty) * (1 + 0.055 * (level - 1)) * mods.speedMult;  // levels + perks nudge the pace
     if (power === 'dash') speed *= DASH_SPEED_MULT;                  // Boost: a brief speed surge (you're invuln while it lasts)
+    if (speed > peakSpeed) peakSpeed = speed;                        // remember the run's top speed for the highlight strip
     distance += speed * sdt;
     // Stage flow: once past the stage body, drop the finish line at the horizon;
     // crossing it (in moveFinishLine) bumps the level. Spawning is suppressed
@@ -709,6 +717,7 @@ function moveObstacles(dt) {
       const skim = !through && (simTime - laneChangeT) < SKIM_WINDOW;
       if (through || skim) {
         o.userData.scored = true;
+        const gap = dx - halfW; if (gap < tightestGap) tightestGap = gap;   // closest clean thread this run (highlight strip)
         bumpCombo(); emote();
         const m = cmult(combo);                                       // both pay more the hotter your combo
         const nm = Math.round((through ? NEARMISS_BONUS : SKIM_BONUS) * m * mods.nearMissMult);
@@ -996,12 +1005,15 @@ function renderShop() {
   const wallet = getWallet();
   // permanent floor upgrades (tiered)
   const floor = UPGRADES.map(u => {
-    const l = tierOf(u.id), c = nextCost(u.id), maxed = c === null, afford = !maxed && wallet >= c;
+    const l = tierOf(u.id), c = nextCost(u.id), maxed = c === null;
+    const gate = maxed ? null : nextGate(u.id);    // a prestige tier still fenced behind a skill milestone
+    const afford = !maxed && !gate && wallet >= c;
     const dots = Array.from({ length: u.max }, (_, i) => `<i class="${i < l ? 'on' : ''}"></i>`).join('');
-    const cls = `up${maxed ? ' maxed' : (afford ? '' : ' poor')}`;
-    return `<button class="${cls}" data-id="${u.id}"${maxed ? ' disabled' : ''}>
+    const cls = `up${maxed ? ' maxed' : gate ? ' locked' : (afford ? '' : ' poor')}`;
+    const tag = maxed ? 'MAX' : gate ? `🔒 ${gate.label}` : c + ' 🧻';
+    return `<button class="${cls}" data-id="${u.id}"${maxed || gate ? ' disabled' : ''}>
       <span class="upi">${u.icon}</span><span class="upn">${u.name}</span><span class="upd">${u.desc}</span>
-      <span class="upmeta"><span class="updots">${dots}</span><span class="upc">${maxed ? 'MAX' : c + ' 🧻'}</span></span>
+      <span class="upmeta"><span class="updots">${dots}</span><span class="upc">${tag}</span></span>
     </button>`;
   }).join('');
   // meta items: perk-pool unlocks + reroll/banish charge packs
@@ -1049,10 +1061,44 @@ function renderShop() {
 }
 
 // Lifetime stats + persistent best, shown on the menu and game-over cards.
+// Tunables for the game-over highlight strip: what counts as a brag-worthy beat.
+const HL_HAIR_GAP = 0.25;   // dodge margin (beyond half-width) at/under this = "by a hair"
+const HL_FAST_SPEED = 22;   // top speed at/above this = "warp speed"
+const HL_BIG_COMBO = 5;     // combo streak worth calling out
+const HL_BIG_ROLLS = 20;    // roll haul worth calling out
+
+// Up to three concrete "you did this" beats for the just-ended run — the
+// strongest "one more run" hook is a specific thing to beat, not just a number.
+function runHighlights() {
+  const hl = [];
+  if (comboMax >= HL_BIG_COMBO) hl.push(`🔥 ${comboMax}× combo streak`);
+  if (tightestGap <= HL_HAIR_GAP) hl.push('🪶 dodged by a hair');
+  if (peakSpeed >= HL_FAST_SPEED) hl.push('🚀 hit warp speed');
+  if (level >= 2) hl.push(`🗺️ reached ${biomeOf(level).name}`);
+  if (rollCount >= HL_BIG_ROLLS) hl.push(`🧻 ${rollCount} rolls grabbed`);
+  return hl.slice(0, 3);
+}
+
+// Paint the highlight chips onto the game-over card (hidden when nothing notable).
+function renderHighlights(list = []) {
+  const box = $('goHighlights'); if (!box) return;
+  box.innerHTML = list.map(h => `<span>${h}</span>`).join('');
+  box.classList.toggle('hide', list.length === 0);
+}
+
 function renderStats() {
   const s = getStats(), km = (s.dist / 1000).toFixed(1);
   const html = `<span>🏆 Best ${getBest()}</span><span>🏃 ${s.runs} run${s.runs === 1 ? '' : 's'}</span><span>🧻 ${s.rolls}</span><span>🔥 x${comboMult(s.maxCombo)}</span><span>📏 ${km}km</span>`;
-  document.querySelectorAll('.stats').forEach(el => { el.innerHTML = html; });
+  // A tiny trend strip of recent runs: a legible "beat yesterday" goal even when
+  // you're nowhere near your lifetime best. Bars scale to the window's high score.
+  const h = getHistory();
+  let spark = '';
+  if (h.length > 1) {
+    const mx = Math.max(...h.map(e => e.score), 1);
+    const bars = h.map((e, i) => `<i style="height:${Math.max(10, Math.round(e.score / mx * 100))}%"${i === h.length - 1 ? ' class="last"' : ''} title="Lv ${e.level} · ${e.score}"></i>`).join('');
+    spark = `<div class="spark" title="Your last ${h.length} runs">${bars}</div>`;
+  }
+  document.querySelectorAll('.stats').forEach(el => { el.innerHTML = html + spark; });
 }
 
 // The daily-challenge button label carries today's best for this seeded course.
@@ -1155,6 +1201,7 @@ function buildDebugApi() {
       counts: { obstacles: obstacles.length, rolls: rolls.length, pickups: pickups.length, scenery: scenery.length, finish: finishLine ? 1 : 0,
         cheerers: finishLine && finishLine.userData.crowd ? finishLine.userData.crowd.userData.fans.length : 0 },
       wallet: getWallet(), daily,
+      stats: getStats(), history: getHistory(),
     };
   }
 

@@ -928,6 +928,57 @@ const SCENARIOS = [
     },
   },
   {
+    // Meta/economy: earning a badge pays a one-time roll reward straight into the
+    // shop wallet, on top of the rolls grabbed during the run — and only once.
+    name: 'achievement-reward-banked',
+    fn: (c, assert) => {
+      c.fresh();
+      const before = c.wallet();
+      c.start({ magnetR: 0 }); c.clearField(); c.step(30);
+      const rolls = c.state().rollCount;
+      c.over();                                  // finishing run 1 unlocks "Off and Running" (reward 25)
+      assert(c.wallet() === before + rolls + 25, 'the First badge banks its 25-roll reward on top of grabbed rolls');
+      const after = c.wallet();
+      c.start({ magnetR: 0 }); c.clearField(); c.step(30);
+      const rolls2 = c.state().rollCount;
+      c.over();                                  // run 2 earns no new badge
+      assert(c.wallet() === after + rolls2, 'an already-earned badge does not pay out a second time');
+    },
+  },
+  {
+    // Meta/economy: the floor upgrades climb past the old tier-3 cap into
+    // "prestige" tiers, each fenced behind a skill milestone so the wallet always
+    // has somewhere to go — but only once the milestone is actually reached.
+    name: 'prestige-tiers-gated',
+    fn: (c, assert) => {
+      c.fresh(); c.fund(99999);
+      assert(c.buy('shield') && c.buy('shield') && c.buy('shield'), 'Cushion climbs to tier 3');
+      assert(c.buy('shield') === false, 'tier 4 is fenced until its skill gate is met');
+      assert(c.effects().shields === 3, 'still 3 shields while the prestige tier is locked');
+      c.start(); c.set({ level: 13 }); c.over();  // bank a deep run into lifetime maxLevel
+      assert(c.state().stats.maxLevel >= 12, 'the deep run is recorded in lifetime stats');
+      assert(c.buy('shield') === true, 'tier 4 unlocks once Lv 12 is reached');
+      assert(c.effects().shields === 4, 'the prestige tier resolves to 4 shields');
+      assert(c.buy('shield') === false, 'tier 5 stays fenced behind its own deeper gate (Lv 18)');
+    },
+  },
+  {
+    // Retention: the game-over card surfaces concrete "you did this" beats, and
+    // every run is logged to a capped recent-run trend strip.
+    name: 'highlight-strip-and-history',
+    fn: (c, assert) => {
+      c.fresh();
+      c.start(); c.set({ level: 3 }); c.over();
+      let s = c.state();
+      assert(Array.isArray(s.lastRun.highlights), 'the run exposes a highlight strip');
+      assert(s.lastRun.highlights.some(h => h.includes('reached')), 'reaching a new biome is a highlight');
+      assert(!document.getElementById('goHighlights').classList.contains('hide'), 'the highlight strip is shown on the card');
+      assert(s.history.length === 1 && s.history[0].level === 3, 'the run is logged to history with its level');
+      for (let i = 0; i < 16; i++) { c.start(); c.over(); }   // overflow the window
+      assert(c.state().history.length === 14, 'history caps at the most recent 14 runs');
+    },
+  },
+  {
     // Game feel: a jump pressed with no jumps left (just before touchdown) is
     // buffered and fires the instant you land, so chained hops aren't dropped.
     name: 'jump-buffer',

@@ -30,6 +30,7 @@ const KEY = 'cheekyrun.save';
 const BAK = 'cheekyrun.save.bak';            // shadow copy: a second slot to survive eviction / a torn write
 const LEGACY_KEYS = ['cheekyrun.save.v1'];   // pre-versioning saves; cleared on first load
 const VERSION = 1;                           // bump + add a MIGRATIONS step per breaking schema change
+const HISTORY_MAX = 14;                       // recent-run log depth (the menu trend strip)
 
 function defaults() {
   return {
@@ -42,6 +43,7 @@ function defaults() {
     cosmetics: { owned: { classic: true }, skin: 'classic' },
     dailyBest: { day: '', score: 0, streak: 0, lastDay: '' },
     meta: { pool: {}, banished: {}, rerolls: 0, banishes: 0, boon: null },
+    history: [],                                 // recent runs: {day, score, level, dist}, newest last
   };
 }
 
@@ -57,6 +59,11 @@ const flagMap = (v) => { const o = {}, m = asMap(v); for (const k in m) if (m[k]
 // A key->count map (upgrade tiers): clamp each to a positive int, dropping
 // zero/negative/garbage so the game never reads a phantom or negative tier.
 const tierMap = (v) => { const o = {}, m = asMap(v); for (const k in m) { const n = nat(m[k]); if (n) o[k] = n; } return o; };
+// One run-history row, with every field clamped so a corrupt entry can't reach
+// the trend strip's bar maths.
+const histRow = (e) => ({ day: str(e?.day, ''), score: nat(e?.score), level: Math.max(1, int(e?.level)), dist: nat(e?.dist) });
+// The recent-run log: keep only object rows, cap to the newest HISTORY_MAX.
+const histList = (v) => Array.isArray(v) ? v.filter(isObj).slice(-HISTORY_MAX).map(histRow) : [];
 
 // Directed migrations between schema versions. migrate() applies MIGRATIONS[v]
 // to a save at version v to bring it to v+1, repeating until it reaches VERSION.
@@ -103,6 +110,7 @@ function normalize(raw) {
       rerolls: nat(rmeta.rerolls), banishes: nat(rmeta.banishes),
       boon: str(rmeta.boon, null),
     },
+    history: histList(r.history),
   };
   const out = {};
   for (const k in r) if (!(k in known)) out[k] = r[k];   // pass unknown future keys through
@@ -203,6 +211,14 @@ export function bumpStats({ runs = 0, dist = 0, rolls = 0, maxCombo = 0, maxLeve
   s.runs += runs; s.dist += dist | 0; s.rolls += rolls | 0;
   s.maxCombo = Math.max(s.maxCombo, maxCombo);
   s.maxLevel = Math.max(s.maxLevel, maxLevel);
+  persist();
+}
+
+/* ----- recent-run history (the menu trend strip) ----- */
+export const getHistory = () => save.history;
+export function pushHistory(entry) {
+  save.history.push(histRow(entry));
+  if (save.history.length > HISTORY_MAX) save.history = save.history.slice(-HISTORY_MAX);
   persist();
 }
 

@@ -4,7 +4,7 @@
 // runs the wallet is spent on permanent upgrades, each with a few tiers. The
 // wallet and owned tiers live in the shared save (see save.js).
 
-import { save, persist, getWallet, addRolls,
+import { save, persist, getWallet, addRolls, getStats,
   spend, poolHas, unlockPerk, isBanished, addRerolls, addBanishes } from './save.js';
 import { PERKS } from './perks.js';
 export { getWallet, addRolls };
@@ -18,28 +18,47 @@ export { getWallet, addRolls };
 // Each upgrade declares: a max tier, the cost to reach the *next* tier from a
 // given current tier (cost(currentTier) is valid for currentTier < max), the
 // gameplay value at a tier, and a short human label for the current tier.
+//
+// Tiers past the old cap are "prestige" tiers, each fenced behind a skill gate
+// (gate(currentTier) -> {test, label} or null) so the late upgrades reward play,
+// not just banked rolls — and the wallet always has somewhere to climb.
 export const UPGRADES = [
   {
     id: 'shield', icon: '🛡️', name: 'Cushion',
     desc: 'Soaks up a crash. Refills each run.',
-    max: 3,
-    cost: (l) => [60, 140, 280][l],
+    max: 5,
+    cost: (l) => [60, 140, 280, 520, 900][l],
     value: (l) => l,                              // crashes survived per run
     label: (l) => `${l} hit${l === 1 ? '' : 's'}`,
+    gate: (l) => [null, null, null,
+      { test: (s) => s.maxLevel >= 12, label: 'Reach Lv 12' },
+      { test: (s) => s.maxLevel >= 18, label: 'Reach Lv 18' }][l],
   },
   {
     id: 'headstart', icon: '🚀', name: 'Head Start',
     desc: 'Begin a few levels in.',
-    max: 3,
-    cost: (l) => [60, 130, 240][l],
+    max: 5,
+    cost: (l) => [60, 130, 240, 440, 760][l],
     value: (l) => l,                             // levels skipped at the start
     label: (l) => `start Lv ${1 + l}`,
+    gate: (l) => [null, null, null,
+      { test: (s) => s.maxLevel >= 10, label: 'Reach Lv 10' },
+      { test: (s) => s.runs >= 25, label: '25 runs' }][l],
   },
 ];
 
 const byId = (id) => UPGRADES.find((u) => u.id === id);
 
 export const tierOf = (id) => save.owned[id] | 0;
+
+// The unmet skill gate fencing the NEXT tier, or null if it's free to buy
+// (no gate, gate already satisfied, or already maxed).
+export function nextGate(id) {
+  const u = byId(id), l = tierOf(id);
+  if (l >= u.max || !u.gate) return null;
+  const g = u.gate(l);
+  return !g || g.test(getStats()) ? null : g;
+}
 
 // Cost to buy the next tier, or null if already maxed.
 export function nextCost(id) {
@@ -51,6 +70,7 @@ export function nextCost(id) {
 export function buy(id) {
   const u = byId(id), l = tierOf(id);
   if (l >= u.max) return false;
+  if (nextGate(id)) return false;               // a prestige tier still fenced by its skill gate
   const c = u.cost(l);
   if ((save.wallet | 0) < c) return false;
   save.wallet -= c;
