@@ -1082,6 +1082,131 @@ const SCENARIOS = [
       assert(c.dailyResult('2026-03-06', 200).streak === 1, 'a skipped day resets the streak to 1');
     },
   },
+  {
+    // Speed-aware lane snap: at a fast pace the dodge settles into the target lane
+    // within a few frames (and hard-snaps the residual), so a late lane-change
+    // keeps pace with the world instead of feeling like it clips.
+    name: 'lane-snap-speed-aware',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.clearField();
+      c.set({ elapsed: 200, level: 5 });              // a genuinely fast, deep run (speed is recomputed each tick)
+      c.left();                                       // dodge to the left lane
+      assert(c.state().laneIdx === 0, 'the lane index flips immediately on input');
+      const s = c.step(16);                           // settle
+      assert(Math.abs(s.player.x - s.targetX) < 0.001, 'the body fully reaches the lane (hard-snapped, no asymptotic residual)');
+    },
+  },
+  {
+    // Forgiving forward-biased hitbox: an obstacle whose centre has already passed
+    // the player no longer reaches back to clip them — clearing it by a lane change
+    // right as it goes by survives, where the old symmetric box could still hit.
+    name: 'forgiving-hitbox',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.clearField();
+      // Park an obstacle just behind the player (centre already passed): the old
+      // ±0.8 box would still register; the forward-biased one must not.
+      c.spawn('cactus', 1, 0.62);                     // sz ≈ +0.62, centre already behind the player
+      const s = c.step(1);                            // old ±0.8 box would still register here
+      assert(s.state === 'playing', 'a hazard already past the player does not clip from behind');
+    },
+  },
+  {
+    // Tight near-miss micro-reward: a clean thread right through a hazard's lane
+    // dilates time briefly even with NO combo going, so the most skilful moment
+    // always lands feedback — not only the optimised chain.
+    name: 'slowmo-on-tight-nearmiss',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.clearField();        // combo starts at 0 (multiplier x1)
+      c.spawn('cactus', 1, -5); c.jump();             // thread straight over it
+      let maxSlow = 0, s;
+      for (let i = 0; i < 70; i++) { s = c.step(1); maxSlow = Math.max(maxSlow, s.slowmoT); }
+      assert(s.state === 'playing', 'jumped clean over the obstacle');
+      assert(s.comboMult === 1, 'no combo multiplier was running');
+      assert(maxSlow > 0, 'a tight clean thread still dilates time without a combo');
+    },
+  },
+  {
+    // Combo decay grace: when the window lapses the multiplier steps DOWN one tier
+    // and refreshes, instead of nuking the whole streak — a missed pickup bleeds
+    // momentum rather than ending it. A long streak survives a single lapse.
+    name: 'combo-decay-grace',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.clearField();
+      // Arm a near-expired window on a healthy streak; lapsing it should step the
+      // multiplier DOWN one tier (−COMBO_STEP) and grant a fresh window — not reset.
+      const lapse = () => { c.set({ comboTimer: 0.05 }); return c.step(6, 1 / 60); };  // a few frames clears the sliver
+      c.set({ combo: 10 });
+      let s = lapse();
+      assert(s.combo === 6, 'one missed window steps the streak down exactly one tier, not to 0');
+      assert(s.comboTimer > 2, 'and a fresh window is granted at the lower tier');
+      s = lapse();
+      assert(s.combo === 2, 'a second lapse steps down again — momentum bleeds, it does not vanish');
+      s = lapse();
+      assert(s.combo === 0, 'once it falls below a tier the streak finally clears');
+    },
+  },
+  {
+    // Row-spacing floor: deep in a run the gap between obstacle rows never drops
+    // below a human-fair threshold, even at max difficulty and a high level.
+    name: 'row-gap-floored',
+    fn: (c, assert) => {
+      // `rowGap` is the live seconds-between-rows the loop computes each tick.
+      // Early on it's generous; very deep (maxed difficulty + high level) the raw
+      // formula would dip under the human-fair floor, so it clamps to 0.42s.
+      c.start({ magnetR: 0 }); c.clearField();
+      c.set({ elapsed: 0, level: 1 });                // warm-up (difficulty is recomputed from elapsed)
+      const easy = c.step(1).rowGap;
+      assert(easy > 0.42, `early rows are spaced out (gap ${easy}s, well above the floor)`);
+      c.set({ elapsed: 300, level: 41 });             // maxed pace, very deep — raw gap would dip under the floor
+      const deep = c.step(1).rowGap;
+      assert(deep === 0.42, `the row gap is floored at 0.42s deep in a run (got ${deep})`);
+    },
+  },
+  {
+    // Gate → compound guard: a full-width gate is never immediately followed by a
+    // compound (safe-lane) hazard, so a gate's jump/duck recovery never stacks onto
+    // a same-beat lane-change-and-clear. Force a gate, then watch the next rows.
+    name: 'no-compound-right-after-gate',
+    fn: (c, assert) => {
+      // Baseline: at this difficulty compound (safe-lane) hazards are common.
+      c.start({ magnetR: 0 }); c.seed(5); c.set({ difficulty: 1, level: 6 }); c.clearField();
+      for (let k = 0; k < 40; k++) c.spawnRow();
+      assert(c.state().safeHazards > 0, 'compounds do spawn at this difficulty with no cooldown');
+      // Hold a gate's cooldown open (re-arm forcedGap each row): not a single
+      // compound seeds while it's active, so a gate never stacks onto a compound.
+      c.start({ magnetR: 0 }); c.seed(5); c.set({ difficulty: 1, level: 6 }); c.clearField();
+      for (let k = 0; k < 40; k++) { c.set({ forcedGap: 3 }); c.spawnRow(); }
+      assert(c.state().safeHazards === 0, 'no compound hazard spawns while a gate cooldown is active');
+    },
+  },
+  {
+    // "So close" framing: a run that falls just short of the best gets its own
+    // hook ("just N from your best") instead of a flat "Best: N".
+    name: 'so-close-game-over',
+    fn: (c, assert) => {
+      c.fresh();
+      c.start(); c.set({ distance: 1000, rollPoints: 0 }); c.over();   // set a best of ~1000
+      c.start(); c.set({ distance: 970, rollPoints: 0 }); c.over();    // within 10% of it
+      const lr = c.state().lastRun;
+      assert(lr && lr.soClose === true && lr.isBest === false, 'a near-best run is flagged so-close');
+      assert(/So close/.test(document.getElementById('bestLine').textContent), 'the best line shows the so-close hook');
+      c.start(); c.set({ distance: 200, rollPoints: 0 }); c.over();    // well short
+      assert(c.state().lastRun.soClose === false, 'a run far from best is not flagged so-close');
+      assert(/Best:/.test(document.getElementById('bestLine').textContent), 'and falls back to the plain best line');
+    },
+  },
+  {
+    // Smoother difficulty ramp: difficulty now eases to full over ~90s (was 70),
+    // so the early seconds are gentler — at 70s in it is no longer maxed.
+    name: 'difficulty-ramp-eased',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.clearField();
+      c.set({ elapsed: 70 }); const mid = c.step(1).difficulty;
+      assert(mid < 1, 'at 70s the warm-up is no longer maxed (gentler early curve)');
+      c.set({ elapsed: 95 }); const late = c.step(1).difficulty;
+      assert(late === 1, 'it still reaches full difficulty by ~90s');
+    },
+  },
 ];
 
 /* ------------------------------- runner ------------------------------- */
