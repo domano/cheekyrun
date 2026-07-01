@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { LANES, SPAWN_Z, DESPAWN_Z, INK, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE_RAMP, GATE_COOLDOWN, COMBO_WINDOW, comboMult, NEARMISS_MARGIN, NEARMISS_BONUS, SKIM_MARGIN, SKIM_BONUS, SKIM_WINDOW, SAFE_HAZARD_MIN_DIFF, SAFE_HAZARD_CHANCE, TALL_CLEAR_H, TALL_CLEAR_PER_JUMP, TALL_MIN_DIFF, TALL_CHANCE, ROLL_GRAB_H, AIR_ARC_MIN_DIFF, AIR_ARC_CHANCE, AIR_MIN_H, AIR_BASE, AIR_POINTS, AIR_PEAK_CAP, JUMP_BUFFER, HITSTOP_SHIELD, HITSTOP_DEATH, SLOWMO_FACTOR, SLOWMO_TIME, SLOWMO_MIN_MULT, SLOWMO_TIGHT_MARGIN, SLOWMO_TIGHT_TIME, DIFF_RAMP, ROW_MIN_GAP, COMBO_DECAY_STEP, COMBO_STEP, SCORE_FLOW_RATE, HEAT_PER_LEVEL, HEAT_LEVEL_CAP, HEAT_MAX, PHOENIX_COMBO, PHOENIX_INVULN, GREED_CAP, RING_TIME, POWERUP_DURATION, POWERUP_CHANCE, POWERUP_MIN_DIFF, POWERUP_COOLDOWN, POWERUPS, POWERUP_KINDS, DASH_SPEED_MULT, DRAFT_EVERY, DRAFT_CHOICES, DRAFT_ARM, DRAFT_GRACE, mulberry32, dailyKey, dailySeed, $, buzz, shuffle } from './config.js';
-import { makeGradient, toon } from './materials.js';
+import { makeGradient, toon, glow, rampShadow } from './materials.js';
 import { makeObstacle, makeHurdle, makeGate, makeRoll, makePowerup, makeScenery, makeCloud, makeFinishLine, makeCheerCrowd, tickCheerCrowd, OBSTACLE_KINDS } from './props.js';
 import { createParticles } from './particles.js';
 import { buildPlayer, applyGear, tickGear } from './player.js';
@@ -26,7 +26,7 @@ let scene, camera, renderer, clock;
 let player, shadowBlob, ears = [], feet = [], tail, particles, playerMats, gear, aura;
 let gearTiers = {}, fartCount = 0;   // worn upgrade tiers (for visuals/tests) + fart-puff counter
 let obstacles = [], rolls = [], pickups = [], scenery = [], stripes = [], clouds = [];
-let groundMat, pathMat, discMat, hillMats = [], roadGround, roadPath;
+let groundMat, pathMat, discMat, discHaloMat, hillMats = [], roadGround, roadPath;
 let fxRing, ringT = 0, camKick = 0;    // level-up shockwave ring + a one-shot camera FOV punch
 let state = 'menu';
 let speed, distance, rollCount, rollPoints, rowTimer, sceneAcc, dustAcc, elapsed, difficulty, safeLane, forcedGap;
@@ -110,6 +110,21 @@ function safeInit() {
   }
 }
 
+// Bake a per-vertex "lane" ambient occlusion into a plane geometry: the outer
+// (shoulder) columns are darkened so the running lane reads as a worn central
+// strip instead of one flat gradient. Multiplies the biome path colour via
+// vertexColors, so it's biome-independent. Half-width is the plane's x extent.
+function bakeLaneAO(geo) {
+  const pos = geo.attributes.position, n = pos.count, col = new Float32Array(n * 3);
+  let halfW = 0.001; for (let i = 0; i < n; i++) halfW = Math.max(halfW, Math.abs(pos.getX(i)));
+  for (let i = 0; i < n; i++) {
+    const t = Math.abs(pos.getX(i)) / halfW;            // 0 centre -> 1 shoulder
+    const f = 1.04 - 0.26 * Math.pow(t, 1.4);           // faint centre lift, darker edges
+    col[i * 3] = col[i * 3 + 1] = col[i * 3 + 2] = f;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+}
+
 /* ---------------- setup ---------------- */
 function init() {
   const mm = matchMedia('(prefers-reduced-motion: reduce)');
@@ -143,9 +158,24 @@ function init() {
   const sc = sun.shadow.camera; sc.near = 1; sc.far = 60; sc.left = -11; sc.right = 11; sc.top = 18; sc.bottom = -18;
   sun.shadow.bias = -0.0006; scene.add(sun);
 
-  discMat = new THREE.MeshBasicMaterial({ color: 0xfff2b0 });
+  // Warm back/rim light from behind the play area — no shadow map. It kisses the
+  // top/far edge of the hero and forward-facing hazards so their silhouettes lift
+  // off similarly-valued biomes (peachy hero on pale twilight road, props on snow).
+  // Warm, not cool: a cool rim vanishes on a cool biome. Angled ~20° off dead
+  // centre so it catches one ear edge and the tail rather than flattening evenly.
+  const rim = new THREE.DirectionalLight(0xfff2e6, 0.5);
+  rim.position.set(-7, 9, -15); scene.add(rim);
+
+  discMat = new THREE.MeshBasicMaterial({ color: 0xfff2b0, fog: false });   // fog:false so the sun/moon stays a bright disc at the foggy horizon, not a dark bruise
   const disc = new THREE.Mesh(new THREE.SphereGeometry(3.4, 24, 24), discMat);
   disc.position.set(-15, 17, -46); scene.add(disc);
+  // A soft halo behind the sun/moon disc so it reads as a light source, not a
+  // flat sticker. Recoloured per biome alongside discMat (see writeBiome), and
+  // also fog-exempt so the halo glows outward instead of denting the sky.
+  const discHalo = glow(0xfff2b0, 18, 0.5);
+  discHalo.material.fog = false;
+  discHalo.position.copy(disc.position); discHalo.position.z -= 1; scene.add(discHalo);
+  discHaloMat = discHalo.material;
 
   [[-9, 0x8fd16f], [3, 0x79c283], [12, 0x9bd778]].forEach(([x, c], i) => {
     const hm = toon(c); hillMats.push(hm);
@@ -160,8 +190,9 @@ function init() {
   roadGround = new THREE.Mesh(groundGeo, groundMat);
   roadGround.rotation.x = -Math.PI / 2; roadGround.position.z = -50; roadGround.receiveShadow = true;
   roadGround.userData.base = groundGeo.attributes.position.array.slice(); scene.add(roadGround);
-  pathMat = toon(0xe7c49c);
-  const pathGeo = new THREE.PlaneGeometry(7.4, 220, 1, 120);
+  pathMat = toon(0xe7c49c); pathMat.vertexColors = true;   // shoulders darken -> a defined running lane, not a flat ramp
+  const pathGeo = new THREE.PlaneGeometry(7.4, 220, 4, 120);
+  bakeLaneAO(pathGeo);
   roadPath = new THREE.Mesh(pathGeo, pathMat);
   roadPath.rotation.x = -Math.PI / 2; roadPath.position.set(0, 0.01, -50); roadPath.receiveShadow = true;
   roadPath.userData.base = pathGeo.attributes.position.array.slice(); scene.add(roadPath);
@@ -969,7 +1000,7 @@ function updatePlayer(dt, t) {
   if (tail) tail.position.x = Math.sin(t * 10) * 0.05;
   if (aura && aura.visible) {
     const pulse = 1 + Math.sin(t * 5) * 0.06; aura.scale.set(pulse, pulse, 1);
-    aura.material.opacity = 0.4 + Math.sin(t * 5) * 0.12; aura.rotation.z += dt * 0.8;
+    aura.material.opacity = 0.32 + Math.sin(t * 5) * 0.1; aura.rotation.z += dt * 0.8;   // sits under the feet, doesn't compete with the hero's ink line
     auraSparkT -= dt;
     if (auraSparkT <= 0 && state === 'playing') {                    // drift cosy sparkles up around the body
       auraSparkT = 0.22;
@@ -1059,6 +1090,7 @@ function copyBiome() {
 function writeBiome() {
   if (!groundMat) return;
   scene.fog.color.copy(bCur.fog); groundMat.color.copy(bCur.ground); pathMat.color.copy(bCur.path); discMat.color.copy(bCur.disc);
+  if (discHaloMat) discHaloMat.color.copy(bCur.disc);   // the sun-disc halo tracks the biome disc colour
   scene.fog.near = fogCur.near; scene.fog.far = fogCur.far;
   hillMats.forEach((m, i) => bCur.hills[i] && m.color.copy(bCur.hills[i]));
 }
@@ -1197,9 +1229,30 @@ function buildDebugApi() {
     refreshHud(); updatePowerVisual(); return snapshot();
   }
 
+  // Deterministic readout of the cel-shading polish so the visual pass has a
+  // scenario, not just a screenshot: light setup, the cool-shadow ramp, and a
+  // probe of a fresh emissive prop's glow + a grounded prop's contact shadow.
+  function gfx() {
+    const lights = scene.children.filter(o => o.isLight);
+    const countGlow = (g) => { let n = 0; g.traverse(o => o.userData && o.userData.glow && n++); return n; };
+    const hasContact = (g) => { let f = false; g.traverse(o => { if (o.userData && o.userData.contact) f = true; }); return f; };
+    return {
+      directionalLights: lights.filter(o => o.isDirectionalLight).length,
+      hemiLights: lights.filter(o => o.isHemisphereLight).length,
+      rampShadow: rampShadow(),
+      pathVertexColors: !!pathMat.vertexColors,
+      discHalo: !!discHaloMat,
+      crystalGlows: countGlow(makeObstacle('crystal')),
+      powerupGlows: countGlow(makePowerup(0x66ccff)),
+      obstacleContact: hasContact(makeObstacle('cactus')),
+      sceneryContact: hasContact(makeScenery('tree')),
+    };
+  }
+
   const api = {
     // ---- inspect ----
     state: snapshot,
+    gfx,
     help: () => ({
       inspect: ['state()'],
       lifecycle: ['start(overrides?)', 'reset()', 'fresh()', 'over()'],
