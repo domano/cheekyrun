@@ -193,6 +193,13 @@ function init() {
   $('unlockBtn').onclick = dismissAchUnlock;          // tap-to-continue past the unlock fanfare
   $('dailyBtn').onclick = () => startGame(true);
   $('muteBtn').onclick = toggleSound;
+  $('pauseBtn').onclick = () => { ensureAudio(); togglePause(); };
+  $('pauseResume').onclick = resumeGame;
+  $('pause').onclick = (e) => { if (e.target === $('pause')) resumeGame(); };   // tap the scrim to resume
+  // Auto-pause when the tab is hidden or the window loses focus, so a run never
+  // keeps ticking (or dumps you back mid-hazard) while you're looking elsewhere.
+  addEventListener('visibilitychange', () => { if (document.hidden) pauseGame(); });
+  addEventListener('blur', pauseGame);
   bindResetSave();
   renderShop(); renderStats(); renderAchievements(); renderCosmetics(); renderDaily();
   installDebug(buildDebugApi);
@@ -452,11 +459,13 @@ function startGame(isDaily = false) {
   ensureAudio(); sfxStart();
   resetGame(); state = 'playing';
   $('overlay').classList.add('hide'); $('gameover').classList.add('hide'); $('hud').classList.remove('hide');
+  $('pause').classList.add('hide'); $('pauseBtn').classList.remove('hide'); $('pauseBtn').textContent = '⏸️';
   updateHud(); updateLevelHud(); updateShieldHud(); updateComboHud(false); updatePowerHud(); updatePhoenixHud();
   const streak = daily ? getDailyStreak(dailyDay) : 0;
   showBanner(daily ? (streak > 1 ? `📅 Daily · 🔥 ${streak}-day streak` : '📅 Daily Challenge') : `Lvl ${level} · ${biomeOf(level).name}`);
 }
 function gameOver() {
+  $('pause').classList.add('hide'); $('pauseBtn').classList.add('hide');
   state = 'over'; shakeT = 0.45; hitStopT = reduceMotion ? 0 : HITSTOP_DEATH; flash('#ff5a6a'); buzz([40, 40, 80]); sfxCrash();
   camKick = reduceMotion ? 0 : Math.max(camKick, 7);   // a zoom-punch so the wipe-out lands
   particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.6, 0)), { count: 16, color: 0xff8a6a, speed: 4, up: 4, life: .7, grav: 12, dir: new THREE.Vector3(0, 0, 1) });
@@ -630,6 +639,9 @@ function awardAir(peak) {
 }
 function bindControls() {
   addEventListener('keydown', e => {
+    // Esc / P toggles the in-run pause; only meaningful while playing or paused.
+    if ((e.code === 'Escape' || e.code === 'KeyP') && (state === 'playing' || state === 'paused')) { togglePause(); return; }
+    if (state === 'paused') return;   // swallow all other input while paused (no stray start/jump)
     if (state === 'draft') {
       if (e.code === 'Digit1' || e.code === 'ArrowLeft') pickDraft(0);
       else if (e.code === 'Digit2' || e.code === 'ArrowUp' || e.code === 'Space' || e.code === 'Enter') pickDraft(1);
@@ -649,6 +661,33 @@ function bindControls() {
     if (Math.abs(dx) > TH || Math.abs(dy) > TH) { act(dx, dy); fired = true; }
   }, { passive: true });
   el.addEventListener('touchend', () => { if (state === 'playing' && !fired) jump(); }, { passive: true });
+}
+
+/* ---------------- pause ---------------- */
+// A real in-run pause — a game STATE, distinct from the debug `paused` flag
+// (which freezes the whole rAF loop for deterministic stepping). Here the loop
+// keeps rendering the frozen scene, but tick() advances no sim: every sim branch
+// is gated on state === 'playing', so 'paused' naturally halts distance, spawns
+// and collision while the character idles in place. Resuming drops the
+// accumulated wall-clock gap so dt doesn't spike on the first frame back — the
+// same trick the draft uses (pickDraft). Auto-fires when the tab is hidden or
+// loses focus, so tabbing away never dumps you back mid-air already dead.
+function pauseGame() {
+  if (state !== 'playing') return;
+  state = 'paused';
+  $('pause').classList.remove('hide');
+  $('pauseBtn').textContent = '▶️';
+}
+function resumeGame() {
+  if (state !== 'paused') return;
+  $('pause').classList.add('hide');
+  $('pauseBtn').textContent = '⏸️';
+  state = 'playing';
+  clock.getDelta();   // drop the wall-clock gap so the resumed frame doesn't jump
+}
+function togglePause() {
+  if (state === 'playing') { ensureAudio(); pauseGame(); }
+  else if (state === 'paused') resumeGame();
 }
 
 /* ---------------- loop ---------------- */
@@ -1368,7 +1407,7 @@ function buildDebugApi() {
     help: () => ({
       inspect: ['state()'],
       lifecycle: ['start(overrides?)', 'reset()', 'fresh()', 'over()'],
-      time: ['pause()', 'resume()', 'step(frames=1, dt=1/60)', 'seed(n)'],
+      time: ['pauseGame()', 'resumeGame()', 'togglePause()', 'pause()', 'resume()', 'step(frames=1, dt=1/60)', 'seed(n)'],
       teleport: ['set({level,speed,shields,power,...})', `keys: ${Object.keys(SETTERS).join(', ')}`],
       world: ['spawn(kind, lane?, z?, arg4?)', 'arg4: roll→height, obstacle→tall', 'clearField()', 'forceFinish(z?)', `kinds: ${OBSTACLE_KINDS.join('|')}|gate|hurdle|roll|powerup[:magnet|x2|ghost]`],
       input: ['left()', 'right()', 'lane(i)', 'jump()', 'duck()'],
@@ -1387,6 +1426,10 @@ function buildDebugApi() {
     // the test driver, making every CLI round-trip crawl).
     fresh: () => { resetSave(); resetGame(); state = 'menu'; paused = true; refreshHud(); renderShop(); return snapshot(); },
     over: () => { if (state === 'playing') gameOver(); return snapshot(); },
+    // ---- in-run pause (game state, not the rAF freeze below) ----
+    pauseGame: () => { pauseGame(); return snapshot(); },
+    resumeGame: () => { resumeGame(); return snapshot(); },
+    togglePause: () => { togglePause(); return snapshot(); },
     // ---- deterministic time ----
     pause: () => { paused = true; return snapshot(); },
     resume: () => { paused = false; clock.getDelta(); return snapshot(); },   // drop the accumulated gap
