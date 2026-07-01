@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { LANES, SPAWN_Z, DESPAWN_Z, INK, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE_RAMP, GATE_COOLDOWN, COMBO_WINDOW, comboMult, NEARMISS_MARGIN, NEARMISS_BONUS, SKIM_MARGIN, SKIM_BONUS, SKIM_WINDOW, SAFE_HAZARD_MIN_DIFF, SAFE_HAZARD_CHANCE, TALL_CLEAR_H, TALL_CLEAR_PER_JUMP, TALL_MIN_DIFF, TALL_CHANCE, ROLL_GRAB_H, AIR_ARC_MIN_DIFF, AIR_ARC_CHANCE, AIR_ARC_TALL_CHANCE, AIR_ARC_TALL_PEAK, AIR_MIN_H, AIR_BASE, AIR_POINTS, AIR_PEAK_CAP, JUMP_BUFFER, HITSTOP_SHIELD, HITSTOP_DEATH, SLOWMO_FACTOR, SLOWMO_TIME, SLOWMO_MIN_MULT, SLOWMO_TIGHT_MARGIN, SLOWMO_TIGHT_TIME, DIFF_RAMP, ROW_MIN_GAP, COMBO_DECAY_STEP, COMBO_STEP, SCORE_FLOW_RATE, HEAT_PER_LEVEL, HEAT_LEVEL_CAP, HEAT_MAX, PHOENIX_COMBO, PHOENIX_INVULN, GREED_CAP, RING_TIME, POWERUP_DURATION, POWERUP_CHANCE, POWERUP_MIN_DIFF, POWERUP_COOLDOWN, POWERUPS, POWERUP_KINDS, DASH_SPEED_MULT, DRAFT_EVERY, DRAFT_CHOICES, DRAFT_ARM, DRAFT_GRACE, mulberry32, dailyKey, dailySeed, $, buzz, shuffle } from './config.js';
+import { LANES, SPAWN_Z, DESPAWN_Z, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE_RAMP, GATE_COOLDOWN, COMBO_WINDOW, comboMult, NEARMISS_MARGIN, NEARMISS_BONUS, SKIM_MARGIN, SKIM_BONUS, SKIM_WINDOW, SAFE_HAZARD_MIN_DIFF, SAFE_HAZARD_CHANCE, TALL_CLEAR_H, TALL_CLEAR_PER_JUMP, TALL_MIN_DIFF, TALL_CHANCE, ROLL_GRAB_H, AIR_ARC_MIN_DIFF, AIR_ARC_CHANCE, AIR_ARC_TALL_CHANCE, AIR_ARC_TALL_PEAK, AIR_MIN_H, AIR_BASE, AIR_POINTS, AIR_PEAK_CAP, JUMP_BUFFER, HITSTOP_SHIELD, HITSTOP_DEATH, SLOWMO_FACTOR, SLOWMO_TIME, SLOWMO_MIN_MULT, SLOWMO_TIGHT_MARGIN, SLOWMO_TIGHT_TIME, DIFF_RAMP, ROW_MIN_GAP, COMBO_DECAY_STEP, COMBO_STEP, SCORE_FLOW_RATE, HEAT_PER_LEVEL, HEAT_LEVEL_CAP, HEAT_MAX, PHOENIX_COMBO, PHOENIX_INVULN, GREED_CAP, RING_TIME, POWERUP_DURATION, POWERUP_CHANCE, POWERUP_MIN_DIFF, POWERUP_COOLDOWN, POWERUPS, POWERUP_KINDS, DASH_SPEED_MULT, DRAFT_EVERY, DRAFT_CHOICES, DRAFT_ARM, DRAFT_GRACE, mulberry32, dailyKey, dailySeed, $, buzz, shuffle } from './config.js';
 import { makeGradient, toon, glow, rampShadow } from './materials.js';
 import { makeObstacle, makeHurdle, makeGate, makeRoll, makePowerup, makeScenery, makeCloud, makeFinishLine, makeCheerCrowd, tickCheerCrowd, OBSTACLE_KINDS } from './props.js';
 import { createParticles } from './particles.js';
@@ -23,7 +23,7 @@ import {
 } from './audio.js';
 
 let scene, camera, renderer, clock;
-let player, shadowBlob, ears = [], feet = [], tail, particles, playerMats, gear, aura;
+let player, ears = [], feet = [], tail, particles, playerMats, gear, aura;
 let gearTiers = {}, fartCount = 0;   // worn upgrade tiers (for visuals/tests) + fart-puff counter
 let obstacles = [], rolls = [], pickups = [], scenery = [], stripes = [], clouds = [];
 let groundMat, pathMat, discMat, discHaloMat, hillMats = [], roadGround, roadPath;
@@ -208,10 +208,6 @@ function init() {
   particles = createParticles(scene);
   ({ player, ears, feet, tail, gear, aura, mats: playerMats } = buildPlayer(scene));
   applySkin(playerMats, selectedSkin());
-
-  shadowBlob = new THREE.Mesh(new THREE.CircleGeometry(0.72, 28),
-    new THREE.MeshBasicMaterial({ color: INK, transparent: true, opacity: .26 }));
-  shadowBlob.rotation.x = -Math.PI / 2; shadowBlob.position.y = 0.03; scene.add(shadowBlob);
 
   // Level-up shockwave: a flat ring that bursts outward from the player and fades.
   // Additive so it reads as a flash of light, not a solid disc. Hidden until fired.
@@ -1028,9 +1024,6 @@ function updatePlayer(dt, t) {
   const baseSq = (grounded && duckTimer <= 0) ? 1 - bob * 0.4 : 1;
   const sy = baseSq * (1 - duckAmt * 0.55) * (1 - squash), sxz = (1 / Math.sqrt(baseSq)) * (1 + duckAmt * 0.32) * (1 + squash * 0.5);
   player.scale.set(sxz, sy, sxz);
-  shadowBlob.position.x = player.position.x;
-  shadowBlob.scale.setScalar(Math.max(0.4, (1 - groundY * 0.25)) * (1 + duckAmt * 0.3));
-  shadowBlob.material.opacity = Math.max(0.06, 0.26 - groundY * 0.05);
 }
 function updateCamera(dt, t) {
   // Lean into the curve and ride the hill: aim a little down-track so the camera
