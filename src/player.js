@@ -62,7 +62,7 @@ export function buildPlayer(scene) {
 }
 
 // Worn cosmetics — one prop per loadout slot. The shop upgrades (Cushion, Head
-// Start, and the late-game unlocks) each live in ./upgrades/<id>.js and are
+// Start, ...) each live in ./upgrades/<id>.js and are
 // built by the GEAR_DEFS loop below; magnet/springs/clover are the drafted perks
 // (vacuum/hops/lucky) still kept inline here. All start hidden; the game reveals
 // and scales them via applyGear(), so the more you've banked or drafted the more

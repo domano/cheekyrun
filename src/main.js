@@ -1195,7 +1195,7 @@ function buildDebugApi() {
       player: { x: +player.position.x.toFixed(3), groundY: +groundY.toFixed(3), vy: +vy.toFixed(2), grounded, ducking: duckTimer > 0 },
       airTimer: +airTimer.toFixed(2), airPeak: +airPeak.toFixed(2),
       gearTiers, auraVisible: !!(aura && aura.visible), fartCount,
-      // shield/headstart (and the late-game props) come from the _defs spread;
+      // shield/headstart (and any other folder-driven props) come from the _defs spread;
       // spring/magnet/fortune are the inline perk gear. shieldPips reports the
       // live pip count on the Cushion bubble.
       gearVisible: gear ? { spring: gear.spring.visible, magnet: gear.magnet.visible, fortune: gear.fortune.visible, shieldPips: gear.shield.userData.pips.filter(p => p.visible).length,
@@ -1341,7 +1341,7 @@ function buildDebugApi() {
     wallet: getWallet, fund: (n) => { addRolls(n); renderShop(); return getWallet(); },
     buy: (id) => { const ok = buy(id); renderShop(); return ok; }, effects,
     // Force an owned upgrade tier (bypass cost + gate) so a scenario can exercise
-    // a late-game unlock's effect/gear deterministically, then refresh gear/shop.
+    // an upgrade's effect/gear deterministically, then refresh gear/shop.
     own: (id, tier = 1) => { setTier(id, tier); refreshGear(); renderShop(); return snapshot(); },
     // ---- perks (roguelite draft) ----
     perk: (id) => { applyPerk(id); return snapshot(); },
