@@ -1691,6 +1691,26 @@ const SCENARIOS = [
       assert(s.rollPoints === 0, 'yet it pays no air bonus — a double-jump must actually be spent');
     },
   },
+  {
+    // Cel-shading polish pass: a cool-shadow ramp, a rim/back light for
+    // silhouette pop, additive glow halos on self-lit props + power-up gems,
+    // contact shadows grounding props, dithered toon materials, a lane-AO road,
+    // and a haloed sun disc. Purely visual, but every piece has a deterministic
+    // fingerprint the bridge can assert (the look itself is judged by Pixie).
+    name: 'cel-shading-polish',
+    fn: (c, assert) => {
+      const g = c.gfx();
+      assert(g.directionalLights >= 2, 'a rim/back light was added (2+ directional lights)');
+      const [r, , b] = g.rampShadow;
+      assert(b > r, 'the cel ramp shadow band is cool-tinted — hue shifts into shadow');
+      assert(g.pathVertexColors === true, 'the path carries baked lane ambient occlusion');
+      assert(g.discHalo === true, 'the sun/moon disc has a glow halo');
+      assert(g.crystalGlows >= 1, 'self-lit crystals carry an additive glow sprite');
+      assert(g.powerupGlows >= 1, 'power-up gems carry an additive glow sprite');
+      assert(g.obstacleContact === true, 'obstacles drop a contact shadow to ground them');
+      assert(g.sceneryContact === true, 'roadside scenery drops a contact shadow too');
+    },
+  },
 ];
 
 /* ------------------------------- runner ------------------------------- */

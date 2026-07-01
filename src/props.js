@@ -1,9 +1,24 @@
 import * as THREE from 'three';
-import { toon, ink } from './materials.js';
+import { toon, ink, glow, shadowTexture } from './materials.js';
 import { TALL_CLEAR_H, TALL_SCALE } from './config.js';
 
 // Pure mesh factories. Each returns a positioned/unpositioned THREE.Group;
 // the caller is responsible for adding it to the scene.
+
+// A soft contact shadow decal: a flat dark disc with a soft radial falloff that
+// grounds a prop crisply where the PCF map goes muddy at distance. Unlit +
+// translucent (no ink), laid flat on the road at the group's base. `y` lets a
+// floating prop (a roll) drop its shadow to the ground. `userData.contact` tags
+// it for tests.
+function contactShadow(r = 0.62, opacity = 0.2, y = 0.02) {
+  const s = new THREE.Mesh(
+    new THREE.PlaneGeometry(r * 2, r * 2),
+    new THREE.MeshBasicMaterial({ map: shadowTexture(), color: 0x2a2338, transparent: true, opacity, depthWrite: false }),
+  );
+  s.rotation.x = -Math.PI / 2; s.position.y = y;
+  s.renderOrder = -1; s.userData.contact = true;
+  return s;
+}
 
 // ---- per-biome obstacle roster ----
 // Every lane obstacle is one of these kinds. `action` decides how you clear it:
@@ -58,6 +73,7 @@ const OBSTACLES = {
     const g = new THREE.Group(), m = toon(0x9a7bff, { emissive: 0x2a1a55, flat: true });
     const main = new THREE.Mesh(new THREE.ConeGeometry(0.4, 1.5, 5), m); main.position.y = 0.75; main.castShadow = true; ink(main, 1.07); g.add(main);
     [[-0.42, 0.5, 0.45], [0.42, 0.42, -0.4]].forEach(([x, h, z]) => { const c = new THREE.Mesh(new THREE.ConeGeometry(0.18, h * 2, 5), m); c.position.set(x, h, z); c.castShadow = true; ink(c, 1.1); g.add(c); });
+    const halo = glow(0xb59bff, 1.9, 0.5); halo.position.set(0, 0.85, 0); g.add(halo);   // self-lit violet bloom
     return g;
   } },
   tombstone: { action: 'jump', color: 0x8a93a6, build: () => {
@@ -77,7 +93,9 @@ const OBSTACLES = {
   } },
   gumdrop: { action: 'jump', color: 0xff8ad0, build: () => {
     const g = new THREE.Group();
-    const d = new THREE.Mesh(new THREE.ConeGeometry(0.6, 1.2, 18), toon(0xff8ad0, { emissive: 0x3a0022 })); d.position.y = 0.6; d.castShadow = true; ink(d, 1.06); g.add(d); return g;
+    const d = new THREE.Mesh(new THREE.ConeGeometry(0.6, 1.2, 18), toon(0xff8ad0, { emissive: 0x3a0022 })); d.position.y = 0.6; d.castShadow = true; ink(d, 1.06); g.add(d);
+    const halo = glow(0xffb0e0, 1.5, 0.4); halo.position.set(0, 0.6, 0); g.add(halo);   // candy sheen
+    return g;
   } },
   licorice: { action: 'duck', color: 0x3a2a4a, build: () => duckBar(toon(0x3a2a4a), toon(0xffd23f)) },
 
@@ -117,14 +135,16 @@ const OBSTACLES = {
     const r = new THREE.Mesh(new THREE.IcosahedronGeometry(0.66, 0), toon(0x6e5a52, { flat: true })); r.position.y = 0.55; r.scale.set(1.3, 0.9, 1.1); r.castShadow = true; ink(r, 1.08, 0x9a8478); g.add(r);
     const lava = toon(0xff6a2a, { emissive: 0xff5a10, flat: true });
     const crackM = toon(0xff6a2a, { emissive: 0xff6a2a, flat: true });
-    const glow = new THREE.Mesh(new THREE.IcosahedronGeometry(0.22, 0), lava); glow.position.set(0.05, 0.78, 0.18); g.add(glow);
+    const core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.22, 0), lava); core.position.set(0.05, 0.78, 0.18); g.add(core);
     [[-0.22, 0.55, 0.52, 0.5], [0.27, 0.6, 0.46, -0.4]].forEach(([x, y, z, rz]) => { const c = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.11, 0.07), crackM); c.position.set(x, y, z); c.rotation.z = rz; g.add(c); });
+    const halo = glow(0xff7a2e, 1.35, 0.62); halo.position.set(0.05, 0.72, 0.18); g.add(halo);   // molten core glow — reads through the dark ashland palette
     return g;
   } },
   emberspire: { action: 'jump', color: 0xc23a1a, build: () => {
     const g = new THREE.Group(), m = toon(0xc23a1a, { emissive: 0x7a2008, flat: true });
     const spire = new THREE.Mesh(new THREE.ConeGeometry(0.46, 1.9, 7), m); spire.position.y = 0.95; spire.castShadow = true; ink(spire, 1.06); g.add(spire);
     const tip = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.55, 7), toon(0xff8a2d, { emissive: 0xff8a2d })); tip.position.y = 1.75; ink(tip, 1.1); g.add(tip);
+    const halo = glow(0xff9a3a, 1.2, 0.5); halo.position.set(0, 1.7, 0); g.add(halo);   // burning tip
     return g;
   } },
   emberbar: { action: 'duck', color: 0xc24a1e, build: () => {
@@ -163,6 +183,7 @@ const OBSTACLES = {
 export function makeObstacle(kind, tall = false) {
   const def = OBSTACLES[kind] || OBSTACLES.cactus;
   const g = def.build();
+  g.add(contactShadow(def.action === 'duck' ? 0.95 : 0.6));   // ground it under the soft cast shadow
   g.userData.kind = kind;
   g.userData.color = def.color;
   g.userData.duck = def.action === 'duck';   // generic flag the loop reads for collision
@@ -317,6 +338,7 @@ export function makeRoll() {
   const hole = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.55, 16), toon(0xd9b48a));
   paper.rotation.x = Math.PI / 2; hole.rotation.x = Math.PI / 2; paper.castShadow = true; ink(paper, 1.07);
   g.add(paper, hole); g.position.y = 0.95;
+  g.add(contactShadow(0.34, 0.12, -0.92));   // a faint shadow on the road grounds the roll too (kept light so it never darkens a pale biome floor)
   return g;
 }
 
@@ -331,10 +353,14 @@ export function makePowerup(color) {
   const ringCol = new THREE.Color(color).lerp(new THREE.Color(0xffffff), 0.45);
   const ring = new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.075, 8, 22), toon(ringCol.getHex(), { emissive: ringCol.getHex() }));
   ring.rotation.x = Math.PI / 2;
-  // A tight 4-point sparkle behind the gem so it catches the eye at distance.
-  const sparkle = new THREE.Mesh(new THREE.CircleGeometry(0.66, 4), new THREE.MeshBasicMaterial({ color: ringCol.getHex(), transparent: true, opacity: 0.6, depthWrite: false, blending: THREE.AdditiveBlending }));
-  sparkle.position.z = -0.15; sparkle.rotation.z = Math.PI / 4;
-  g.add(sparkle, ring, gem);
+  // A soft glow at the gem's OWN full-chroma hue reads it as a self-lit treasure
+  // from the back camera — the brightest, most grab-me thing on the road...
+  const halo = glow(color, 2.0, 0.62); halo.position.z = -0.05;
+  // ...with a tight 4-point sparkle over it for the hard toon twinkle (shrunk a
+  // touch so it accents the glow rather than competing with it).
+  const sparkle = new THREE.Mesh(new THREE.CircleGeometry(0.56, 4), new THREE.MeshBasicMaterial({ color: ringCol.getHex(), transparent: true, opacity: 0.6, depthWrite: false, blending: THREE.AdditiveBlending }));
+  sparkle.position.z = -0.12; sparkle.rotation.z = Math.PI / 4;
+  g.add(halo, sparkle, ring, gem);
   g.position.y = 1.0; g.userData.gem = gem; g.userData.sparkle = sparkle;
   return g;
 }
@@ -426,6 +452,7 @@ const SCENERY = {
     const cap = new THREE.Mesh(new THREE.SphereGeometry(0.32, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), toon(0x8fe6d0, { emissive: 0x2a6a5a })); cap.position.y = 0.5; cap.scale.y = 0.8; cap.castShadow = true; ink(cap, 1.08); g.add(cap);
     const spotM = toon(0xf0fbf6, { emissive: 0xbfeee2 });
     [[-0.14, 0.56, 0.2], [0.16, 0.6, 0.16], [0, 0.66, -0.18]].forEach(([x, y, z]) => { const sp = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), spotM); sp.position.set(x, y, z); g.add(sp); });
+    const halo = glow(0x9ff0dc, 1.2, 0.42); halo.position.set(0, 0.5, 0); g.add(halo);   // bioluminescent cap
     return g;
   },
   crystalcluster: () => {
@@ -433,6 +460,7 @@ const SCENERY = {
     [[0, 0.5, 0.14], [-0.24, 0.34, 0.11], [0.27, 0.3, 0.11]].forEach(([x, h, w]) => {
       const c = new THREE.Mesh(new THREE.ConeGeometry(w, h * 2, 5), m); c.position.set(x, h, 0); c.castShadow = true; ink(c, 1.1); g.add(c);
     });
+    const halo = glow(0xb59bff, 1.3, 0.4); halo.position.set(0, 0.5, 0); g.add(halo);
     return g;
   },
 
@@ -497,7 +525,8 @@ const SCENERY = {
     [[-0.32, 1.15, 0.9], [0.36, 1.45, -0.9], [0.05, 1.7, 0.2]].forEach(([x, y, rz]) => {
       const b = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.5, 6), m); b.position.set(x, y, 0); b.rotation.z = rz; b.castShadow = true; ink(b, 1.08, 0x5a4a46); g.add(b);
     });
-    const glow = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 8), toon(0xff6a2a, { emissive: 0xff5a10 })); glow.position.set(0.1, 0.14, 0.22); g.add(glow);
+    const ember = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 8), toon(0xff6a2a, { emissive: 0xff5a10 })); ember.position.set(0.1, 0.14, 0.22); g.add(ember);
+    const halo = glow(0xff7a2a, 0.8, 0.5); halo.position.set(0.1, 0.16, 0.22); g.add(halo);   // smouldering root
     return g;
   },
   basaltrock: () => {
@@ -510,6 +539,7 @@ const SCENERY = {
     const g = new THREE.Group();
     const r = new THREE.Mesh(new THREE.IcosahedronGeometry(0.32, 0), toon(0x2e2422, { flat: true })); r.position.y = 0.2; r.scale.y = 0.6; r.castShadow = true; ink(r, 1.08, 0x7a5a4a); g.add(r);
     const core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.19, 0), toon(0xff6a2b, { emissive: 0xff6a2b, flat: true })); core.position.set(0, 0.26, 0.05); g.add(core);
+    const halo = glow(0xff8a3a, 0.95, 0.55); halo.position.set(0, 0.28, 0.05); g.add(halo);   // glowing ember core
     return g;
   },
 
@@ -551,7 +581,9 @@ const SCENERY = {
 
 // Build a roadside scenery prop by kind, falling back to a meadow tree.
 export function makeScenery(kind) {
-  return (SCENERY[kind] || makeTree)();
+  const g = (SCENERY[kind] || makeTree)();
+  g.add(contactShadow(0.55));   // a small contact shadow grounds the shoulder flora
+  return g;
 }
 
 // Kinds available to the debug bridge / sanity checks.
