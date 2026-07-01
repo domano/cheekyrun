@@ -1596,6 +1596,55 @@ const SCENARIOS = [
     },
   },
   {
+    // Verticality — risky ribbons: at high heat a tall wall can carry an air arc
+    // peaking *above* a single hop's apex (~1.9), so the reward is only reachable
+    // on the same double-jump that clears the wall — no longer a safe open-lane treat.
+    name: 'air-ribbons-reward-risky-jumps',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.seed(11); c.set({ difficulty: 0.95 }); c.clearField();
+      let risky = false, overTall = false;
+      for (let k = 0; k < 120; k++) {
+        const s = c.spawnRow();
+        if (s.counts.tallObstacles > 0 && s.counts.airRollMaxH > 1.9) risky = true;
+        // the arc peaks in double-jump territory only when a tall wall is present
+        if (s.counts.airRollMaxH > 1.9) overTall = overTall || s.counts.tallObstacles > 0;
+        if (risky) break;
+      }
+      assert(risky, 'a tall wall spawns an air ribbon peaking above single-hop apex');
+      assert(overTall, 'a double-jump-height ribbon only appears alongside a tall wall');
+    },
+  },
+  {
+    // Verticality — a scooped risky ribbon actually pays: double-jump up to a
+    // ribbon-height elevated roll and it collects, banking a roll.
+    name: 'high-roll-grabbed-on-double-jump',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.clearField();
+      c.spawn('roll', 1, -6, 2.4);                     // ribbon-height roll, needs a double-jump
+      let s = c.step(60);
+      assert(s.rollCount === 0, 'a grounded run passes clean under a double-jump-height roll');
+
+      c.start({ magnetR: 0 }); c.clearField();
+      c.spawn('roll', 1, -6, 2.4);
+      c.jump(); c.step(8); c.jump();                   // a timed double-jump reaches ribbon height
+      s = c.step(60);
+      assert(s.rollCount === 1, 'a well-timed double-jump scoops the high roll');
+    },
+  },
+  {
+    // Regression — "you hit it but didn't collect it": a fast roll can leap the
+    // whole ±0.9 grab window in a single frame. The swept z-check grabs any roll
+    // whose path crossed the player this frame, so a visible pass-through banks.
+    name: 'fast-roll-not-missed',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.clearField();
+      c.spawn('roll', 1, -1.2);                        // just ahead, in the player's lane
+      // one big step moves it ~2.5 units — clean over the old ±0.9 window in a frame
+      const s = c.step(1, 0.2);
+      assert(s.rollCount === 1, 'a roll that skips the grab window in one frame is still collected');
+    },
+  },
+  {
     // Verticality — air-time bonus: reaching real height (double-jump territory)
     // pays out on landing, scaled by peak height; a small single hop pays nothing.
     name: 'air-bonus-on-big-hop',
