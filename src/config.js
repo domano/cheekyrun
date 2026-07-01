@@ -98,6 +98,10 @@ export const SCORE_FLOW_RATE = 0.6;
 // in after a warm-up and only ever land in a blocked lane, so side-stepping is
 // always still a fair dodge — the height only matters when you *choose* to jump.
 export const TALL_CLEAR_H = 2.1;      // groundY needed to clear a tall obstacle (above single-jump apex)
+// Extra jumps raise your grounded launch (doJump: vy += extraJumps*0.5), so a
+// buffed player's single hop reaches higher — the tall wall grows with them by
+// the same margin, so it always still demands the second jump, never less.
+export const TALL_CLEAR_PER_JUMP = 0.25;
 export const TALL_SCALE = 1.7;        // vertical stretch that telegraphs the extra height
 export const TALL_MIN_DIFF = 0.3;     // tall variants only phase in past this much heat
 export const TALL_CHANCE = 0.3;       // base chance a heat-eligible blocked jump obstacle is tall
@@ -108,12 +112,17 @@ export const TALL_CHANCE = 0.3;       // base chance a heat-eligible blocked jum
 // an open lane. Reaching real height (double-jump / pad) also pays an air bonus,
 // scaled by peak height and the live combo — so going up is worth points, not
 // just survival.
-export const ROLL_GRAB_H = 0.8;       // vertical reach: how close in height you must be to grab an elevated roll
+export const ROLL_GRAB_H = 0.6;       // vertical reach: how close in height you must be to grab an elevated roll
 export const AIR_ARC_MIN_DIFF = 0.25; // air ribbons only phase in past this much heat
 export const AIR_ARC_CHANCE = 0.12;   // chance of an air ribbon on an eligible row
-export const AIR_MIN_H = 2.0;         // only real height (double-jump territory) pays an air bonus
+// The air bonus only pays when a double-jump was actually spent (see usedDouble),
+// so it can't be farmed by rhythm-hopping and doesn't inflate with extra jumps.
+// AIR_MIN_H filters a wasted immediate double (too low to count). The height term
+// is capped so perks/pads can't scale a single hop into a jackpot.
+export const AIR_MIN_H = 2.0;         // a double-jump must clear this height to pay
 export const AIR_BASE = 6;            // flat air bonus once you clear AIR_MIN_H
 export const AIR_POINTS = 14;         // extra air bonus per unit of peak height above AIR_MIN_H
+export const AIR_PEAK_CAP = 0.8;      // height (above AIR_MIN_H) past which the bonus stops climbing
 
 // In-run power-ups: a rare floating gem that grants a brief effect. Spaced out
 // by a row cooldown so grabbing one feels like an event, not a given.

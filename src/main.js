@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { LANES, SPAWN_Z, DESPAWN_Z, INK, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE_RAMP, GATE_COOLDOWN, COMBO_WINDOW, comboMult, NEARMISS_MARGIN, NEARMISS_BONUS, SKIM_MARGIN, SKIM_BONUS, SKIM_WINDOW, SAFE_HAZARD_MIN_DIFF, SAFE_HAZARD_CHANCE, TALL_CLEAR_H, TALL_MIN_DIFF, TALL_CHANCE, ROLL_GRAB_H, AIR_ARC_MIN_DIFF, AIR_ARC_CHANCE, AIR_MIN_H, AIR_BASE, AIR_POINTS, JUMP_BUFFER, HITSTOP_SHIELD, HITSTOP_DEATH, SLOWMO_FACTOR, SLOWMO_TIME, SLOWMO_MIN_MULT, SLOWMO_TIGHT_MARGIN, SLOWMO_TIGHT_TIME, DIFF_RAMP, ROW_MIN_GAP, COMBO_DECAY_STEP, COMBO_STEP, SCORE_FLOW_RATE, HEAT_PER_LEVEL, HEAT_LEVEL_CAP, HEAT_MAX, PHOENIX_COMBO, PHOENIX_INVULN, GREED_CAP, RING_TIME, POWERUP_DURATION, POWERUP_CHANCE, POWERUP_MIN_DIFF, POWERUP_COOLDOWN, POWERUPS, POWERUP_KINDS, DASH_SPEED_MULT, DRAFT_EVERY, DRAFT_CHOICES, DRAFT_ARM, DRAFT_GRACE, mulberry32, dailyKey, dailySeed, $, buzz, shuffle } from './config.js';
+import { LANES, SPAWN_Z, DESPAWN_Z, INK, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE_RAMP, GATE_COOLDOWN, COMBO_WINDOW, comboMult, NEARMISS_MARGIN, NEARMISS_BONUS, SKIM_MARGIN, SKIM_BONUS, SKIM_WINDOW, SAFE_HAZARD_MIN_DIFF, SAFE_HAZARD_CHANCE, TALL_CLEAR_H, TALL_CLEAR_PER_JUMP, TALL_MIN_DIFF, TALL_CHANCE, ROLL_GRAB_H, AIR_ARC_MIN_DIFF, AIR_ARC_CHANCE, AIR_MIN_H, AIR_BASE, AIR_POINTS, AIR_PEAK_CAP, JUMP_BUFFER, HITSTOP_SHIELD, HITSTOP_DEATH, SLOWMO_FACTOR, SLOWMO_TIME, SLOWMO_MIN_MULT, SLOWMO_TIGHT_MARGIN, SLOWMO_TIGHT_TIME, DIFF_RAMP, ROW_MIN_GAP, COMBO_DECAY_STEP, COMBO_STEP, SCORE_FLOW_RATE, HEAT_PER_LEVEL, HEAT_LEVEL_CAP, HEAT_MAX, PHOENIX_COMBO, PHOENIX_INVULN, GREED_CAP, RING_TIME, POWERUP_DURATION, POWERUP_CHANCE, POWERUP_MIN_DIFF, POWERUP_COOLDOWN, POWERUPS, POWERUP_KINDS, DASH_SPEED_MULT, DRAFT_EVERY, DRAFT_CHOICES, DRAFT_ARM, DRAFT_GRACE, mulberry32, dailyKey, dailySeed, $, buzz, shuffle } from './config.js';
 import { makeGradient, toon } from './materials.js';
 import { makeObstacle, makeHurdle, makeGate, makeRoll, makePowerup, makeScenery, makeCloud, makeFinishLine, makeCheerCrowd, tickCheerCrowd, OBSTACLE_KINDS } from './props.js';
 import { createParticles } from './particles.js';
@@ -34,7 +34,7 @@ let speed, distance, rollCount, rollPoints, rowTimer, sceneAcc, dustAcc, elapsed
 let stageStart = 0, stageLen = 0, finishLine = null, finishArmed = false;
 let laneIdx, targetX, vy, grounded, jumpsLeft, banked, groundY, duckTimer, duckAmt, shakeT;
 let jumpBufferT, laneChangeT;          // buffered-jump timer + time of the last lane change (for skims)
-let airTimer, airPeak;                 // time aloft + peak height this hop (air-bonus on landing)
+let airTimer, airPeak, usedDouble;     // time aloft + peak height + whether a double-jump was spent this hop (air-bonus)
 let hitStopT, slowmoT, worldScale;     // hit-stop freeze / near-miss slow-mo timers + the live sim time-scale
 let combo, comboTimer, comboMax, flowAcc, safeHazardCount;   // flowAcc: fractional combo-flow score; safeHazardCount: compound rows spawned
 let peakSpeed, tightestGap;   // run maxima for the game-over highlight strip: top speed reached, closest clean dodge (margin beyond half-width)
@@ -231,12 +231,14 @@ function spawnRow() {
   // each biome draws from its own roster; the duck bar phases in after warm-up
   const theme = obstacleSet(level);
   const kinds = heat < 0.28 ? theme.jump : [...theme.jump, theme.duck];
+  let tallUsed = false;   // at most one tall obstacle per row, so a row never reads as a wall of pillars
   blocked.forEach(li => {
     // Once warmed up, a blocked jump obstacle can be TALL — clearable only by a
     // well-timed double-jump. makeObstacle ignores `tall` on duck kinds, so this
     // never turns a slide-under bar into something unfair.
-    const tall = heat > TALL_MIN_DIFF && rng() < Math.min(0.5, TALL_CHANCE * heat);
+    const tall = !tallUsed && heat > TALL_MIN_DIFF && rng() < Math.min(0.5, TALL_CHANCE * heat);
     const o = makeObstacle(kinds[(rng() * kinds.length) | 0], tall);
+    if (o.userData.tall) { o.userData.clearH += extraJumps * TALL_CLEAR_PER_JUMP; tallUsed = true; }
     o.position.set(LANES[li], 0, SPAWN_Z); o.userData.lane = li; o.userData.lx = LANES[li]; scene.add(o); obstacles.push(o);
   });
 
@@ -435,7 +437,7 @@ function resetGame() {
   stageStart = distance; stageLen = stageLength(speed);   // first stage is base-length; later ones grow with speed
   elapsed = Math.min(70, (level - 1) * 9); difficulty = 0; safeLane = 1; forcedGap = 0;
   laneIdx = 1; targetX = 0; vy = 0; grounded = true; jumpsLeft = 2 + extraJumps + mods.extraJumpsBonus; banked = 0; groundY = 0; duckTimer = 0; duckAmt = 0; shakeT = 0;
-  jumpBufferT = 0; laneChangeT = -99; airTimer = 0; airPeak = 0; hitStopT = 0; slowmoT = 0; worldScale = 1;
+  jumpBufferT = 0; laneChangeT = -99; airTimer = 0; airPeak = 0; usedDouble = false; hitStopT = 0; slowmoT = 0; worldScale = 1;
   combo = 0; comboTimer = 0; comboMax = 0; flowAcc = 0; safeHazardCount = 0; squash = 0; emoteT = 0; spin = 0; power = null; powerT = 0; powerCD = 6; gotPower = false;
   peakSpeed = speed; tightestGap = Infinity;
   scoreHeat = 0;
@@ -598,7 +600,7 @@ function jump() {
   else jumpBufferT = JUMP_BUFFER;
 }
 function doJump() {
-  const dbl = !grounded; vy = (grounded ? 9.4 : 8.4) + extraJumps * 0.5; grounded = false; jumpsLeft--; jumpBufferT = 0; squash = -0.32; buzz(15); sfxJump(dbl);
+  const dbl = !grounded; if (dbl) usedDouble = true; vy = (grounded ? 9.4 : 8.4) + extraJumps * 0.5; grounded = false; jumpsLeft--; jumpBufferT = 0; squash = -0.32; buzz(15); sfxJump(dbl);
   particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.05, 0.2)), { count: 5, color: 0xeaddc6, speed: 1.6, up: 1.2, life: .4, grav: 6, size: 0.5 });
   fart();
 }
@@ -620,7 +622,7 @@ function emote() { emoteT = 0.45; squash = Math.max(squash, 0.28); }
 // so you can't farm the multiplier by rhythm-hopping in empty space.
 function awardAir(peak) {
   const mult = cmult(combo);
-  const bonus = Math.round((AIR_BASE + AIR_POINTS * (peak - AIR_MIN_H)) * mult);
+  const bonus = Math.round((AIR_BASE + AIR_POINTS * Math.min(peak - AIR_MIN_H, AIR_PEAK_CAP)) * mult);
   if (bonus <= 0) return;
   rollPoints += bonus; popScore(bonus, mult, true); emote(); buzz(8); sfxWhoosh();
   particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.2, 0)),
@@ -761,7 +763,10 @@ function moveObstacles(dt) {
         const gap = dx - halfW; if (gap < tightestGap) tightestGap = gap;   // closest clean thread this run (highlight strip)
         bumpCombo(); emote();
         const m = cmult(combo);                                       // both pay more the hotter your combo
-        const nm = Math.round((through ? NEARMISS_BONUS : SKIM_BONUS) * m * mods.nearMissMult);
+        // A tall obstacle is a harder read (needs a double-jump), so threading over
+        // one pays a richer near-miss than clearing a low hop.
+        const tallBonus = (o.userData.tall && through) ? 1.6 : 1;
+        const nm = Math.round((through ? NEARMISS_BONUS : SKIM_BONUS) * m * mods.nearMissMult * tallBonus);
         rollPoints += nm; popScore(nm, m, true); buzz(8); sfxWhoosh();
         // A streak trailing behind (toward the camera) sells the "whoosh past it".
         particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.9, 0)),
@@ -903,13 +908,14 @@ function updatePlayer(dt, t) {
     vy -= (vy > 0 ? 23 * mods.floatMult : 34) * dt; groundY += vy * dt;
     airTimer += dt; if (groundY > airPeak) airPeak = groundY;   // remember the height reached this hop
     if (groundY <= 0) {
-      const peak = airPeak;
+      const peak = airPeak, dbl = usedDouble;
       groundY = 0; vy = 0; grounded = true; jumpsLeft = 2 + extraJumps + mods.extraJumpsBonus; squash = 0.42;
-      airTimer = 0; airPeak = 0;
+      airTimer = 0; airPeak = 0; usedDouble = false;
       particles.emit(new THREE.Vector3(player.position.x, 0.05, player.position.z + 0.2), { count: 4, color: 0xe7d8be, speed: 1.6, up: 0.8, life: .35, grav: 6, size: 0.45 });
-      // Air bonus: reaching real height (double-jump / pad territory) on a live run
-      // pays out, scaled by peak height and the hot combo — so going up is worth points.
-      if (peak >= AIR_MIN_H && state === 'playing') awardAir(peak);
+      // Air bonus: a *spent* double-jump that reached real height pays out on a live
+      // run — intent-gated (not a height number), so extra-jump perks can't turn an
+      // ordinary single hop into free points. Scaled by peak height and the combo.
+      if (dbl && peak >= AIR_MIN_H && state === 'playing') awardAir(peak);
       if (jumpBufferT > 0) doJump();   // a jump pressed just before touchdown fires now
     }
   }
@@ -1329,7 +1335,8 @@ function buildDebugApi() {
       const pk = kind.split(':')[1] || POWERUP_KINDS[0];
       o = makePowerup(POWERUPS[pk].color); o.position.set(LANES[lane], 1.0, z); o.userData.kind = pk; o.userData.lx = LANES[lane]; arr = pickups;
     } else {                                       // cactus | rock | bar (arg4 = tall)
-      o = makeObstacle(kind, !!arg4); o.position.set(LANES[lane], 0, z); o.userData.lane = lane; o.userData.lx = LANES[lane]; arr = obstacles;
+      o = makeObstacle(kind, !!arg4); if (o.userData.tall) o.userData.clearH += extraJumps * TALL_CLEAR_PER_JUMP;
+      o.position.set(LANES[lane], 0, z); o.userData.lane = lane; o.userData.lx = LANES[lane]; arr = obstacles;
     }
     scene.add(o); arr.push(o); return kind;
   }

@@ -1587,6 +1587,36 @@ const SCENARIOS = [
       assert(s2.rollPoints > 0, 'landing a big hop pays an air bonus');
     },
   },
+  {
+    // Fairness — a buffed launch (extraJumps raises grounded jump velocity) lifts
+    // your single-hop apex, so the tall wall scales up with you and still demands
+    // the second jump. Otherwise one extra-jump perk would trivialize every tall.
+    name: 'tall-obstacle-scales-with-extra-jumps',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.set({ extraJumps: 1 }); c.clearField();
+      c.spawn('cactus', 1, -5, true);
+      c.jump();                                        // a higher single hop — but the wall grew too
+      assert(c.step(60).state === 'over', 'a buffed single hop still cannot clear a tall obstacle');
+
+      c.start({ magnetR: 0 }); c.set({ extraJumps: 1 }); c.clearField();
+      c.spawn('cactus', 1, -5, true);
+      c.jump(); c.step(8); c.jump();
+      assert(c.step(60).state === 'playing', 'a double-jump still clears it when buffed');
+    },
+  },
+  {
+    // Fairness — the air bonus is gated on actually spending a double-jump, not on
+    // raw height. A buffed single hop can exceed AIR_MIN_H yet pays nothing, so
+    // extra-jump perks can't turn ordinary hops into a free point farm.
+    name: 'air-bonus-needs-a-real-double-jump',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.set({ extraJumps: 1 }); c.clearField();
+      c.jump();                                        // one hop; apex clears 2.0 but no double spent
+      let max = 0, s; for (let i = 0; i < 80; i++) { s = c.step(1); if (s.airPeak > max) max = s.airPeak; if (s.player.grounded && i > 5) break; }
+      assert(max > 2.0, 'the buffed single hop did clear the old height threshold');
+      assert(s.rollPoints === 0, 'yet it pays no air bonus — a double-jump must actually be spent');
+    },
+  },
 ];
 
 /* ------------------------------- runner ------------------------------- */
