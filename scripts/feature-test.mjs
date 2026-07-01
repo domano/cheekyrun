@@ -266,6 +266,31 @@ const SCENARIOS = [
     },
   },
   {
+    name: 'reset-save',
+    fn: (c, assert) => {
+      c.fund(500); c.buy('shield');
+      assert(c.wallet() > 0, 'wallet holds leftover rolls');
+      assert(c.effects().shields === 1, 'a shield upgrade is owned');
+      const dlg = document.getElementById('resetConfirm');
+      // Opening the confirm dialog doesn't touch the save.
+      document.getElementById('resetBtn').click();
+      assert(!dlg.classList.contains('hide'), 'reset button opens the confirm dialog');
+      assert(c.effects().shields === 1, 'owned upgrade is intact while the dialog is open');
+      // Cancelling leaves everything as it was.
+      document.getElementById('resetNo').click();
+      assert(dlg.classList.contains('hide'), 'Cancel closes the dialog');
+      assert(c.effects().shields === 1, 'Cancel keeps the save');
+      // Confirming wipes the save back to defaults and closes the dialog.
+      document.getElementById('resetBtn').click();
+      document.getElementById('resetYes').click();
+      assert(dlg.classList.contains('hide'), 'confirming closes the dialog');
+      assert(c.wallet() === 0, 'confirm empties the wallet');
+      assert(c.effects().shields === 0, 'confirm clears owned upgrades');
+      // The whole menu re-renders after the wipe (proves the refresh chain ran).
+      assert(/Best 0\b/.test(document.querySelector('.menu .stats').textContent), 'menu stats re-render to a fresh save');
+    },
+  },
+  {
     name: 'upgrade-headstart',
     fn: (c, assert) => {
       c.fund(1000); c.buy('headstart');

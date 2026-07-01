@@ -191,6 +191,7 @@ function init() {
   $('againBtn').onclick = () => startGame(daily);     // "Again!" replays the same mode
   $('dailyBtn').onclick = () => startGame(true);
   $('muteBtn').onclick = toggleSound;
+  bindResetSave();
   renderShop(); renderStats(); renderAchievements(); renderCosmetics(); renderDaily();
   installDebug(buildDebugApi);
 }
@@ -1106,6 +1107,25 @@ function renderDaily() {
   const day = dailyKey(), b = getDailyBest(day), st = getDailyStreak(day);
   const streak = st > 1 ? ` · 🔥${st}` : '';
   $('dailyBtn').textContent = b > 0 ? `📅 Daily · best ${b}${streak}` : (st > 1 ? `📅 Daily${streak}` : '📅 Daily Challenge');
+}
+
+// Wipe all persistent progress behind a confirm dialog, then rebuild the menu
+// so the fresh (empty) save is reflected everywhere at once.
+function bindResetSave() {
+  const dlg = $('resetConfirm');
+  const close = () => dlg.classList.add('hide');
+  $('resetBtn').onclick = () => { ensureAudio(); buzz(12); dlg.classList.remove('hide'); };
+  $('resetNo').onclick = () => { buzz(8); close(); };
+  dlg.onclick = (e) => { if (e.target === dlg) close(); };   // tap the scrim to dismiss
+  $('resetYes').onclick = () => {
+    close();
+    resetSave();
+    applySkin(playerMats, selectedSkin());
+    // Rebuild every menu panel so the wiped save shows everywhere at once. The HUD
+    // is hidden on the menu, so there's nothing to refresh there.
+    renderShop(); renderStats(); renderAchievements(); renderCosmetics(); renderDaily();
+    sfxLane(); buzz(25);
+  };
 }
 
 // Achievement badge grid (locked badges show a padlock), shown on both cards.

@@ -198,6 +198,11 @@ canvas{display:block}
   border:3px solid var(--ink);padding:13px 32px;border-radius:999px;box-shadow:5px 5px 0 var(--ink);transition:transform .07s,box-shadow .07s}
 .btn:active{transform:translate(3px,3px);box-shadow:2px 2px 0 var(--ink)}
 .btn.ghost{background:#fff;color:var(--plum);font-size:15px;padding:10px 24px;margin-top:10px}
+.btn.danger{background:#e23c4e;color:#fff;font-size:15px;padding:11px 26px}
+.menu-foot{display:flex;justify-content:center;width:100%;margin-top:4px}
+.menu .menu-foot{animation:menurise .5s ease-out both;animation-delay:.25s}
+@media (prefers-reduced-motion:reduce){.menu .menu-foot{animation:none}}
+#resetConfirm .final{font-size:14px;color:var(--plum);opacity:.85;margin:8px 0 18px}
 .final{font-size:16px;margin:6px 0 2px;font-weight:800}
 .final span{color:var(--pink);font-size:34px;-webkit-text-stroke:1.5px var(--ink)}
 .best{font-size:13px;opacity:.6;font-weight:800;margin-bottom:18px}
