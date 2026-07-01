@@ -41,6 +41,18 @@ export default {
     g.add(outer);
     g.userData.outer = outer;
 
+    // a fainter concentric inner ring gives the field depth (not a single hoop)
+    const innerRing = new THREE.Mesh(
+      new THREE.RingGeometry(0.55, 0.66, 32),
+      new THREE.MeshBasicMaterial({
+        color: FIELD, transparent: true, opacity: 0.2, depthWrite: false,
+        side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
+      }),
+    );
+    innerRing.rotation.x = -Math.PI / 2;
+    g.add(innerRing);
+    g.userData.innerRing = innerRing;
+
     // thin bright inner edge — NORMAL-blended (not additive) so it still reads
     // on pale biomes where an additive glow alone washes out (mirrors buildAura).
     const edge = new THREE.Mesh(
@@ -54,7 +66,7 @@ export default {
     g.add(edge);
     g.userData.edge = edge;
 
-    g.position.set(0, 0.05, 0);
+    g.position.set(0, 0.03, 0);
     return g;
   },
   scale: (tier) => 0.85 + 0.12 * tier,
@@ -62,6 +74,11 @@ export default {
     g.rotation.z = t * 0.5;
     const pulse = 0.35 + 0.12 * Math.sin(t * 2);
     g.userData.outer.material.opacity = pulse;
-    g.userData.edge.material.opacity = pulse + 0.25;
+    g.userData.edge.material.opacity = pulse + 0.35;
+    if (g.userData.innerRing) g.userData.innerRing.material.opacity = 0.15 + 0.08 * Math.sin(t * 2 + 1);
+    // gentle radius breathing on the rings (not the group — that carries the tier scale)
+    const breathe = 1 + 0.05 * Math.sin(t * 1.5);
+    g.userData.outer.scale.setScalar(breathe);
+    g.userData.edge.scale.setScalar(breathe);
   },
 };

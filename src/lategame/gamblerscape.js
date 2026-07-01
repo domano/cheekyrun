@@ -1,12 +1,15 @@
 // 🃏 Gambler's Cape — a flowing crimson cape clasped at the neck: more rolls,
 // but it thins the shields. High risk, high reward for a late-game min-maxer.
 // Contract: shop entry + mods(tier,m) + worn-prop build/scale/tick — see
-// src/lategame/_example.js. Body zone: NECK/BACK (free — nothing else there).
+// src/lategame/_example.js. Body zone: camera-facing upper/lower back (+z);
+// a squashed open cone reads as the drape, a torus arc as the collar.
 import * as THREE from 'three';
 import { toon, ink } from '../materials.js';
 
-const CRIMSON = 0xc0392b;
-const GOLD = 0xe6b800;
+const CRIMSON = 0xc0392b; // cape body
+const DEEP = 0x8e2f26;    // collar band — dark rolled-fabric, not pool-ring red
+const LINING = 0xe8b4c8;  // peachy-pink lining sliver
+const GOLD = 0xf39c12;    // clasp
 
 export default {
   id: 'gamblerscape',
@@ -30,50 +33,54 @@ export default {
     if (tier >= 3) m.noShields = true;
   },
 
-  // ---- worn 3D prop: neck/back-of-neck, draping down behind the cheeks ----
+  // ---- worn 3D prop: a real draping cape on the camera-facing back ----
   build() {
     const g = new THREE.Group();
-    const capeM = toon(CRIMSON);
-    const goldM = toon(GOLD);
 
-    // three tapered flat panels, wide at the shoulders narrowing toward the
-    // hem, slightly overlapped and angled so the cape reads as one draping
-    // sheet rather than three flat cards.
-    const panelDefs = [
-      { w: 0.34, h: 0.62, x: -0.22, rz: 0.12 },
-      { w: 0.4, h: 0.68, x: 0, rz: 0 },
-      { w: 0.34, h: 0.62, x: 0.22, rz: -0.12 },
-    ];
-    const panels = panelDefs.map((d) => {
-      const panel = new THREE.Mesh(new THREE.BoxGeometry(d.w, d.h, 0.02), capeM);
-      panel.position.set(d.x, -d.h / 2 + 0.06, 0);
-      panel.rotation.z = d.rz;
-      panel.rotation.x = 0.3; // drape down over the camera-facing back
-      ink(panel, 1.08);
-      g.add(panel);
-      return panel;
-    });
+    // collar band the cape hangs from — a ~200° torus arc laid across the
+    // shoulders so the drape has an anchor instead of floating.
+    const collar = new THREE.Mesh(
+      new THREE.TorusGeometry(0.42, 0.06, 8, 20, Math.PI * 1.2), toon(DEEP));
+    collar.rotation.z = -0.31;      // centre the arc over the top
+    collar.rotation.x = 0.45;       // tilt to lie on the back-facing shoulders
+    collar.position.set(0, 1.0, 0.28);
+    ink(collar, 1.08);
+    g.add(collar);
 
-    // gold clasp at the neck, small torus sitting above the panels
-    const clasp = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.035, 8, 18), goldM);
-    clasp.position.set(0, 0.24, 0.06);
-    clasp.rotation.x = Math.PI / 2;
-    ink(clasp, 1.1);
+    // cape body: a wide shallow open cone — the flat hem reads instantly as
+    // fabric. Squashed in z so it wraps the round back rather than ballooning.
+    const cape = new THREE.Mesh(
+      new THREE.ConeGeometry(0.62, 0.95, 10, 1, true), toon(CRIMSON));
+    cape.scale.set(1.15, 1, 0.55);
+    cape.position.set(0, 0.55, 0.2);
+    cape.rotation.x = 0.21;         // flare the hem outward/back
+    ink(cape, 1.05);
+    g.add(cape);
+
+    // a sliver of peachy lining just inside the hem — the "luxury" pop.
+    const lining = new THREE.Mesh(
+      new THREE.ConeGeometry(0.62, 0.95, 10, 1, true),
+      toon(LINING, { transparent: true, opacity: 0.95 }));
+    lining.scale.set(1.15 * 0.92, 0.92, 0.55 * 0.92);
+    lining.position.copy(cape.position);
+    lining.rotation.x = cape.rotation.x;
+    g.add(lining);
+
+    // gold clasp — a little sphere dead-centre on the collar, camera-facing.
+    const clasp = new THREE.Mesh(new THREE.SphereGeometry(0.07, 12, 12), toon(GOLD));
+    clasp.position.set(0, 1.05, 0.42);
+    ink(clasp, 1.12);
     g.add(clasp);
 
-    g.userData.panels = panels;
-
-    // anchor high on the camera-facing back (+z), draping down the visible side
-    g.position.set(0, 1.06, 0.32);
+    g.userData.cape = cape;
+    g.userData.lining = lining;
     return g;
   },
   scale: (tier) => 0.96 + 0.07 * tier,
   tick(g, t) {
-    const panels = g.userData.panels;
-    if (!panels) return;
-    panels.forEach((p, i) => {
-      p.rotation.x = 0.3 + Math.sin(t * 1.8 + i * 0.7) * 0.1;
-      p.rotation.z = [0.12, 0, -0.12][i] + Math.sin(t * 1.3 + i) * 0.05;
-    });
+    // gentle hem sway so the cloth reads as cloth, not cardboard.
+    const sway = Math.sin(t * 1.5) * 0.052;
+    if (g.userData.cape) g.userData.cape.rotation.x = 0.21 + sway;
+    if (g.userData.lining) g.userData.lining.rotation.x = 0.21 + sway;
   },
 };

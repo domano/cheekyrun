@@ -1,12 +1,20 @@
 // 🔥 Comet Trail — a blazing wake streaming off the tail. Run hotter.
-// Body zone: TAIL WAKE (nothing else uses this). See src/lategame/_example.js
-// for the full contract and src/perkgear/doubledown.js for a reference prop.
+// Body zone: behind the tail on the camera-facing side (+z). Solid toon flame
+// tongues (NOT additive — additive warm light vanishes on the pale path) with a
+// hot-pink inner tongue for contrast on every biome. See src/lategame/_example.js.
 import * as THREE from 'three';
 import { toon } from '../materials.js';
 
-const HOT = 0xff7043;    // tail-side, hottest
-const MID = 0xffa542;    // mid taper
-const BRIGHT = 0xffd54f; // bright tip
+// hot core -> cool tip, graded so it reads as a tapering flame. Anchored low
+// and deep behind the tail so it streams backward like a wake, not a lump on
+// the back; the two outer tongues stay faint so it doesn't read as solid orange.
+const TONGUES = [
+  { color: 0xff6b35, r: 0.18, h: 0.5, z: 0.9, y: 0.72, op: 0.85 },
+  { color: 0xff9e40, r: 0.13, h: 0.35, z: 1.15, y: 0.66, op: 0.6 },
+  { color: 0xffd23f, r: 0.09, h: 0.22, z: 1.38, y: 0.6, op: 0.45 },
+];
+const PINK = 0xff477e;   // contrast tongue — pops against warm peach ground
+const RAKE = Math.PI / 2 + 0.22;   // apex points +z and rakes down toward the ground
 
 export default {
   id: 'comettrail',
@@ -26,37 +34,31 @@ export default {
 
   mods: (tier, m) => { m.speedMult *= 1 + 0.03 * tier; },
 
-  // ---- worn 3D prop: a tapering flame wake off the tail ----
+  // ---- worn 3D prop: solid toon flame tongues trailing off the tail ----
   build() {
     const g = new THREE.Group();
-
-    // 4 segments tapering from hot (near tail) to bright (tip), each a
-    // translucent additive cone stretched into a flame lick, streaming
-    // rearward (+z, behind the runner).
-    const colors = [HOT, HOT, MID, BRIGHT];
     const segs = [];
-    colors.forEach((color, i) => {
-      const t = i / (colors.length - 1); // 0 near tail -> 1 at tip
-      const radius = 0.16 * (1 - t * 0.6);
-      const height = 0.34 + t * 0.22;
-      const geo = new THREE.ConeGeometry(radius, height, 8, 1, true);
-      const mat = new THREE.MeshBasicMaterial({
-        color, transparent: true, opacity: 0.75 - t * 0.25,
-        blending: THREE.AdditiveBlending, depthWrite: false,
-      });
-      const cone = new THREE.Mesh(geo, mat);
-      // cones point +y by default; lay flat and aim rearward (+z), stacked
-      // further back and slightly up per segment so it licks upward.
-      cone.rotation.x = Math.PI / 2;
-      cone.position.set(0, t * 0.08, 0.18 + t * 0.42);
+
+    // a hot-pink inner tongue sits at the base for cross-biome contrast.
+    const inner = new THREE.Mesh(
+      new THREE.ConeGeometry(0.11, 0.4, 10),
+      toon(PINK, { transparent: true, opacity: 0.6 }));
+    inner.rotation.x = RAKE;   // rakes backward + down like the wake
+    inner.position.set(0, 0.72, 0.82);
+    g.add(inner);
+    segs.push({ mesh: inner, baseH: 0.4 });
+
+    TONGUES.forEach(({ color, r, h, z, y, op }) => {
+      const cone = new THREE.Mesh(
+        new THREE.ConeGeometry(r, h, 10),
+        toon(color, { transparent: true, opacity: op }));
+      cone.rotation.x = RAKE;   // rakes backward + down like the wake
+      cone.position.set(0, y, z);
       g.add(cone);
-      segs.push({ mesh: cone, baseH: height, baseOpacity: mat.opacity, mat });
+      segs.push({ mesh: cone, baseH: h });
     });
 
     g.userData.segs = segs;
-
-    // near the tail base (~0, 0.95, 0.55), streaming backward
-    g.position.set(0, 0.9, 0.7);
     return g;
   },
   scale: (tier) => 0.85 + 0.12 * tier,
@@ -64,9 +66,9 @@ export default {
     const segs = g.userData.segs;
     if (!segs) return;
     segs.forEach((s, i) => {
-      const flick = Math.abs(Math.sin(t * 18 + i));
-      s.mesh.scale.y = 0.7 + 0.5 * flick;
-      s.mat.opacity = s.baseOpacity * (0.6 + 0.4 * flick);
+      // licking flicker: stretch length + a small side wobble per tongue.
+      s.mesh.scale.y = 1 + 0.25 * Math.sin(t * 8 + i);
+      s.mesh.rotation.z = Math.sin(t * 6 + i * 1.3) * 0.09;
     });
   },
 };
