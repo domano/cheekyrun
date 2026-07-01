@@ -43,6 +43,13 @@ export const SAFE_HAZARD_CHANCE = 0.4;      // scaled by difficulty, so it ramps
 // Game feel: a jump pressed just before landing is buffered for this long and
 // fires the instant you touch down, so chained hops never feel dropped.
 export const JUMP_BUFFER = 0.13;
+// Duck slide: one press commits to a fixed slide, and a fresh slide only arms
+// after a short recovery — re-presses mid-slide/recovery are ignored, so mashing
+// (or a held key's auto-repeat) can't chain slides into a permanent one that
+// makes every bar and gate a freebie. Slide + recovery stays under 2×ROW_MIN_GAP,
+// so back-to-back duck rows are still coverable with real timing.
+export const DUCK_TIME = 0.5;
+export const DUCK_COOLDOWN = 0.25;
 // Hit-stop: a brief world freeze on impact so the hit reads as a physical event.
 export const HITSTOP_SHIELD = 0.06;   // shield save — the run keeps going, so the freeze is felt
 export const HITSTOP_DEATH = 0.14;    // the crash — a longer freeze so the wipe-out lands hard

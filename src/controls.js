@@ -29,7 +29,8 @@ export function bindControls(d) {
     }
     if (state !== 'playing') { if (e.code === 'Space' || e.code === 'Enter') d.startGame(); return; }
     if (e.code === 'ArrowLeft') d.moveLane(-1); else if (e.code === 'ArrowRight') d.moveLane(1);
-    else if (e.code === 'ArrowUp' || e.code === 'Space') d.jump(); else if (e.code === 'ArrowDown') d.duck();
+    // A held key's auto-repeat is not a fresh press: a slide is a deliberate action.
+    else if (e.code === 'ArrowUp' || e.code === 'Space') d.jump(); else if (e.code === 'ArrowDown' && !e.repeat) d.duck();
   });
   let sx = 0, sy = 0, fired = false; const el = d.canvas;
   const act = (dx, dy) => { if (Math.abs(dx) > Math.abs(dy)) d.moveLane(dx > 0 ? 1 : -1); else if (dy < 0) d.jump(); else d.duck(); };

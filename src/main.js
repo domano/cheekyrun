@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { LANES, SPAWN_Z, DESPAWN_Z, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE_RAMP, GATE_COOLDOWN, COMBO_WINDOW, comboMult, NEARMISS_MARGIN, NEARMISS_BONUS, SKIM_MARGIN, SKIM_BONUS, SKIM_WINDOW, SAFE_HAZARD_MIN_DIFF, SAFE_HAZARD_CHANCE, TALL_CLEAR_H, TALL_CLEAR_PER_JUMP, TALL_MIN_DIFF, TALL_CHANCE, ROLL_GRAB_H, AIR_ARC_MIN_DIFF, AIR_ARC_CHANCE, AIR_ARC_TALL_CHANCE, AIR_ARC_TALL_PEAK, AIR_MIN_H, AIR_BASE, AIR_POINTS, AIR_PEAK_CAP, JUMP_BUFFER, HITSTOP_SHIELD, HITSTOP_DEATH, SLOWMO_FACTOR, SLOWMO_TIME, SLOWMO_MIN_MULT, SLOWMO_TIGHT_MARGIN, SLOWMO_TIGHT_TIME, DIFF_RAMP, ROW_MIN_GAP, COMBO_DECAY_STEP, COMBO_STEP, SCORE_FLOW_RATE, HEAT_PER_LEVEL, HEAT_LEVEL_CAP, HEAT_MAX, PHOENIX_COMBO, PHOENIX_INVULN, GREED_CAP, RING_TIME, POWERUP_DURATION, POWERUP_CHANCE, POWERUP_MIN_DIFF, POWERUP_COOLDOWN, POWERUPS, POWERUP_KINDS, DASH_SPEED_MULT, DRAFT_EVERY, DRAFT_CHOICES, DRAFT_ARM, DRAFT_GRACE, mulberry32, dailyKey, dailySeed, $, buzz, shuffle } from './config.js';
+import { LANES, SPAWN_Z, DESPAWN_Z, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE_RAMP, GATE_COOLDOWN, COMBO_WINDOW, comboMult, NEARMISS_MARGIN, NEARMISS_BONUS, SKIM_MARGIN, SKIM_BONUS, SKIM_WINDOW, SAFE_HAZARD_MIN_DIFF, SAFE_HAZARD_CHANCE, TALL_CLEAR_H, TALL_CLEAR_PER_JUMP, TALL_MIN_DIFF, TALL_CHANCE, ROLL_GRAB_H, AIR_ARC_MIN_DIFF, AIR_ARC_CHANCE, AIR_ARC_TALL_CHANCE, AIR_ARC_TALL_PEAK, AIR_MIN_H, AIR_BASE, AIR_POINTS, AIR_PEAK_CAP, JUMP_BUFFER, DUCK_TIME, DUCK_COOLDOWN, HITSTOP_SHIELD, HITSTOP_DEATH, SLOWMO_FACTOR, SLOWMO_TIME, SLOWMO_MIN_MULT, SLOWMO_TIGHT_MARGIN, SLOWMO_TIGHT_TIME, DIFF_RAMP, ROW_MIN_GAP, COMBO_DECAY_STEP, COMBO_STEP, SCORE_FLOW_RATE, HEAT_PER_LEVEL, HEAT_LEVEL_CAP, HEAT_MAX, PHOENIX_COMBO, PHOENIX_INVULN, GREED_CAP, RING_TIME, POWERUP_DURATION, POWERUP_CHANCE, POWERUP_MIN_DIFF, POWERUP_COOLDOWN, POWERUPS, POWERUP_KINDS, DASH_SPEED_MULT, DRAFT_EVERY, DRAFT_CHOICES, DRAFT_ARM, DRAFT_GRACE, mulberry32, dailyKey, dailySeed, $, buzz, shuffle } from './config.js';
 import { makeGradient, toon, glow, rampShadow } from './materials.js';
 import { makeObstacle, makeHurdle, makeGate, makeRoll, makePowerup, makeScenery, makeCloud, makeFinishLine, makeCheerCrowd, tickCheerCrowd, OBSTACLE_KINDS } from './props.js';
 import { createParticles } from './particles.js';
@@ -34,7 +34,7 @@ let speed, distance, rollCount, rollPoints, rowTimer, sceneAcc, dustAcc, elapsed
 // when it starts). `finishLine` is the banner dropped at the tail; crossing it
 // ends the stage. `finishArmed` gates the one-shot level-up on that crossing.
 let stageStart = 0, stageLen = 0, finishLine = null, finishArmed = false;
-let laneIdx, targetX, vy, grounded, jumpsLeft, banked, groundY, duckTimer, duckAmt, shakeT;
+let laneIdx, targetX, vy, grounded, jumpsLeft, banked, groundY, duckTimer, duckLockT, duckAmt, shakeT;
 let jumpBufferT, laneChangeT;          // buffered-jump timer + time of the last lane change (for skims)
 let airTimer, airPeak, usedDouble;     // time aloft + peak height + whether a double-jump was spent this hop (air-bonus)
 let hitStopT, slowmoT, worldScale;     // hit-stop freeze / near-miss slow-mo timers + the live sim time-scale
@@ -497,7 +497,7 @@ function resetGame() {
   speed = 12.5; distance = (level - 1) * STAGE_BASE; rollCount = 0; rollPoints = 0; rowTimer = 1.8; sceneAcc = 0; dustAcc = 0;
   stageStart = distance; stageLen = stageLength(speed);   // first stage is base-length; later ones grow with speed
   elapsed = Math.min(70, (level - 1) * 9); difficulty = 0; safeLane = 1; forcedGap = 0;
-  laneIdx = 1; targetX = 0; vy = 0; grounded = true; jumpsLeft = 2 + extraJumps + mods.extraJumpsBonus; banked = 0; groundY = 0; duckTimer = 0; duckAmt = 0; shakeT = 0;
+  laneIdx = 1; targetX = 0; vy = 0; grounded = true; jumpsLeft = 2 + extraJumps + mods.extraJumpsBonus; banked = 0; groundY = 0; duckTimer = 0; duckLockT = 0; duckAmt = 0; shakeT = 0;
   jumpBufferT = 0; laneChangeT = -99; airTimer = 0; airPeak = 0; usedDouble = false; hitStopT = 0; slowmoT = 0; worldScale = 1;
   combo = 0; comboTimer = 0; comboMax = 0; flowAcc = 0; safeHazardCount = 0; squash = 0; emoteT = 0; spin = 0; power = null; powerT = 0; powerCD = 6; gotPower = false;
   peakSpeed = speed; tightestGap = Infinity;
@@ -667,7 +667,14 @@ function doJump() {
   particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.05, 0.2)), { count: 5, color: 0xeaddc6, speed: 1.6, up: 1.2, life: .4, grav: 6, size: 0.5 });
   fart();
 }
-function duck() { duckTimer = 0.5; buzz(12); sfxDuck(); if (!grounded) vy = Math.min(vy, -3) - 6; fart(); }
+// A slide is a commitment: re-presses mid-slide or in the recovery are dropped,
+// so mashing can't refresh the timer into a permanent slide (the old duck-spam
+// invincibility against every bar and gate).
+function duck() {
+  if (duckLockT > 0) return;
+  duckLockT = DUCK_TIME + DUCK_COOLDOWN; duckTimer = DUCK_TIME;
+  buzz(12); sfxDuck(); if (!grounded) vy = Math.min(vy, -3) - 6; fart();
+}
 // A cheeky little parp — a soft green puff that lingers behind the character on
 // every jump and slide. `fartCount` is a deterministic hook for the tests.
 function fart() {
@@ -994,7 +1001,8 @@ function updatePlayer(dt, t) {
       if (jumpBufferT > 0) doJump();   // a jump pressed just before touchdown fires now
     }
   }
-  duckTimer = Math.max(0, duckTimer - dt); duckAmt += ((duckTimer > 0 ? 1 : 0) - duckAmt) * Math.min(1, dt * 16);
+  duckTimer = Math.max(0, duckTimer - dt); duckLockT = Math.max(0, duckLockT - dt);
+  duckAmt += ((duckTimer > 0 ? 1 : 0) - duckAmt) * Math.min(1, dt * 16);
   const running = state === 'playing', freq = running ? 14 : 5;
   const bob = (grounded && duckTimer <= 0) ? Math.abs(Math.sin(t * freq)) * 0.12 : 0;
   player.position.y = groundY + bob * (1 - duckAmt);
@@ -1183,7 +1191,7 @@ function buildDebugApi() {
       shields, invuln: +invuln.toFixed(2), magnetR, rollValue, extraJumps, jumpsLeft,
       phoenix, phoenixUsed, ringT: +ringT.toFixed(3), camKick: +camKick.toFixed(2),
       dailyStreak: getDailyStreak(dailyKey()),
-      jumpBufferT: +jumpBufferT.toFixed(3), hitStopT: +hitStopT.toFixed(3), slowmoT: +slowmoT.toFixed(3),
+      jumpBufferT: +jumpBufferT.toFixed(3), duckLockT: +duckLockT.toFixed(3), hitStopT: +hitStopT.toFixed(3), slowmoT: +slowmoT.toFixed(3),
       safeHazards: safeHazardCount, musicIntensity: +getIntensity().toFixed(3), scoreHeat: +scoreHeat.toFixed(3),
       perks: perks.map(p => ({ id: p.id, stacks: p.stacks })), mods, levelUps,
       draft: draftCards.map(p => p.id), draftArm: +draftArm.toFixed(2),

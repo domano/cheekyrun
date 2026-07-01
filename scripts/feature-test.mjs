@@ -194,6 +194,42 @@ const SCENARIOS = [
     },
   },
   {
+    name: 'duck-slide-commitment',
+    fn: (c, assert) => {
+      // Regression: mashing duck refreshed the slide timer every press, chaining
+      // into a PERMANENT slide — every bar and gate became a freebie ("duck-spam
+      // invincibility"). A slide is now a commitment: re-presses mid-slide are
+      // dropped, and a fresh slide only arms after a short recovery.
+      c.start(); c.clearField();
+      let s = c.duck();
+      assert(s.player.ducking === true, 'a slide starts on the first press');
+      for (let i = 0; i < 33; i++) { c.duck(); s = c.step(1); }   // mash every frame for 0.55s
+      assert(s.player.ducking === false, 'mashing cannot extend the slide past DUCK_TIME');
+      s = c.duck();
+      assert(s.player.ducking === false, 'a press inside the recovery window is ignored');
+      s = c.step(15);                                             // ride out the 0.25s recovery
+      assert(s.duckLockT === 0, 'the recovery lock expires');
+      s = c.duck();
+      assert(s.player.ducking === true, 'the slide re-arms after the recovery');
+
+      // A held key's auto-repeat is not a fresh press.
+      c.start(); c.clearField();
+      const before = c.state().fartCount;
+      dispatchEvent(new KeyboardEvent('keydown', { code: 'ArrowDown', repeat: true }));
+      assert(c.state().fartCount === before, 'a held-key auto-repeat never starts a slide');
+      dispatchEvent(new KeyboardEvent('keydown', { code: 'ArrowDown' }));
+      assert(c.state().fartCount === before + 1, 'a real press still slides');
+
+      // The exploit itself: a masher meets a gate whose pass lands in the
+      // recovery gap (slide covers 0–0.5s, gate arrives ~0.6s in) — and crashes.
+      c.start(); c.clearField();
+      c.spawn('gate', 1, -8);
+      let over = 'playing';
+      for (let i = 0; i < 45 && over === 'playing'; i++) { c.duck(); over = c.step(2).state; }
+      assert(over === 'over', 'duck-mashing no longer sails through a gate');
+    },
+  },
+  {
     name: 'biome-obstacle-variety',
     fn: (c, assert) => {
       c.start();                                  // level 1 = Meadow
