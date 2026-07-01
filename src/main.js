@@ -6,7 +6,7 @@ import { createParticles } from './particles.js';
 import { buildPlayer, applyGear, tickGear } from './player.js';
 import { STAGE_BASE, STAGE_LEAD, stageLength, biomeOf, obstacleSet, scenerySet, biomePlay, biomeAir } from './levels.js';
 import { trackOffset, deformRoad } from './track.js';
-import { UPGRADES, effects, tierOf, nextCost, nextGate, buy, getWallet, addRolls, DEFAULT_POOL, unlockedPerkIds, META, buyMeta } from './upgrades.js';
+import { UPGRADES, effects, tierOf, nextCost, nextGate, buy, getWallet, addRolls, DEFAULT_POOL, unlockedPerkIds, META, buyMeta, foldUpgradeMods, setTier } from './upgrades.js';
 import { PERKS, freshMods, applyPerks, perkById, draftChoices } from './perks.js';
 import { save, getRerolls, useReroll, getBanishes, useBanish, banishPerk } from './save.js';
 import { getBest, setBest, getStats, bumpStats, getHistory, pushHistory, resetSave, reload, requestPersistence, onExternalChange } from './save.js';
@@ -367,7 +367,9 @@ function spawnScenery() {
 /* ---------------- perks (roguelite draft) ---------------- */
 // Re-derive the run modifiers from the perks picked so far. perks[] is the source
 // of truth; mods is a pure fold of it, so stacking is just stacks++ then recompute.
-function recomputeRunMods() { mods = applyPerks(perks); }
+// Run mods = drafted perks, then permanent upgrade contributions folded on top
+// (skipped in a daily, which runs meta-free so everyone competes evenly).
+function recomputeRunMods() { mods = applyPerks(perks); if (!daily) foldUpgradeMods(mods); }
 // Which drafted perk wears which cosmetic prop. The magnet/spring/clover used to
 // be permanent upgrades; they're perks now, so the gear follows the live draft.
 const PERK_GEAR = { vacuum: 'magnet', hops: 'spring', lucky: 'fortune' };
@@ -375,7 +377,12 @@ const PERK_GEAR = { vacuum: 'magnet', hops: 'spring', lucky: 'fortune' };
 // daily — it's gear-free) plus the per-run perks that map onto a prop, sized by
 // stacks. Rebuilt whenever ownership or the draft changes.
 function wornGear() {
-  const t = daily ? {} : { shield: tierOf('shield'), headstart: tierOf('headstart') };
+  const t = {};
+  // Owned shop upgrades wear a prop keyed by their own id (its file in
+  // src/upgrades/<id>.js), sized by owned tier — including the core Cushion and
+  // Head Start. Skipped in a daily (meta-free). The Cushion is a liveGear prop,
+  // so applyGear ignores this entry and the live shield count drives it instead.
+  if (!daily) for (const u of UPGRADES) { const l = tierOf(u.id); if (l) t[u.id] = l; }
   // Drafted perks each wear a prop: the legacy three map onto magnet/spring/
   // clover (PERK_GEAR); every other perk keys onto its own id (its file in
   // src/perkgear/<id>.js). Sized by stack count.
@@ -586,7 +593,7 @@ function updateShieldHud() {
 function updateShieldGear() {
   if (!gear) return;
   gear.shield.visible = shields > 0;
-  gear.shieldPips.forEach((pip, i) => { pip.visible = i < shields; });
+  gear.shield.userData.pips.forEach((pip, i) => { pip.visible = i < shields; });
 }
 // The armed-Phoenix badge: a pulsing flame that shows you've banked a save.
 function updatePhoenixHud() { $('phoenixHud').classList.toggle('hide', !phoenix); }
@@ -1022,9 +1029,7 @@ function updatePlayer(dt, t) {
       particles.emit(new THREE.Vector3(player.position.x + Math.cos(a) * r, 0.1, player.position.z + Math.sin(a) * r), { count: 1, color: POWERUPS[power].color, speed: 0.3, up: 2.4, life: .7, grav: -1.5, size: 0.4 });
     }
   }
-  if (gear && gear.shield.visible) gear.shield.rotation.y += dt * 0.7;   // orbit the tier pips
-  if (gear && gear.headstart.visible) gear.flame.scale.y = 0.8 + Math.abs(Math.sin(t * 22)) * 0.5;
-  if (gear) tickGear(gear, t, dt);   // animate the dynamic perk props that opt in
+  if (gear) tickGear(gear, t, dt);   // animate the worn props that opt into tick() (incl. Cushion pips + rocket flame)
   squash -= squash * Math.min(1, dt * 12);   // ease the squash/stretch impulse back to 0
   const baseSq = (grounded && duckTimer <= 0) ? 1 - bob * 0.4 : 1;
   const sy = baseSq * (1 - duckAmt * 0.55) * (1 - squash), sxz = (1 / Math.sqrt(baseSq)) * (1 + duckAmt * 0.32) * (1 + squash * 0.5);
@@ -1190,7 +1195,10 @@ function buildDebugApi() {
       player: { x: +player.position.x.toFixed(3), groundY: +groundY.toFixed(3), vy: +vy.toFixed(2), grounded, ducking: duckTimer > 0 },
       airTimer: +airTimer.toFixed(2), airPeak: +airPeak.toFixed(2),
       gearTiers, auraVisible: !!(aura && aura.visible), fartCount,
-      gearVisible: gear ? { shield: gear.shield.visible, spring: gear.spring.visible, magnet: gear.magnet.visible, fortune: gear.fortune.visible, headstart: gear.headstart.visible, shieldPips: gear.shieldPips.filter(p => p.visible).length,
+      // shield/headstart (and the late-game props) come from the _defs spread;
+      // spring/magnet/fortune are the inline perk gear. shieldPips reports the
+      // live pip count on the Cushion bubble.
+      gearVisible: gear ? { spring: gear.spring.visible, magnet: gear.magnet.visible, fortune: gear.fortune.visible, shieldPips: gear.shield.userData.pips.filter(p => p.visible).length,
         ...Object.fromEntries((gear._defs || []).map(d => [d.id, gear[d.id].visible])) } : {},
       counts: { obstacles: obstacles.length, rolls: rolls.length, airRolls: rolls.filter(r => r.userData.h).length, airRollMaxH: +rolls.reduce((m, r) => Math.max(m, r.userData.h || 0), 0).toFixed(2), tallObstacles: obstacles.filter(o => o.userData.tall).length, pickups: pickups.length, scenery: scenery.length, finish: finishLine ? 1 : 0,
         cheerers: finishLine && finishLine.userData.crowd ? finishLine.userData.crowd.userData.fans.length : 0 },
@@ -1271,7 +1279,7 @@ function buildDebugApi() {
       teleport: ['set({level,speed,shields,power,...})', `keys: ${Object.keys(SETTERS).join(', ')}`],
       world: ['spawn(kind, lane?, z?, arg4?)', 'arg4: roll→height, obstacle→tall', 'clearField()', 'forceFinish(z?)', `kinds: ${OBSTACLE_KINDS.join('|')}|gate|hurdle|roll|powerup[:magnet|x2|ghost]`],
       input: ['left()', 'right()', 'lane(i)', 'jump()', 'duck()'],
-      shop: ['wallet()', 'fund(n)', 'buy(id)', 'effects()', 'migrate(legacyOwned?)'],
+      shop: ['wallet()', 'fund(n)', 'buy(id)', 'own(id, tier)', 'effects()', 'migrate(legacyOwned?)'],
       perks: ['perk(id)', 'draft()', 'openDraft()', 'pick(i)', 'reroll()', 'banish(i)', `ids: ${PERKS.map(p => p.id).join('|')}`],
       meta: ['buyMeta(id)', 'startDaily()', `items: ${META.map(m => m.id).join('|')}`],
       cosmetics: ['skin()', 'pickSkin(id)', 'unlockAch(id)'],
@@ -1332,6 +1340,9 @@ function buildDebugApi() {
     },
     wallet: getWallet, fund: (n) => { addRolls(n); renderShop(); return getWallet(); },
     buy: (id) => { const ok = buy(id); renderShop(); return ok; }, effects,
+    // Force an owned upgrade tier (bypass cost + gate) so a scenario can exercise
+    // a late-game unlock's effect/gear deterministically, then refresh gear/shop.
+    own: (id, tier = 1) => { setTier(id, tier); refreshGear(); renderShop(); return snapshot(); },
     // ---- perks (roguelite draft) ----
     perk: (id) => { applyPerk(id); return snapshot(); },
     draft: () => ({ state, choices: draftCards.map(p => p.id) }),

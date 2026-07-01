@@ -1,15 +1,29 @@
 import * as THREE from 'three';
 import { toon, ink } from './materials.js';
 
-// Auto-loaded perk-gear definitions: one file per perk under ./perkgear/.
-// Each default-exports { id, build(), scale?(stacks), tick?(group, t, dt) }.
-// Dropping a new file in that folder is all it takes to give a perk a worn
-// prop — buildGear() builds it hidden, applyGear() reveals/scales it by stack
-// count, and tickGear() runs its animation. No other edits, so the props are
-// collision-free to author in parallel.
-const PERK_GEAR_DEFS = Object.values(
-  import.meta.glob('./perkgear/*.js', { eager: true }),
-).map((m) => m.default).filter(Boolean);
+// Auto-loaded worn-gear definitions. Two folders feed the same pipeline:
+//   ./perkgear/*.js  — one file per drafted perk (keyed by perk id)
+//   ./upgrades/*.js  — one file per shop upgrade (keyed by upgrade id; the same
+//                      file also declares the shop entry + effect, read by
+//                      upgrades.js — see src/upgrades/_example.js). This includes
+//                      the core Cushion + Head Start.
+// Each default-exports { id, build(), scale?(n), tick?(group, t, dt) } (an
+// upgrade file carries extra shop fields too, ignored here). Dropping a new
+// file in either folder is all it takes to give it a worn prop — buildGear()
+// builds it hidden, applyGear() reveals/scales it by tier/stack count, and
+// tickGear() runs its animation. Files prefixed `_` are templates, skipped.
+// A def can set `liveGear: true` to keep its own reveal (e.g. the Cushion bubble,
+// driven by the live shield count in main.js) — applyGear leaves those alone.
+// No other edits, so the props are collision-free to author in parallel.
+const loadDefs = (glob) => Object.entries(glob)
+  .filter(([path]) => !path.split('/').pop().startsWith('_'))
+  .map(([, m]) => m.default).filter(Boolean);
+const GEAR_DEFS = [
+  ...loadDefs(import.meta.glob('./perkgear/*.js', { eager: true })),
+  // upgrade files that actually declare a worn prop (build()); effect-only
+  // upgrades without a model are simply skipped here.
+  ...loadDefs(import.meta.glob('./upgrades/*.js', { eager: true })).filter((d) => typeof d.build === 'function'),
+];
 
 // Builds the star of the show — a butt with ears — and returns the group plus
 // the animated sub-parts the game loop needs to wiggle each frame.
@@ -47,40 +61,18 @@ export function buildPlayer(scene) {
   return { player, ears, feet, tail, gear, aura, mats: { skin, inner, blush: blushM, tail: tailM } };
 }
 
-// Worn cosmetics — one prop per loadout slot. Cushion/Head Start track the
-// permanent upgrades you own; magnet/springs/clover track the drafted perks
-// (vacuum/hops/lucky) since those reframed into the roguelite layer. All start
-// hidden; the game reveals and scales them via applyGear(), so the more you've
-// banked or drafted the more pronounced the character looks.
+// Worn cosmetics — one prop per loadout slot. The shop upgrades (Cushion, Head
+// Start, and the late-game unlocks) each live in ./upgrades/<id>.js and are
+// built by the GEAR_DEFS loop below; magnet/springs/clover are the drafted perks
+// (vacuum/hops/lucky) still kept inline here. All start hidden; the game reveals
+// and scales them via applyGear(), so the more you've banked or drafted the more
+// pronounced the character looks.
 function buildGear(player) {
   const gear = {};
 
   // Two accessory zones up top so worn props never pile on the centreline:
   // the magnet sits over the right shoulder, the clover over the left.
   // ----------------------------------------------------------------------
-
-  // 🛡️ Cushion — a soft glassy bubble that hugs the body. Stays the same size
-  // across tiers (it already wraps the whole character); owned tiers are read
-  // off as little sparkle pips orbiting the equator instead of growing it.
-  const shield = new THREE.Group();
-  const bubble = new THREE.Mesh(
-    new THREE.SphereGeometry(1.02, 22, 16),
-    new THREE.MeshBasicMaterial({ color: 0xbcd4ff, transparent: true, opacity: 0.22, depthWrite: false }),
-  );
-  bubble.position.y = 0.6; shield.add(bubble);
-  // a brighter rim shell (back faces) gives it a glassy edge highlight
-  const rim = new THREE.Mesh(
-    new THREE.SphereGeometry(1.08, 20, 14),
-    new THREE.MeshBasicMaterial({ color: 0xf2f8ff, transparent: true, opacity: 0.38, depthWrite: false, side: THREE.BackSide }),
-  );
-  rim.position.y = 0.6; shield.add(rim);
-  const pips = [];
-  for (let i = 0; i < 3; i++) {
-    const a = i / 3 * Math.PI * 2;
-    const pip = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), new THREE.MeshBasicMaterial({ color: 0x8fb6ff }));
-    pip.position.set(Math.cos(a) * 1.04, 0.6, Math.sin(a) * 1.04); pip.visible = false; shield.add(pip); pips.push(pip);
-  }
-  shield.visible = false; player.add(shield); gear.shield = shield; gear.shieldPips = pips;
 
   // 🦿 Springy Cheeks — two chunky coral coils under each foot, like spring shoes.
   const springs = new THREE.Group();
@@ -115,22 +107,11 @@ function buildGear(player) {
   const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.22, 6), toon(0x4f9d57)); stem.position.y = -0.15; clover.add(stem);
   clover.position.set(-0.52, 1.22, 0.2); clover.rotation.x = -1.0; clover.visible = false; player.add(clover); gear.fortune = clover;
 
-  // 🚀 Head Start — a stubby rocket saddled low and centred on the back, nose
-  // up, with three fins splayed so they read from behind and a flickering flame.
-  const rocket = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.15, 0.46, 12), toon(0xf2f2f4)); ink(body, 1.08); rocket.add(body);
-  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.151, 0.151, 0.08, 12), toon(0xc9ccd2)); band.position.y = 0.02; rocket.add(band);
-  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.2, 12), toon(0xe8554e)); nose.position.y = 0.33; ink(nose, 1.08); rocket.add(nose);
-  [0, 1, 2].forEach(i => { const fin = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.15, 0.13), toon(0xe8554e)); const a = i / 3 * Math.PI * 2; fin.position.set(Math.cos(a) * 0.175, -0.2, Math.sin(a) * 0.175); fin.rotation.y = -a; ink(fin, 1.12); rocket.add(fin); });
-  const flame = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.26, 10), new THREE.MeshBasicMaterial({ color: 0xffb02e, transparent: true, opacity: 0.95 }));
-  flame.position.y = -0.36; flame.rotation.x = Math.PI; rocket.add(flame);
-  rocket.position.set(0, 0.5, 0.66); rocket.rotation.x = 0.45; rocket.visible = false; player.add(rocket);
-  gear.headstart = rocket; gear.flame = flame;
-
-  // Dynamic perk props (one file each under ./perkgear/). Built hidden and
-  // keyed by perk id; applyGear() reveals/scales them, tickGear() animates them.
-  gear._defs = PERK_GEAR_DEFS;
-  for (const def of PERK_GEAR_DEFS) {
+  // Folder-driven props: perks (./perkgear/) + shop upgrades (./upgrades/,
+  // including the Cushion bubble and Head Start rocket). Built hidden and keyed
+  // by id; applyGear() reveals/scales them, tickGear() animates them.
+  gear._defs = GEAR_DEFS;
+  for (const def of GEAR_DEFS) {
     const g = def.build();
     g.visible = false;
     player.add(g);
@@ -164,10 +145,10 @@ function buildAura(player) {
 // { spring: 1, magnet: 4, fortune: 3, headstart: 1 } — headstart from the owned
 // upgrade, magnet/spring/fortune from drafted perk stacks. Anything at 0 (or
 // absent) is hidden — so a fresh run with no upgrades or perks shows nothing.
-// The Cushion bubble is *not* driven here: it tracks the live shield count
-// (see updateShieldGear in main.js) so it pops the moment the last one is spent.
-// Props stay a fixed, modest size; tier shows through small details, not bulk,
-// so the silhouette stays clean even with everything equipped.
+// A `liveGear` def (the Cushion bubble) is skipped here: it tracks the live
+// shield count (see updateShieldGear in main.js) so it pops the moment the last
+// one is spent. Props stay a fixed, modest size; tier shows through small
+// details, not bulk, so the silhouette stays clean even with everything equipped.
 export function applyGear(gear, t = {}) {
   const k = (id) => t[id] | 0;
 
@@ -180,11 +161,10 @@ export function applyGear(gear, t = {}) {
   gear.fortune.visible = k('fortune') > 0;
   if (gear.fortune.visible) gear.fortune.scale.setScalar(0.98 + 0.12 * k('fortune'));
 
-  gear.headstart.visible = k('headstart') > 0;
-  if (gear.headstart.visible) gear.headstart.scale.setScalar(0.62 + 0.1 * k('headstart'));
-
-  // Dynamic perk props: shown when their perk is drafted, scaled by stacks.
+  // Folder-driven props (perks + shop upgrades): shown when owned/drafted,
+  // scaled by tier/stacks. liveGear props keep their own reveal (see above).
   for (const def of gear._defs || []) {
+    if (def.liveGear) continue;
     const g = gear[def.id]; if (!g) continue;
     const n = k(def.id);
     g.visible = n > 0;
