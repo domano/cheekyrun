@@ -30,6 +30,7 @@
   <div id="banner"></div>
   <div id="scorePop">+15</div>
   <button id="muteBtn" title="Sound on/off">🔊</button>
+  <button id="pauseBtn" class="hide" title="Pause (Esc / P)">⏸️</button>
 
   <div id="overlay" class="scrim menu">
     <div class="menu-inner">
@@ -105,6 +106,16 @@
       <div id="unlockList" class="unlocklist"></div>
       <div id="unlockRolls" class="unlockrolls"></div>
       <button class="btn" id="unlockBtn">Nice!</button>
+    </div>
+  </div>
+
+  <div id="pause" class="scrim hide">
+    <div class="card">
+      <div style="font-size:50px">⏸️🍑</div>
+      <div class="title" style="font-size:32px;margin-top:6px">Paused</div>
+      <div class="final">Catch your breath — your run's right where you left it.</div>
+      <button class="btn" id="pauseResume">Resume</button>
+      <div class="tag" style="margin-top:8px">Esc / P to resume</div>
     </div>
   </div>
 

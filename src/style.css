@@ -63,6 +63,12 @@ canvas{display:block}
   width:42px;height:42px;border-radius:50%;background:#fff;border:3px solid var(--ink);box-shadow:3px 3px 0 var(--ink);
   font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;line-height:1}
 #muteBtn:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--ink)}
+/* Pause button sits just below the mute button, matching its ink-outlined look. */
+#pauseBtn{position:fixed;top:calc(env(safe-area-inset-top,14px) + 110px);right:20px;z-index:35;
+  width:42px;height:42px;border-radius:50%;background:#fff;border:3px solid var(--ink);box-shadow:3px 3px 0 var(--ink);
+  font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;line-height:1}
+#pauseBtn:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--ink)}
+#pauseBtn.hide{display:none}
 #rollpill #shieldHud{display:inline-flex;align-items:center;gap:3px;margin-right:6px}
 #rollpill #phoenixHud{display:inline-flex;align-items:center;margin-right:6px;animation:phoenixpulse 1s ease-in-out infinite}
 @keyframes phoenixpulse{0%,100%{transform:scale(1);filter:none}50%{transform:scale(1.28);filter:drop-shadow(0 0 4px #ff9a3a)}}

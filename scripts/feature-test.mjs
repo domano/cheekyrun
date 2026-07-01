@@ -70,6 +70,31 @@ const SCENARIOS = [
     },
   },
   {
+    name: 'pause-freezes-run',
+    fn: (c, assert) => {
+      c.start();
+      const before = c.step(30);                 // run a moment first
+      const d0 = before.distance;
+      assert(d0 > 0, 'the run advances before pausing');
+      let s = c.pauseGame();
+      assert(s.state === 'paused', 'pausing puts the run into the paused state');
+      s = c.step(60);                            // step the sim hard while paused
+      assert(s.state === 'paused', 'stepping while paused stays paused');
+      assert(s.distance === d0, 'no distance accrues while paused');
+      assert(s.score === before.score, 'the score is frozen while paused');
+      s = c.resumeGame();
+      assert(s.state === 'playing', 'resuming returns to play');
+      s = c.step(30);
+      assert(s.distance > d0, 'the simulation advances again after resuming');
+      // Toggle flips both ways; pausing/resuming only acts on a live run.
+      assert(c.togglePause().state === 'paused', 'toggle pauses a running game');
+      assert(c.togglePause().state === 'playing', 'toggle resumes a paused game');
+      // A pause never fires from the menu/game-over — those states are untouched.
+      c.over();
+      assert(c.pauseGame().state === 'over', 'pauseGame is a no-op outside a live run');
+    },
+  },
+  {
     name: 'stage-finish-line',
     fn: (c, assert) => {
       c.start();

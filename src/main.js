@@ -8,13 +8,15 @@ import { STAGE_BASE, STAGE_LEAD, stageLength, biomeOf, obstacleSet, scenerySet, 
 import { trackOffset, deformRoad } from './track.js';
 import { UPGRADES, effects, tierOf, nextCost, nextGate, buy, getWallet, addRolls, DEFAULT_POOL, unlockedPerkIds, META, buyMeta } from './upgrades.js';
 import { PERKS, freshMods, applyPerks, perkById, draftChoices } from './perks.js';
-import { save, getRerolls, useReroll, getBanishes, useBanish, getBoon, setBoon, banishPerk, poolHas } from './save.js';
+import { save, getRerolls, useReroll, getBanishes, useBanish, getBoon, setBoon, banishPerk } from './save.js';
 import { getBest, setBest, getStats, bumpStats, getHistory, pushHistory, resetSave, reload, requestPersistence, onExternalChange } from './save.js';
 import { hasAch, unlock } from './save.js';
-import { ACHIEVEMENTS, checkAchievements, rewardFor, achContext, progressFor } from './achievements.js';
+import { checkAchievements, rewardFor } from './achievements.js';
 import { selectedSkin, selectSkin, getDailyBest, setDailyBest, getDailyStreak } from './save.js';
-import { SKINS, skinById, skinUnlocked, buySkin, applySkin } from './cosmetics.js';
+import { skinById, skinUnlocked, applySkin } from './cosmetics.js';
 import { installDebug } from './debug.js';
+import { configureHud, renderShop, renderStats, renderDaily, renderAchievements, renderCosmetics, renderHighlights, showAchUnlock, dismissAchUnlock, bindResetSave } from './hud.js';
+import { bindControls } from './controls.js';
 import {
   initAudio, ensureAudio, toggleSound, setIntensity, getIntensity,
   sfxLane, sfxJump, sfxDuck, sfxCoin, sfxCrash, sfxStart, sfxOver, sfxLevel, sfxShield, sfxComboBreak, sfxWhoosh, sfxFanfare, sfxFart, sfxPowerEnd,
@@ -187,12 +189,24 @@ function init() {
   fxRing.rotation.x = -Math.PI / 2; fxRing.position.y = 0.04; fxRing.visible = false; scene.add(fxRing);
 
   clock = new THREE.Clock(); resetGame();
-  addEventListener('resize', onResize); bindControls();
+  addEventListener('resize', onResize);
+  bindControls({
+    canvas: renderer.domElement, getState: () => state, ensureAudio,
+    moveLane, jump, duck, startGame, togglePause, pickDraft, rerollDraft,
+  });
   $('startBtn').onclick = () => startGame(false);
   $('againBtn').onclick = () => startGame(daily);     // "Again!" replays the same mode
   $('unlockBtn').onclick = dismissAchUnlock;          // tap-to-continue past the unlock fanfare
   $('dailyBtn').onclick = () => startGame(true);
   $('muteBtn').onclick = toggleSound;
+  $('pauseBtn').onclick = () => { ensureAudio(); togglePause(); };
+  $('pauseResume').onclick = resumeGame;
+  $('pause').onclick = (e) => { if (e.target === $('pause')) resumeGame(); };   // tap the scrim to resume
+  // Auto-pause when the tab is hidden or the window loses focus, so a run never
+  // keeps ticking (or dumps you back mid-hazard) while you're looking elsewhere.
+  addEventListener('visibilitychange', () => { if (document.hidden) pauseGame(); });
+  addEventListener('blur', pauseGame);
+  configureHud({ playerMats, getReduceMotion: () => reduceMotion });
   bindResetSave();
   renderShop(); renderStats(); renderAchievements(); renderCosmetics(); renderDaily();
   installDebug(buildDebugApi);
@@ -452,11 +466,13 @@ function startGame(isDaily = false) {
   ensureAudio(); sfxStart();
   resetGame(); state = 'playing';
   $('overlay').classList.add('hide'); $('gameover').classList.add('hide'); $('hud').classList.remove('hide');
+  $('pause').classList.add('hide'); $('pauseBtn').classList.remove('hide'); $('pauseBtn').textContent = '⏸️';
   updateHud(); updateLevelHud(); updateShieldHud(); updateComboHud(false); updatePowerHud(); updatePhoenixHud();
   const streak = daily ? getDailyStreak(dailyDay) : 0;
   showBanner(daily ? (streak > 1 ? `📅 Daily · 🔥 ${streak}-day streak` : '📅 Daily Challenge') : `Lvl ${level} · ${biomeOf(level).name}`);
 }
 function gameOver() {
+  $('pause').classList.add('hide'); $('pauseBtn').classList.add('hide');
   state = 'over'; shakeT = 0.45; hitStopT = reduceMotion ? 0 : HITSTOP_DEATH; flash('#ff5a6a'); buzz([40, 40, 80]); sfxCrash();
   camKick = reduceMotion ? 0 : Math.max(camKick, 7);   // a zoom-punch so the wipe-out lands
   particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.6, 0)), { count: 16, color: 0xff8a6a, speed: 4, up: 4, life: .7, grav: 12, dir: new THREE.Vector3(0, 0, 1) });
@@ -628,27 +644,34 @@ function awardAir(peak) {
   particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.2, 0)),
     { count: 8, color: 0xbfe0ff, speed: 2.5, up: 1.5, life: .45, grav: 5, size: 0.4 });
 }
-function bindControls() {
-  addEventListener('keydown', e => {
-    if (state === 'draft') {
-      if (e.code === 'Digit1' || e.code === 'ArrowLeft') pickDraft(0);
-      else if (e.code === 'Digit2' || e.code === 'ArrowUp' || e.code === 'Space' || e.code === 'Enter') pickDraft(1);
-      else if (e.code === 'Digit3' || e.code === 'ArrowRight') pickDraft(2);
-      else if (e.code === 'KeyR') rerollDraft();
-      return;
-    }
-    if (state !== 'playing') { if (e.code === 'Space' || e.code === 'Enter') startGame(); return; }
-    if (e.code === 'ArrowLeft') moveLane(-1); else if (e.code === 'ArrowRight') moveLane(1);
-    else if (e.code === 'ArrowUp' || e.code === 'Space') jump(); else if (e.code === 'ArrowDown') duck();
-  });
-  let sx = 0, sy = 0, fired = false; const TH = 24, el = renderer.domElement;
-  const act = (dx, dy) => { if (Math.abs(dx) > Math.abs(dy)) moveLane(dx > 0 ? 1 : -1); else if (dy < 0) jump(); else duck(); };
-  el.addEventListener('touchstart', e => { ensureAudio(); const t = e.changedTouches[0]; sx = t.clientX; sy = t.clientY; fired = false; }, { passive: true });
-  el.addEventListener('touchmove', e => {
-    if (state !== 'playing' || fired) return; const t = e.changedTouches[0], dx = t.clientX - sx, dy = t.clientY - sy;
-    if (Math.abs(dx) > TH || Math.abs(dy) > TH) { act(dx, dy); fired = true; }
-  }, { passive: true });
-  el.addEventListener('touchend', () => { if (state === 'playing' && !fired) jump(); }, { passive: true });
+// bindControls (keyboard + touch/swipe wiring) lives in src/controls.js; init()
+// hands it the live state getter and the action callbacks it dispatches to.
+
+/* ---------------- pause ---------------- */
+// A real in-run pause — a game STATE, distinct from the debug `paused` flag
+// (which freezes the whole rAF loop for deterministic stepping). Here the loop
+// keeps rendering the frozen scene, but tick() advances no sim: every sim branch
+// is gated on state === 'playing', so 'paused' naturally halts distance, spawns
+// and collision while the character idles in place. Resuming drops the
+// accumulated wall-clock gap so dt doesn't spike on the first frame back — the
+// same trick the draft uses (pickDraft). Auto-fires when the tab is hidden or
+// loses focus, so tabbing away never dumps you back mid-air already dead.
+function pauseGame() {
+  if (state !== 'playing') return;
+  state = 'paused';
+  $('pause').classList.remove('hide');
+  $('pauseBtn').textContent = '▶️';
+}
+function resumeGame() {
+  if (state !== 'paused') return;
+  $('pause').classList.add('hide');
+  $('pauseBtn').textContent = '⏸️';
+  state = 'playing';
+  clock.getDelta();   // drop the wall-clock gap so the resumed frame doesn't jump
+}
+function togglePause() {
+  if (state === 'playing') { ensureAudio(); pauseGame(); }
+  else if (state === 'paused') resumeGame();
 }
 
 /* ---------------- loop ---------------- */
@@ -1057,69 +1080,13 @@ function showBanner(text) {
   clearTimeout(showBanner._t); showBanner._t = setTimeout(() => b.classList.remove('show'), 1600);
 }
 
-/* ---------------- meta shop (roguelite lab) ---------------- */
-// The wallet now buys roguelite meta: the permanent floor (Cushion, Head Start),
-// perk-pool unlocks, reroll/banish charges, and a starting boon.
-function renderShop() {
-  const wallet = getWallet();
-  // permanent floor upgrades (tiered)
-  const floor = UPGRADES.map(u => {
-    const l = tierOf(u.id), c = nextCost(u.id), maxed = c === null;
-    const gate = maxed ? null : nextGate(u.id);    // a prestige tier still fenced behind a skill milestone
-    const afford = !maxed && !gate && wallet >= c;
-    const dots = Array.from({ length: u.max }, (_, i) => `<i class="${i < l ? 'on' : ''}"></i>`).join('');
-    const cls = `up${maxed ? ' maxed' : gate ? ' locked' : (afford ? '' : ' poor')}`;
-    const tag = maxed ? 'MAX' : gate ? `🔒 ${gate.label}` : c + ' 🧻';
-    return `<button class="${cls}" data-id="${u.id}"${maxed || gate ? ' disabled' : ''}>
-      <span class="upi">${u.icon}</span><span class="upn">${u.name}</span><span class="upd">${u.desc}</span>
-      <span class="upmeta"><span class="updots">${dots}</span><span class="upc">${tag}</span></span>
-    </button>`;
-  }).join('');
-  // meta items: perk-pool unlocks + reroll/banish charge packs
-  const metaGrid = META.map(m => {
-    const owned = m.kind === 'unlock' && poolHas(m.perk), afford = wallet >= m.cost;
-    const have = m.kind === 'reroll' ? getRerolls() : m.kind === 'banish' ? getBanishes() : 0;
-    const curse = m.kind === 'unlock' && perkById(m.perk)?.rarity === 'curse';
-    const cls = `up${owned ? ' owned' : (afford ? '' : ' poor')}${curse ? ' curse' : ''}`;
-    const left = have ? `<span class="updots have">×${have}</span>` : '<span class="updots"></span>';
-    const right = owned ? '<span class="upc inpool">IN POOL</span>' : `<span class="upc">${m.cost} 🧻</span>`;
-    return `<button class="${cls}" data-meta="${m.id}"${owned ? ' disabled' : ''}>
-      <span class="upi">${m.icon}</span><span class="upn">${m.name}</span><span class="upd">${m.desc}</span>
-      <span class="upmeta">${left}${right}</span>
-    </button>`;
-  }).join('');
-  // starting boon picker — any unlocked perk, or none
-  const boon = getBoon();
-  const chips = [`<button class="boonchip${boon ? '' : ' on'}" data-boon="">🚫 none</button>`]
-    .concat(unlockedPerkIds().map(id => { const p = perkById(id);
-      return `<button class="boonchip${boon === id ? ' on' : ''}" data-boon="${id}">${p.icon} ${p.name}</button>`; })).join('');
-  // First-timers have an empty wallet — tell them where rolls come from instead
-  // of leaving a wall of greyed-out, unaffordable buttons unexplained.
-  const note = wallet === 0
-    ? `Grab 🧻 rolls while you run — you'll bank them here to spend.`
-    : `Spend your banked 🧻 rolls on permanent boosts and new perks.`;
-  document.querySelectorAll('.shop').forEach(root => {
-    root.innerHTML = `<div class="shophead"><span>🧪 Roguelite Lab</span><span class="wallet">🧻 ${wallet}</span></div>
-      <p class="shopnote">${note}</p>
-      <h4 class="shopsub">🛡️ Permanent boosts</h4>
-      <div class="shopgrid">${floor}</div>
-      <h4 class="shopsub">🔓 Perk unlocks <small>add new cards to your level-up draft</small></h4>
-      <div class="shopgrid">${metaGrid}</div>
-      <h4 class="shopsub">🎁 Starting boon <small>begin every run with one perk</small></h4>
-      <div class="boongrid">${chips}</div>`;
-  });
-  document.querySelectorAll('.shop .up[data-id]').forEach(b => {
-    b.onclick = (e) => { e.stopPropagation(); ensureAudio(); if (buy(b.dataset.id)) { sfxCoin(); buzz(18); renderShop(); renderCosmetics(); } else buzz(25); };
-  });
-  document.querySelectorAll('.shop .up[data-meta]').forEach(b => {
-    b.onclick = (e) => { e.stopPropagation(); ensureAudio(); if (buyMeta(b.dataset.meta)) { sfxCoin(); buzz(18); renderShop(); } else buzz(25); };
-  });
-  document.querySelectorAll('.shop .boonchip').forEach(b => {
-    b.onclick = (e) => { e.stopPropagation(); ensureAudio(); setBoon(b.dataset.boon || null); sfxLane(); buzz(12); renderShop(); };
-  });
-}
-
-// Lifetime stats + persistent best, shown on the menu and game-over cards.
+/* ---------------- run highlights ---------------- */
+// The persistent-screen painters (shop, stats, daily, achievements, cosmetics,
+// reset-save, the unlock fanfare and the highlight strip) live in src/hud.js —
+// imported above. What stays here is the run-derived logic that feeds them:
+// runHighlights reads live run maxima, then gameOver hands the result to
+// renderHighlights (hud.js) to paint.
+//
 // Tunables for the game-over highlight strip: what counts as a brag-worthy beat.
 const HL_HAIR_GAP = 0.25;   // dodge margin (beyond half-width) at/under this = "by a hair"
 const HL_FAST_SPEED = 22;   // top speed at/above this = "warp speed"
@@ -1136,138 +1103,6 @@ function runHighlights() {
   if (level >= 2) hl.push(`🗺️ reached ${biomeOf(level).name}`);
   if (rollCount >= HL_BIG_ROLLS) hl.push(`🧻 ${rollCount} rolls grabbed`);
   return hl.slice(0, 3);
-}
-
-// Paint the highlight chips onto the game-over card (hidden when nothing notable).
-function renderHighlights(list = []) {
-  const box = $('goHighlights'); if (!box) return;
-  box.innerHTML = list.map(h => `<span>${h}</span>`).join('');
-  box.classList.toggle('hide', list.length === 0);
-}
-
-function renderStats() {
-  const s = getStats(), km = (s.dist / 1000).toFixed(1);
-  const html = `<span>🏆 Best ${getBest()}</span><span>🏃 ${s.runs} run${s.runs === 1 ? '' : 's'}</span><span>🧻 ${s.rolls}</span><span>🔥 x${comboMult(s.maxCombo)}</span><span>📏 ${km}km</span>`;
-  // A tiny trend strip of recent runs: a legible "beat yesterday" goal even when
-  // you're nowhere near your lifetime best. Bars scale to the window's high score.
-  const h = getHistory();
-  let spark = '';
-  if (h.length > 1) {
-    const mx = Math.max(...h.map(e => e.score), 1);
-    const bars = h.map((e, i) => `<i style="height:${Math.max(10, Math.round(e.score / mx * 100))}%"${i === h.length - 1 ? ' class="last"' : ''} title="Lv ${e.level} · ${e.score}"></i>`).join('');
-    spark = `<div class="spark" title="Your last ${h.length} runs">${bars}</div>`;
-  }
-  document.querySelectorAll('.stats').forEach(el => { el.innerHTML = html + spark; });
-}
-
-// The daily-challenge button label carries today's best for this seeded course.
-function renderDaily() {
-  const day = dailyKey(), b = getDailyBest(day), st = getDailyStreak(day);
-  const streak = st > 1 ? ` · 🔥${st}` : '';
-  $('dailyBtn').textContent = b > 0 ? `📅 Daily · best ${b}${streak}` : (st > 1 ? `📅 Daily${streak}` : '📅 Daily Challenge');
-}
-
-// Wipe all persistent progress behind a confirm dialog, then rebuild the menu
-// so the fresh (empty) save is reflected everywhere at once.
-function bindResetSave() {
-  const dlg = $('resetConfirm');
-  const close = () => dlg.classList.add('hide');
-  $('resetBtn').onclick = () => { ensureAudio(); buzz(12); dlg.classList.remove('hide'); };
-  $('resetNo').onclick = () => { buzz(8); close(); };
-  dlg.onclick = (e) => { if (e.target === dlg) close(); };   // tap the scrim to dismiss
-  $('resetYes').onclick = () => {
-    close();
-    resetSave();
-    applySkin(playerMats, selectedSkin());
-    // Rebuild every menu panel so the wiped save shows everywhere at once. The HUD
-    // is hidden on the menu, so there's nothing to refresh there.
-    renderShop(); renderStats(); renderAchievements(); renderCosmetics(); renderDaily();
-    sfxLane(); buzz(25);
-  };
-}
-
-// Achievement badge grid (locked badges show a padlock), shown on both cards.
-// `newIds` are achievements just earned this run — they get a celebratory glow
-// and a "new" ribbon right on the game-over card, so the win is felt in place
-// instead of via a floating toast that would cover the card.
-function renderAchievements(newIds = []) {
-  const fresh = new Set(newIds);
-  const ctx = achContext();                       // lifetime metrics for the progress bars
-  const got = ACHIEVEMENTS.filter(a => hasAch(a.id)).length;
-  const grid = ACHIEVEMENTS.map(a => {
-    const on = hasAch(a.id), isNew = fresh.has(a.id);
-    const ribbon = isNew ? '<span class="newrib">✨</span>' : '';
-    // Locked badges spell out the goal (`desc`) and a live "cur / goal" bar so the
-    // player always sees exactly what to do and how close they are — no hovering.
-    const meter = on ? '' : (() => {
-      const p = progressFor(a, ctx);
-      const label = a.unit === '' ? '' : ` ${a.unit}`;
-      return `<span class="achd">${a.desc}</span>`
-        + `<span class="achbar"><i style="width:${(p.frac * 100).toFixed(0)}%"></i></span>`
-        + `<span class="achp">${fmtGoal(p.cur)} / ${fmtGoal(p.goal)}${label}</span>`;
-    })();
-    return `<div class="ach${on ? ' on' : ''}${isNew ? ' justnew' : ''}" title="${a.desc}">${ribbon}`
-      + `<span class="achi">${on ? a.icon : '🔒'}</span><span class="achn">${a.name}</span>${meter}</div>`;
-  }).join('');
-  const count = fresh.size
-    ? `<span class="wallet pop">✨ ${fresh.size} new!</span>`
-    : `<span class="wallet">${got}/${ACHIEVEMENTS.length}</span>`;
-  document.querySelectorAll('.achievements').forEach(root => {
-    root.innerHTML = `<div class="shophead"><span>🏅 Achievements</span>${count}</div><div class="achgrid">${grid}</div>`;
-  });
-}
-// Compact big goal numbers so a progress label stays short: 2500 → 2.5k, 10000 → 10k.
-function fmtGoal(n) {
-  if (n < 1000) return `${n}`;
-  const k = n / 1000;
-  return `${k % 1 ? k.toFixed(1) : k}k`;
-}
-
-// The post-run unlock fanfare: a full-screen flashy popup listing each badge just
-// earned (icon, name, its +roll reward) plus the rolls banked this run — the
-// "you got X rolls" beat the player asked for. It sits above the game-over card
-// (higher z-index) and taps away to reveal it. Staggered pop-in per badge.
-function showAchUnlock(list, rollCount, achBonus) {
-  const rows = list.map((a, i) => `<div class="ubadge" style="animation-delay:${(i * 0.12).toFixed(2)}s">`
-    + `<span class="ubi">${a.icon}</span>`
-    + `<span class="ubtext"><span class="ubn">${a.name}</span><span class="ubd">${a.desc}</span></span>`
-    + `<span class="ubr">+${a.reward} 🧻</span></div>`).join('');
-  $('unlockList').innerHTML = rows;
-  $('unlockTitle') && ($('unlockTitle').textContent = list.length > 1 ? `${list.length} Achievements Unlocked!` : 'Achievement Unlocked!');
-  const bonus = achBonus ? ` <span class="ubonus">+${achBonus} 🏅 bonus</span>` : '';
-  $('unlockRolls').innerHTML = `🧻 <b>+${rollCount}</b> rolls banked this run${bonus}`;
-  const card = $('achUnlock');
-  card.classList.remove('hide');
-  card.classList.toggle('rm', reduceMotion);       // skip the burst animations when reduced-motion
-}
-function dismissAchUnlock() { $('achUnlock').classList.add('hide'); }
-
-// Skin swatch picker. Each swatch shows the skin's colour; click to select an
-// owned skin (applies live) or buy a roll-priced one. Achievement skins unlock
-// free once earned, and show a lock until then.
-function renderCosmetics() {
-  const sel = selectedSkin();
-  const cells = SKINS.map(s => {
-    const owned = skinUnlocked(s), active = s.id === sel;
-    const tag = active ? 'ON' : owned ? 'wear' : s.ach ? '🔒' : s.cost + ' 🧻';
-    const swatch = `#${s.skin.toString(16).padStart(6, '0')}`;
-    return `<button class="skin${active ? ' active' : ''}${owned ? '' : ' locked'}" data-id="${s.id}">
-      <span class="sw" style="background:${swatch}"></span><span class="skn">${s.name}</span><span class="skc">${tag}</span>
-    </button>`;
-  }).join('');
-  document.querySelectorAll('.cosmetics').forEach(root => {
-    root.innerHTML = `<div class="shophead"><span>🎨 Skins</span></div><div class="skingrid">${cells}</div>`;
-  });
-  document.querySelectorAll('.cosmetics .skin').forEach(b => {
-    b.onclick = (e) => {
-      e.stopPropagation(); ensureAudio();
-      const s = skinById(b.dataset.id);
-      if (skinUnlocked(s)) { selectSkin(s.id); applySkin(playerMats, s.id); sfxLane(); buzz(12); }
-      else if (buySkin(s.id)) { selectSkin(s.id); applySkin(playerMats, s.id); sfxCoin(); buzz(18); renderShop(); }
-      else buzz(25);
-      renderCosmetics();
-    };
-  });
 }
 
 /* ---------------- debug / test bridge ---------------- */
@@ -1368,7 +1203,7 @@ function buildDebugApi() {
     help: () => ({
       inspect: ['state()'],
       lifecycle: ['start(overrides?)', 'reset()', 'fresh()', 'over()'],
-      time: ['pause()', 'resume()', 'step(frames=1, dt=1/60)', 'seed(n)'],
+      time: ['pauseGame()', 'resumeGame()', 'togglePause()', 'pause()', 'resume()', 'step(frames=1, dt=1/60)', 'seed(n)'],
       teleport: ['set({level,speed,shields,power,...})', `keys: ${Object.keys(SETTERS).join(', ')}`],
       world: ['spawn(kind, lane?, z?, arg4?)', 'arg4: roll→height, obstacle→tall', 'clearField()', 'forceFinish(z?)', `kinds: ${OBSTACLE_KINDS.join('|')}|gate|hurdle|roll|powerup[:magnet|x2|ghost]`],
       input: ['left()', 'right()', 'lane(i)', 'jump()', 'duck()'],
@@ -1387,6 +1222,10 @@ function buildDebugApi() {
     // the test driver, making every CLI round-trip crawl).
     fresh: () => { resetSave(); resetGame(); state = 'menu'; paused = true; refreshHud(); renderShop(); return snapshot(); },
     over: () => { if (state === 'playing') gameOver(); return snapshot(); },
+    // ---- in-run pause (game state, not the rAF freeze below) ----
+    pauseGame: () => { pauseGame(); return snapshot(); },
+    resumeGame: () => { resumeGame(); return snapshot(); },
+    togglePause: () => { togglePause(); return snapshot(); },
     // ---- deterministic time ----
     pause: () => { paused = true; return snapshot(); },
     resume: () => { paused = false; clock.getDelta(); return snapshot(); },   // drop the accumulated gap
