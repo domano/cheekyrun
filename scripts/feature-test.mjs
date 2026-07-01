@@ -999,6 +999,80 @@ const SCENARIOS = [
     },
   },
   {
+    // Difficulty/pacing: the ladder is spaced across many runs, not front-loaded.
+    // A single short run earns only the starter badge — the deep/lifetime badges
+    // stay locked so there's always somewhere to climb.
+    name: 'achievement-spacing',
+    fn: (c, assert) => {
+      c.fresh();
+      c.start(); c.step(45); c.over();
+      const on = [...document.querySelectorAll('#gameover .achievements .ach.on .achn')].map(e => e.textContent);
+      assert(on.includes('Off and Running'), 'the first run earns the starter badge');
+      assert(!on.includes('Getting Warm'), 'the 10-run badge stays locked after a single run');
+      assert(!on.includes('Marathon Cheeks'), 'the lifetime-distance badge stays locked after one short run');
+      assert(!on.includes('Unstoppable'), 'the level-10 badge stays locked on a shallow run');
+      assert(!on.includes('Cheek Legend'), 'the 5,000-score badge stays locked on a short run');
+    },
+  },
+  {
+    // Lifetime grinds fill in only over a career: a big banked run pushes total
+    // distance/rolls past the low tiers but not the high ones.
+    name: 'achievement-lifetime-grind',
+    fn: (c, assert) => {
+      c.fresh();
+      c.start(); c.set({ distance: 12000, rollCount: 3000 }); c.over();  // banks 12 km + 3000 rolls into lifetime stats
+      const on = [...document.querySelectorAll('#gameover .achievements .ach.on .achn')].map(e => e.textContent);
+      assert(on.includes('Marathon Cheeks'), '10 km lifetime distance unlocks Marathon Cheeks');
+      assert(on.includes('Stockpiler'), '2,500 lifetime rolls unlocks Stockpiler');
+      assert(!on.includes('Globe Cheeks'), 'the 50 km badge is still locked at 12 km');
+      assert(!on.includes('Roll Tycoon'), 'the 10,000-roll badge is still locked at 3,000');
+    },
+  },
+  {
+    // Multi-run badge: ten finished runs (regardless of how far each got) unlock
+    // the run-count milestone — a goal that can only be reached across sessions.
+    name: 'achievement-run-count',
+    fn: (c, assert) => {
+      c.fresh();
+      for (let i = 0; i < 9; i++) { c.start(); c.over(); }
+      let on = [...document.querySelectorAll('#gameover .achievements .ach.on .achn')].map(e => e.textContent);
+      assert(!on.includes('Getting Warm'), 'nine runs is not yet enough for the 10-run badge');
+      c.start(); c.over();                                        // the tenth run
+      on = [...document.querySelectorAll('#gameover .achievements .ach.on .achn')].map(e => e.textContent);
+      assert(on.includes('Getting Warm'), 'the tenth finished run unlocks the 10-run badge');
+    },
+  },
+  {
+    // Clarity: every locked badge spells out its goal and draws a live "cur / goal"
+    // progress bar, so it's obvious what to do and how close you are — no hovering.
+    name: 'achievement-progress-shown',
+    fn: (c, assert) => {
+      c.fresh();
+      c.start(); c.set({ distance: 3000, rollCount: 500 }); c.over();   // 30% of the way to the 10 km badge
+      const cells = [...document.querySelectorAll('#gameover .achievements .ach:not(.on)')];
+      const marathon = cells.find(el => el.querySelector('.achn')?.textContent === 'Marathon Cheeks');
+      assert(!!marathon, 'the distance badge is present and still locked at 3 km');
+      assert(/\/\s*10k/.test(marathon.querySelector('.achp').textContent), 'its label spells out the goal (… / 10k m)');
+      const w = parseFloat(marathon.querySelector('.achbar i').style.width);
+      assert(w > 0 && w < 100, 'the progress bar is partly filled toward the goal');
+    },
+  },
+  {
+    // Feedback: earning a badge fires a flashy post-run unlock fanfare that names
+    // the badge and tells you the rolls banked this run, then taps away.
+    name: 'achievement-unlock-fanfare',
+    fn: (c, assert) => {
+      c.fresh();
+      c.start(); c.set({ rollCount: 40 }); c.over();     // first run unlocks "Off and Running"
+      const pop = document.getElementById('achUnlock');
+      assert(!pop.classList.contains('hide'), 'the unlock fanfare pops up after a badge is earned');
+      assert(!!pop.querySelector('.ubadge'), 'it lists the earned badge');
+      assert(/\b40\b/.test(document.getElementById('unlockRolls').textContent), 'it reports the rolls banked this run');
+      document.getElementById('unlockBtn').click();
+      assert(pop.classList.contains('hide'), 'tapping through hides the fanfare');
+    },
+  },
+  {
     // Meta/economy: the floor upgrades climb past the old tier-3 cap into
     // "prestige" tiers, each fenced behind a skill milestone so the wallet always
     // has somewhere to go — but only once the milestone is actually reached.
