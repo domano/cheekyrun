@@ -42,7 +42,7 @@ function defaults() {
     achievements: {},                            // achievement id -> true
     cosmetics: { owned: { classic: true }, skin: 'classic' },
     dailyBest: { day: '', score: 0, streak: 0, lastDay: '' },
-    meta: { pool: {}, banished: {}, rerolls: 0, banishes: 0, boon: null },
+    meta: { pool: {}, banished: {}, rerolls: 0, banishes: 0 },
     history: [],                                 // recent runs: {day, score, level, dist}, newest last
   };
 }
@@ -108,7 +108,6 @@ function normalize(raw) {
     meta: {
       pool: flagMap(rmeta.pool), banished: flagMap(rmeta.banished),
       rerolls: nat(rmeta.rerolls), banishes: nat(rmeta.banishes),
-      boon: str(rmeta.boon, null),
     },
     history: histList(r.history),
   };
@@ -235,7 +234,7 @@ export const ownSkin = (id) => { save.cosmetics.owned[id] = true; persist(); };
 // which also covers achievement skins (unlocked but never added to `owned`).
 export const selectSkin = (id) => { save.cosmetics.skin = id; persist(); };
 
-/* ----- roguelite meta: perk pool, banishes, charges, boon ----- */
+/* ----- roguelite meta: perk pool, banishes, charges ----- */
 export const poolHas = (id) => !!save.meta.pool[id];
 export const unlockPerk = (id) => { save.meta.pool[id] = true; persist(); };
 export const isBanished = (id) => !!save.meta.banished[id];
@@ -246,8 +245,6 @@ export const useReroll = () => { if ((save.meta.rerolls | 0) > 0) { save.meta.re
 export const getBanishes = () => save.meta.banishes | 0;
 export const addBanishes = (n) => { save.meta.banishes = (save.meta.banishes | 0) + (n | 0); persist(); };
 export const useBanish = () => { if ((save.meta.banishes | 0) > 0) { save.meta.banishes--; persist(); return true; } return false; };
-export const getBoon = () => save.meta.boon;
-export const setBoon = (id) => { save.meta.boon = id; persist(); };
 
 /* ----- daily challenge best (resets when the day changes) + return streak ----- */
 export function getDailyBest(day) { return save.dailyBest.day === day ? (save.dailyBest.score | 0) : 0; }

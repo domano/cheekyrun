@@ -8,7 +8,7 @@ import { STAGE_BASE, STAGE_LEAD, stageLength, biomeOf, obstacleSet, scenerySet, 
 import { trackOffset, deformRoad } from './track.js';
 import { UPGRADES, effects, tierOf, nextCost, nextGate, buy, getWallet, addRolls, DEFAULT_POOL, unlockedPerkIds, META, buyMeta } from './upgrades.js';
 import { PERKS, freshMods, applyPerks, perkById, draftChoices } from './perks.js';
-import { save, getRerolls, useReroll, getBanishes, useBanish, getBoon, setBoon, banishPerk } from './save.js';
+import { save, getRerolls, useReroll, getBanishes, useBanish, banishPerk } from './save.js';
 import { getBest, setBest, getStats, bumpStats, getHistory, pushHistory, resetSave, reload, requestPersistence, onExternalChange } from './save.js';
 import { hasAch, unlock } from './save.js';
 import { checkAchievements, rewardFor } from './achievements.js';
@@ -229,6 +229,13 @@ function init() {
   $('pauseBtn').onclick = () => { ensureAudio(); togglePause(); };
   $('pauseResume').onclick = resumeGame;
   $('pause').onclick = (e) => { if (e.target === $('pause')) resumeGame(); };   // tap the scrim to resume
+  // Upgrades + skins live behind one flashy shop button (menu and game-over both
+  // open the same modal) instead of cluttering the cards with two more panels.
+  document.querySelectorAll('.shopOpenBtn').forEach(b => {
+    b.onclick = () => { ensureAudio(); sfxLane(); buzz(12); $('shopModal').classList.remove('hide'); };
+  });
+  $('shopClose').onclick = () => { buzz(8); $('shopModal').classList.add('hide'); };
+  $('shopModal').onclick = (e) => { if (e.target === $('shopModal')) $('shopModal').classList.add('hide'); };
   // Auto-pause when the tab is hidden or the window loses focus, so a run never
   // keeps ticking (or dumps you back mid-hazard) while you're looking elsewhere.
   addEventListener('visibilitychange', () => { if (document.hidden) pauseGame(); });
@@ -480,8 +487,6 @@ function resetGame() {
   shields = eff.shields; invuln = 0; magnetR = eff.magnet; rollValue = eff.rollValue; extraJumps = eff.extraJumps;
   level = 1 + eff.headstart;
   perks = []; levelUps = 0; draftArm = 0; recomputeRunMods();   // fresh run: no perks drafted yet
-  const boon = !daily && getBoon();               // a chosen starting boon begins drafted (daily is boon-free)
-  if (boon && perkById(boon)) applyPerk(boon);
   speed = 12.5; distance = (level - 1) * STAGE_BASE; rollCount = 0; rollPoints = 0; rowTimer = 1.8; sceneAcc = 0; dustAcc = 0;
   stageStart = distance; stageLen = stageLength(speed);   // first stage is base-length; later ones grow with speed
   elapsed = Math.min(70, (level - 1) * 9); difficulty = 0; safeLane = 1; forcedGap = 0;
@@ -1177,7 +1182,7 @@ function buildDebugApi() {
       safeHazards: safeHazardCount, musicIntensity: +getIntensity().toFixed(3), scoreHeat: +scoreHeat.toFixed(3),
       perks: perks.map(p => ({ id: p.id, stacks: p.stacks })), mods, levelUps,
       draft: draftCards.map(p => p.id), draftArm: +draftArm.toFixed(2),
-      meta: { rerolls: getRerolls(), banishes: getBanishes(), boon: getBoon(), eligible: eligiblePool() },
+      meta: { rerolls: getRerolls(), banishes: getBanishes(), eligible: eligiblePool() },
       power, powerT: +powerT.toFixed(2), lastRun, rowGap: +lastRowGap.toFixed(3),
       emote: +emoteT.toFixed(2), spin: +spin.toFixed(2),
       laneIdx, targetX,
@@ -1268,7 +1273,7 @@ function buildDebugApi() {
       input: ['left()', 'right()', 'lane(i)', 'jump()', 'duck()'],
       shop: ['wallet()', 'fund(n)', 'buy(id)', 'effects()', 'migrate(legacyOwned?)'],
       perks: ['perk(id)', 'draft()', 'openDraft()', 'pick(i)', 'reroll()', 'banish(i)', `ids: ${PERKS.map(p => p.id).join('|')}`],
-      meta: ['buyMeta(id)', 'boon(id)', 'startDaily()', `items: ${META.map(m => m.id).join('|')}`],
+      meta: ['buyMeta(id)', 'startDaily()', `items: ${META.map(m => m.id).join('|')}`],
       cosmetics: ['skin()', 'pickSkin(id)', 'unlockAch(id)'],
     }),
     // ---- lifecycle ----
@@ -1337,7 +1342,6 @@ function buildDebugApi() {
     spawnRow: () => { spawnRow(); return snapshot(); },   // force one obstacle/roll row (no render — cheap for tests)
     // ---- meta (roguelite lab) ----
     buyMeta: (id) => { const ok = buyMeta(id); renderShop(); return ok; },
-    boon: (id) => { setBoon(id || null); renderShop(); return getBoon(); },
     startDaily: () => { startGame(true); return snapshot(); },
     // Record a daily result for an explicit day key, so the return-streak logic is
     // testable without waiting for real calendar days to pass.

@@ -9,9 +9,9 @@
 // injected once via configureHud() before the first render.
 
 import { $, buzz, comboMult, dailyKey } from './config.js';
-import { UPGRADES, tierOf, nextCost, nextGate, buy, getWallet, META, buyMeta, unlockedPerkIds } from './upgrades.js';
+import { UPGRADES, tierOf, nextCost, nextGate, buy, getWallet, META, buyMeta } from './upgrades.js';
 import { perkById } from './perks.js';
-import { getBoon, setBoon, getRerolls, getBanishes, poolHas, getBest, getStats, getHistory, hasAch, getDailyBest, getDailyStreak, resetSave, selectedSkin, selectSkin } from './save.js';
+import { getRerolls, getBanishes, poolHas, getBest, getStats, getHistory, hasAch, getDailyBest, getDailyStreak, resetSave, selectedSkin, selectSkin } from './save.js';
 import { ACHIEVEMENTS, achContext, progressFor } from './achievements.js';
 import { SKINS, skinById, skinUnlocked, buySkin, applySkin } from './cosmetics.js';
 import { ensureAudio, sfxCoin, sfxLane } from './audio.js';
@@ -27,7 +27,7 @@ export function configureHud(deps) {
 
 /* ---------------- meta shop (roguelite lab) ---------------- */
 // The wallet now buys roguelite meta: the permanent floor (Cushion, Head Start),
-// perk-pool unlocks, reroll/banish charges, and a starting boon.
+// perk-pool unlocks, and reroll/banish charges.
 export function renderShop() {
   const wallet = getWallet();
   // permanent floor upgrades (tiered)
@@ -56,11 +56,6 @@ export function renderShop() {
       <span class="upmeta">${left}${right}</span>
     </button>`;
   }).join('');
-  // starting boon picker — any unlocked perk, or none
-  const boon = getBoon();
-  const chips = [`<button class="boonchip${boon ? '' : ' on'}" data-boon="">🚫 none</button>`]
-    .concat(unlockedPerkIds().map(id => { const p = perkById(id);
-      return `<button class="boonchip${boon === id ? ' on' : ''}" data-boon="${id}">${p.icon} ${p.name}</button>`; })).join('');
   // First-timers have an empty wallet — tell them where rolls come from instead
   // of leaving a wall of greyed-out, unaffordable buttons unexplained.
   const note = wallet === 0
@@ -72,18 +67,13 @@ export function renderShop() {
       <h4 class="shopsub">🛡️ Permanent boosts</h4>
       <div class="shopgrid">${floor}</div>
       <h4 class="shopsub">🔓 Perk unlocks <small>add new cards to your level-up draft</small></h4>
-      <div class="shopgrid">${metaGrid}</div>
-      <h4 class="shopsub">🎁 Starting boon <small>begin every run with one perk</small></h4>
-      <div class="boongrid">${chips}</div>`;
+      <div class="shopgrid">${metaGrid}</div>`;
   });
   document.querySelectorAll('.shop .up[data-id]').forEach(b => {
     b.onclick = (e) => { e.stopPropagation(); ensureAudio(); if (buy(b.dataset.id)) { sfxCoin(); buzz(18); renderShop(); renderCosmetics(); } else buzz(25); };
   });
   document.querySelectorAll('.shop .up[data-meta]').forEach(b => {
     b.onclick = (e) => { e.stopPropagation(); ensureAudio(); if (buyMeta(b.dataset.meta)) { sfxCoin(); buzz(18); renderShop(); } else buzz(25); };
-  });
-  document.querySelectorAll('.shop .boonchip').forEach(b => {
-    b.onclick = (e) => { e.stopPropagation(); ensureAudio(); setBoon(b.dataset.boon || null); sfxLane(); buzz(12); renderShop(); };
   });
 }
 
