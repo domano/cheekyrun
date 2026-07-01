@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { toon, ink } from './materials.js';
+import { TALL_CLEAR_H, TALL_SCALE } from './config.js';
 
 // Pure mesh factories. Each returns a positioned/unpositioned THREE.Group;
 // the caller is responsible for adding it to the scene.
@@ -159,12 +160,20 @@ const OBSTACLES = {
   } },
 };
 
-export function makeObstacle(kind) {
+export function makeObstacle(kind, tall = false) {
   const def = OBSTACLES[kind] || OBSTACLES.cactus;
   const g = def.build();
   g.userData.kind = kind;
   g.userData.color = def.color;
   g.userData.duck = def.action === 'duck';   // generic flag the loop reads for collision
+  // TALL variant: only jump obstacles grow (a taller duck bar makes no sense).
+  // Stretch it vertically so the extra height reads at a glance, and stamp the
+  // higher clear threshold the loop checks — now a single hop won't clear it.
+  if (tall && def.action === 'jump') {
+    g.scale.y = TALL_SCALE;
+    g.userData.tall = true;
+    g.userData.clearH = TALL_CLEAR_H;
+  }
   return g;
 }
 

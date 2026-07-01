@@ -91,6 +91,30 @@ export const RING_TIME = 0.5;
 // so a greedy chained run visibly out-scores a cautious one. Tuned gentle.
 export const SCORE_FLOW_RATE = 0.6;
 
+// Verticality — a graded up/down axis on top of the flat sim.
+// Some jump obstacles are TALL: a single hop (apex ~1.9) can't clear them, so
+// jumping *over* one demands a well-timed double-jump (which reaches ~3+). This
+// turns the second jump from a bonus into a real read. Tall variants only phase
+// in after a warm-up and only ever land in a blocked lane, so side-stepping is
+// always still a fair dodge — the height only matters when you *choose* to jump.
+export const TALL_CLEAR_H = 2.1;      // groundY needed to clear a tall obstacle (above single-jump apex)
+export const TALL_SCALE = 1.7;        // vertical stretch that telegraphs the extra height
+export const TALL_MIN_DIFF = 0.3;     // tall variants only phase in past this much heat
+export const TALL_CHANCE = 0.3;       // base chance a heat-eligible blocked jump obstacle is tall
+
+// Aerial rolls: a roll can float at a height (userData.h) so it's only grabbable
+// while airborne at its level — the treasure moves up. Ground rolls (h === 0)
+// behave exactly as before. Air arcs trace a jump trajectory as a pure bonus in
+// an open lane. Reaching real height (double-jump / pad) also pays an air bonus,
+// scaled by peak height and the live combo — so going up is worth points, not
+// just survival.
+export const ROLL_GRAB_H = 0.8;       // vertical reach: how close in height you must be to grab an elevated roll
+export const AIR_ARC_MIN_DIFF = 0.25; // air ribbons only phase in past this much heat
+export const AIR_ARC_CHANCE = 0.12;   // chance of an air ribbon on an eligible row
+export const AIR_MIN_H = 2.0;         // only real height (double-jump territory) pays an air bonus
+export const AIR_BASE = 6;            // flat air bonus once you clear AIR_MIN_H
+export const AIR_POINTS = 14;         // extra air bonus per unit of peak height above AIR_MIN_H
+
 // In-run power-ups: a rare floating gem that grants a brief effect. Spaced out
 // by a row cooldown so grabbing one feels like an event, not a given.
 export const POWERUP_DURATION = 6;     // seconds an effect lasts

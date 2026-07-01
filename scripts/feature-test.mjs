@@ -1498,6 +1498,95 @@ const SCENARIOS = [
       assert(late === 1, 'it still reaches full difficulty by ~90s');
     },
   },
+  {
+    // Verticality — TALL obstacles: a single hop (apex ~1.9) can't clear one, so
+    // jumping *over* it demands a well-timed double-jump. A normal obstacle still
+    // clears on one hop, so the height is a real graded read, not a blanket nerf.
+    name: 'tall-obstacle-needs-double-jump',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.clearField();
+      c.spawn('cactus', 1, -5);                        // normal height, dead ahead
+      c.jump();
+      assert(c.step(60).state === 'playing', 'a single hop still clears a normal obstacle');
+
+      c.start({ magnetR: 0 }); c.clearField();
+      c.spawn('cactus', 1, -5, true);                  // TALL, dead ahead
+      c.jump();                                        // one hop only
+      assert(c.step(60).state === 'over', 'a single hop cannot clear a tall obstacle');
+
+      c.start({ magnetR: 0 }); c.clearField();
+      c.spawn('cactus', 1, -5, true);
+      c.jump(); c.step(8); c.jump();                   // a timed double-jump reaches higher
+      assert(c.step(60).state === 'playing', 'a well-timed double-jump clears the tall obstacle');
+    },
+  },
+  {
+    // Verticality — spawner phases tall variants in only once the run heats up,
+    // and never as a full-width gate, so side-stepping stays a fair dodge.
+    name: 'tall-obstacles-phase-in-with-heat',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.seed(7); c.set({ difficulty: 0.05 }); c.clearField();
+      for (let k = 0; k < 40; k++) c.spawnRow();
+      assert(c.state().counts.tallObstacles === 0, 'no tall obstacles before the run warms up');
+      c.start({ magnetR: 0 }); c.seed(7); c.set({ difficulty: 0.95 }); c.clearField();
+      for (let k = 0; k < 40; k++) c.spawnRow();
+      assert(c.state().counts.tallObstacles > 0, 'tall obstacles appear once heat is high');
+    },
+  },
+  {
+    // Verticality — aerial rolls: a roll floating at a height is only grabbable
+    // while airborne at its level. A grounded run passes under it; a jump scoops it.
+    name: 'aerial-roll-needs-air',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.clearField();
+      c.spawn('roll', 1, -5, 1.6);                     // elevated roll, needs a jump
+      const g = c.step(60);
+      assert(g.rollCount === 0, 'a grounded run passes under an elevated roll');
+
+      c.start({ magnetR: 0 }); c.clearField();
+      c.spawn('roll', 1, -5, 1.6);
+      c.jump();                                        // rise up to its height
+      const a = c.step(60);
+      assert(a.rollCount === 1, 'jumping up to the roll grabs it');
+
+      // A ground roll (h = 0) still grabs exactly as before — including mid-hop.
+      c.start({ magnetR: 0 }); c.clearField();
+      c.spawn('roll', 1, -5);                          // no height arg → ground roll
+      c.jump();
+      assert(c.step(60).rollCount === 1, 'a ground roll still grabs (height gate only affects elevated rolls)');
+    },
+  },
+  {
+    // Verticality — air ribbons: arcs of elevated rolls appear in an open lane
+    // once the run heats up, a pure bonus you scoop by jumping.
+    name: 'air-ribbons-spawn',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.seed(3); c.set({ difficulty: 0.05 }); c.clearField();
+      for (let k = 0; k < 60; k++) c.spawnRow();
+      assert(c.state().counts.airRolls === 0, 'no air ribbons before the run warms up');
+      c.start({ magnetR: 0 }); c.seed(3); c.set({ difficulty: 0.9 }); c.clearField();
+      let found = false;
+      for (let k = 0; k < 60; k++) { c.spawnRow(); if (c.state().counts.airRolls > 0) { found = true; break; } }
+      assert(found, 'air ribbons of elevated rolls appear once the run heats up');
+    },
+  },
+  {
+    // Verticality — air-time bonus: reaching real height (double-jump territory)
+    // pays out on landing, scaled by peak height; a small single hop pays nothing.
+    name: 'air-bonus-on-big-hop',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.clearField();
+      c.jump();                                        // single hop, apex below the threshold
+      let s; for (let i = 0; i < 80; i++) { s = c.step(1); if (s.player.grounded && i > 5) break; }
+      assert(s.rollPoints === 0, 'a small single hop is below the air-bonus threshold');
+
+      c.start({ magnetR: 0 }); c.clearField();
+      c.jump(); c.step(8); c.jump();                   // a big double-jump
+      let max = 0, s2; for (let i = 0; i < 120; i++) { s2 = c.step(1); if (s2.airPeak > max) max = s2.airPeak; if (s2.player.grounded && i > 30) break; }
+      assert(max >= 2.0, 'a double-jump reaches real height');
+      assert(s2.rollPoints > 0, 'landing a big hop pays an air bonus');
+    },
+  },
 ];
 
 /* ------------------------------- runner ------------------------------- */

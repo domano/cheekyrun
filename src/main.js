@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { LANES, SPAWN_Z, DESPAWN_Z, INK, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE_RAMP, GATE_COOLDOWN, COMBO_WINDOW, comboMult, NEARMISS_MARGIN, NEARMISS_BONUS, SKIM_MARGIN, SKIM_BONUS, SKIM_WINDOW, SAFE_HAZARD_MIN_DIFF, SAFE_HAZARD_CHANCE, JUMP_BUFFER, HITSTOP_SHIELD, HITSTOP_DEATH, SLOWMO_FACTOR, SLOWMO_TIME, SLOWMO_MIN_MULT, SLOWMO_TIGHT_MARGIN, SLOWMO_TIGHT_TIME, DIFF_RAMP, ROW_MIN_GAP, COMBO_DECAY_STEP, COMBO_STEP, SCORE_FLOW_RATE, HEAT_PER_LEVEL, HEAT_LEVEL_CAP, HEAT_MAX, PHOENIX_COMBO, PHOENIX_INVULN, GREED_CAP, RING_TIME, POWERUP_DURATION, POWERUP_CHANCE, POWERUP_MIN_DIFF, POWERUP_COOLDOWN, POWERUPS, POWERUP_KINDS, DASH_SPEED_MULT, DRAFT_EVERY, DRAFT_CHOICES, DRAFT_ARM, DRAFT_GRACE, mulberry32, dailyKey, dailySeed, $, buzz, shuffle } from './config.js';
+import { LANES, SPAWN_Z, DESPAWN_Z, INK, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE_RAMP, GATE_COOLDOWN, COMBO_WINDOW, comboMult, NEARMISS_MARGIN, NEARMISS_BONUS, SKIM_MARGIN, SKIM_BONUS, SKIM_WINDOW, SAFE_HAZARD_MIN_DIFF, SAFE_HAZARD_CHANCE, TALL_CLEAR_H, TALL_MIN_DIFF, TALL_CHANCE, ROLL_GRAB_H, AIR_ARC_MIN_DIFF, AIR_ARC_CHANCE, AIR_MIN_H, AIR_BASE, AIR_POINTS, JUMP_BUFFER, HITSTOP_SHIELD, HITSTOP_DEATH, SLOWMO_FACTOR, SLOWMO_TIME, SLOWMO_MIN_MULT, SLOWMO_TIGHT_MARGIN, SLOWMO_TIGHT_TIME, DIFF_RAMP, ROW_MIN_GAP, COMBO_DECAY_STEP, COMBO_STEP, SCORE_FLOW_RATE, HEAT_PER_LEVEL, HEAT_LEVEL_CAP, HEAT_MAX, PHOENIX_COMBO, PHOENIX_INVULN, GREED_CAP, RING_TIME, POWERUP_DURATION, POWERUP_CHANCE, POWERUP_MIN_DIFF, POWERUP_COOLDOWN, POWERUPS, POWERUP_KINDS, DASH_SPEED_MULT, DRAFT_EVERY, DRAFT_CHOICES, DRAFT_ARM, DRAFT_GRACE, mulberry32, dailyKey, dailySeed, $, buzz, shuffle } from './config.js';
 import { makeGradient, toon } from './materials.js';
 import { makeObstacle, makeHurdle, makeGate, makeRoll, makePowerup, makeScenery, makeCloud, makeFinishLine, makeCheerCrowd, tickCheerCrowd, OBSTACLE_KINDS } from './props.js';
 import { createParticles } from './particles.js';
@@ -34,6 +34,7 @@ let speed, distance, rollCount, rollPoints, rowTimer, sceneAcc, dustAcc, elapsed
 let stageStart = 0, stageLen = 0, finishLine = null, finishArmed = false;
 let laneIdx, targetX, vy, grounded, jumpsLeft, banked, groundY, duckTimer, duckAmt, shakeT;
 let jumpBufferT, laneChangeT;          // buffered-jump timer + time of the last lane change (for skims)
+let airTimer, airPeak;                 // time aloft + peak height this hop (air-bonus on landing)
 let hitStopT, slowmoT, worldScale;     // hit-stop freeze / near-miss slow-mo timers + the live sim time-scale
 let combo, comboTimer, comboMax, flowAcc, safeHazardCount;   // flowAcc: fractional combo-flow score; safeHazardCount: compound rows spawned
 let peakSpeed, tightestGap;   // run maxima for the game-over highlight strip: top speed reached, closest clean dodge (margin beyond half-width)
@@ -231,7 +232,11 @@ function spawnRow() {
   const theme = obstacleSet(level);
   const kinds = heat < 0.28 ? theme.jump : [...theme.jump, theme.duck];
   blocked.forEach(li => {
-    const o = makeObstacle(kinds[(rng() * kinds.length) | 0]);
+    // Once warmed up, a blocked jump obstacle can be TALL — clearable only by a
+    // well-timed double-jump. makeObstacle ignores `tall` on duck kinds, so this
+    // never turns a slide-under bar into something unfair.
+    const tall = heat > TALL_MIN_DIFF && rng() < Math.min(0.5, TALL_CHANCE * heat);
+    const o = makeObstacle(kinds[(rng() * kinds.length) | 0], tall);
     o.position.set(LANES[li], 0, SPAWN_Z); o.userData.lane = li; o.userData.lx = LANES[li]; scene.add(o); obstacles.push(o);
   });
 
@@ -257,6 +262,12 @@ function spawnRow() {
     if (rng() < chance) { const r = makeRoll(); r.position.set(LANES[li], 0.95, SPAWN_Z); r.userData.lx = LANES[li]; scene.add(r); rolls.push(r); }
   });
 
+  // a rare air ribbon arcing over an open lane — a treat you earn by jumping for it
+  if (heat > AIR_ARC_MIN_DIFF && rng() < AIR_ARC_CHANCE) {
+    const lanes = open.filter(li => !(li === nextSafe && safeHazard));
+    if (lanes.length) spawnAirArc(lanes[(rng() * lanes.length) | 0]);
+  }
+
   // a rare power-up gem, spaced out by a cooldown so it feels like a treat
   if (powerCD > 0) powerCD--;
   else if (difficulty > POWERUP_MIN_DIFF && rng() < POWERUP_CHANCE) {
@@ -275,6 +286,18 @@ function spawnGate() {
   o.position.set(0, 0, SPAWN_Z); o.userData.halfW = 3.3; o.userData.lx = 0; scene.add(o); obstacles.push(o);
   // A reward roll in a random lane for clearing it cleanly.
   if (rng() < 0.7) { const li = (rng() * 3) | 0; const r = makeRoll(); r.position.set(LANES[li], 0.95, SPAWN_Z); r.userData.lx = LANES[li]; scene.add(r); rolls.push(r); }
+}
+// An air ribbon: a short arch of elevated rolls tracing a jump trajectory down
+// one open lane. Pure bonus — you scoop it by being airborne at each one's
+// height, so it's a reason to jump when you don't strictly have to.
+function spawnAirArc(lane) {
+  const arc = [0.8, 1.4, 1.7, 1.4, 0.8];
+  arc.forEach((h, i) => {
+    const r = makeRoll();
+    r.userData.h = h; r.userData.lx = LANES[lane];
+    r.position.set(LANES[lane], 0.95 + h, SPAWN_Z - (i - 2) * 1.6);   // centre the arch on the spawn horizon
+    scene.add(r); rolls.push(r);
+  });
 }
 function spawnScenery() {
   const x = (Math.random() < 0.5 ? -1 : 1) * (4.4 + Math.random() * 3.5);
@@ -412,7 +435,7 @@ function resetGame() {
   stageStart = distance; stageLen = stageLength(speed);   // first stage is base-length; later ones grow with speed
   elapsed = Math.min(70, (level - 1) * 9); difficulty = 0; safeLane = 1; forcedGap = 0;
   laneIdx = 1; targetX = 0; vy = 0; grounded = true; jumpsLeft = 2 + extraJumps + mods.extraJumpsBonus; banked = 0; groundY = 0; duckTimer = 0; duckAmt = 0; shakeT = 0;
-  jumpBufferT = 0; laneChangeT = -99; hitStopT = 0; slowmoT = 0; worldScale = 1;
+  jumpBufferT = 0; laneChangeT = -99; airTimer = 0; airPeak = 0; hitStopT = 0; slowmoT = 0; worldScale = 1;
   combo = 0; comboTimer = 0; comboMax = 0; flowAcc = 0; safeHazardCount = 0; squash = 0; emoteT = 0; spin = 0; power = null; powerT = 0; powerCD = 6; gotPower = false;
   peakSpeed = speed; tightestGap = Infinity;
   scoreHeat = 0;
@@ -591,6 +614,18 @@ function fart() {
 // A quick happy squish — bouncy stretch + perked ears for a beat. Fired on rolls
 // and clean near-misses so good play visibly delights the character.
 function emote() { emoteT = 0.45; squash = Math.max(squash, 0.28); }
+// Air bonus: pay out for a big hop on landing — flat once you clear AIR_MIN_H,
+// plus more the higher you reached, scaled by the live combo. Tinted cyan like a
+// near-miss (both reward aerial skill). It rides the combo but doesn't *feed* it,
+// so you can't farm the multiplier by rhythm-hopping in empty space.
+function awardAir(peak) {
+  const mult = cmult(combo);
+  const bonus = Math.round((AIR_BASE + AIR_POINTS * (peak - AIR_MIN_H)) * mult);
+  if (bonus <= 0) return;
+  rollPoints += bonus; popScore(bonus, mult, true); emote(); buzz(8); sfxWhoosh();
+  particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.2, 0)),
+    { count: 8, color: 0xbfe0ff, speed: 2.5, up: 1.5, life: .45, grav: 5, size: 0.4 });
+}
 function bindControls() {
   addEventListener('keydown', e => {
     if (state === 'draft') {
@@ -699,7 +734,7 @@ function moveObstacles(dt) {
     // never registers a late hit. A sliver of lateral grace keeps the verdict
     // matching the visual. (sz > 0 means the hazard centre is already past you.)
     if (sz > -0.8 && sz < 0.5 && dx < halfW - 0.06) {
-      const safe = o.userData.duck ? (duckTimer > 0) : (groundY > 1.0);
+      const safe = o.userData.duck ? (duckTimer > 0) : (groundY > (o.userData.clearH || 1.0));
       if (!safe && invuln <= 0) {
         if (shields > 0 && !mods.noShields) {
           shields--; invuln = 1.1; updateShieldHud(); breakCombo(); flash('#8fd3ff'); buzz(30); sfxShield(shields === 0); shakeT = 0.25;
@@ -747,10 +782,12 @@ function moveObstacles(dt) {
 function moveRolls(dt) {
   for (let i = rolls.length - 1; i >= 0; i--) {
     const o = rolls[i]; o.position.z += speed * dt; o.rotation.y += dt * 4;
+    const h = o.userData.h || 0;   // elevated rolls float at a height; grabbing needs matching air
     // Magnet: tug nearby rolls toward the player so they're easier to grab. Acts
-    // on the logical lane X (lx), not the curved render X, so it pulls true.
+    // on the logical lane X (lx), not the curved render X, so it pulls true. Skips
+    // elevated rolls — an air ribbon is earned by jumping to it, not vacuumed up.
     const baseMr = magnetR + mods.magnetBonus, mr = power === 'magnet' ? Math.max(baseMr, 9) : baseMr;
-    if (mr > 0) {
+    if (mr > 0 && !h) {
       const mdx = player.position.x - o.userData.lx, mdz = player.position.z - o.position.z, md = Math.hypot(mdx, mdz);
       if (md < mr && md > 0.001) {
         const pull = Math.min(1, dt * (5 + 9 * (1 - md / mr)));
@@ -759,7 +796,10 @@ function moveRolls(dt) {
     }
     const lx = o.userData.lx;
     const dz = Math.abs(o.position.z - player.position.z), dx = Math.abs(lx - player.position.x);
-    if (dz < 0.9 && dx < 0.95) {
+    // Height gate: a ground roll (h === 0) grabs as it always has (from anywhere,
+    // including mid-hop); an elevated roll only pops when you're airborne at its level.
+    const yOk = !h || Math.abs(groundY - h) < ROLL_GRAB_H;
+    if (dz < 0.9 && dx < 0.95 && yOk) {
       if (!mods.rollsNoCombo) bumpCombo();   // Perfectionist: rolls no longer feed the streak
       emote();
       // Magpie: each roll already banked this run makes this one worth more (capped).
@@ -770,7 +810,7 @@ function moveRolls(dt) {
       particles.emit(o.position.clone(), { count: 12, color: 0xffd56b, speed: 3, up: 3, life: .5, grav: 9, size: 0.5 }); scene.remove(o); rolls.splice(i, 1); continue;
     }
     const off = trackOffset(o.position.z, distance);
-    o.position.x = lx + off.x; o.position.y = 0.95 + Math.sin(o.position.z * 0.6) * 0.06 + off.y;
+    o.position.x = lx + off.x; o.position.y = 0.95 + h + Math.sin(o.position.z * 0.6) * 0.06 + off.y;
     if (o.position.z > DESPAWN_Z) { scene.remove(o); rolls.splice(i, 1); }
   }
 }
@@ -860,9 +900,16 @@ function updatePlayer(dt, t) {
   if (!grounded) {
     // Asymmetric gravity: float up gently, fall back snappily — hops feel weighty
     // and responsive without changing how high you reach.
-    vy -= (vy > 0 ? 23 * mods.floatMult : 34) * dt; groundY += vy * dt; if (groundY <= 0) {
+    vy -= (vy > 0 ? 23 * mods.floatMult : 34) * dt; groundY += vy * dt;
+    airTimer += dt; if (groundY > airPeak) airPeak = groundY;   // remember the height reached this hop
+    if (groundY <= 0) {
+      const peak = airPeak;
       groundY = 0; vy = 0; grounded = true; jumpsLeft = 2 + extraJumps + mods.extraJumpsBonus; squash = 0.42;
+      airTimer = 0; airPeak = 0;
       particles.emit(new THREE.Vector3(player.position.x, 0.05, player.position.z + 0.2), { count: 4, color: 0xe7d8be, speed: 1.6, up: 0.8, life: .35, grav: 6, size: 0.45 });
+      // Air bonus: reaching real height (double-jump / pad territory) on a live run
+      // pays out, scaled by peak height and the hot combo — so going up is worth points.
+      if (peak >= AIR_MIN_H && state === 'playing') awardAir(peak);
       if (jumpBufferT > 0) doJump();   // a jump pressed just before touchdown fires now
     }
   }
@@ -1256,11 +1303,12 @@ function buildDebugApi() {
       emote: +emoteT.toFixed(2), spin: +spin.toFixed(2),
       laneIdx, targetX,
       track: trackSnapshot(),
-      player: { x: +player.position.x.toFixed(3), groundY: +groundY.toFixed(3), grounded, ducking: duckTimer > 0 },
+      player: { x: +player.position.x.toFixed(3), groundY: +groundY.toFixed(3), vy: +vy.toFixed(2), grounded, ducking: duckTimer > 0 },
+      airTimer: +airTimer.toFixed(2), airPeak: +airPeak.toFixed(2),
       gearTiers, auraVisible: !!(aura && aura.visible), fartCount,
       gearVisible: gear ? { shield: gear.shield.visible, spring: gear.spring.visible, magnet: gear.magnet.visible, fortune: gear.fortune.visible, headstart: gear.headstart.visible, shieldPips: gear.shieldPips.filter(p => p.visible).length,
         ...Object.fromEntries((gear._defs || []).map(d => [d.id, gear[d.id].visible])) } : {},
-      counts: { obstacles: obstacles.length, rolls: rolls.length, pickups: pickups.length, scenery: scenery.length, finish: finishLine ? 1 : 0,
+      counts: { obstacles: obstacles.length, rolls: rolls.length, airRolls: rolls.filter(r => r.userData.h).length, tallObstacles: obstacles.filter(o => o.userData.tall).length, pickups: pickups.length, scenery: scenery.length, finish: finishLine ? 1 : 0,
         cheerers: finishLine && finishLine.userData.crowd ? finishLine.userData.crowd.userData.fans.length : 0 },
       wallet: getWallet(), daily,
       stats: getStats(), history: getHistory(),
@@ -1269,17 +1317,19 @@ function buildDebugApi() {
 
   // Force a specific obstacle/roll/power-up into the world at a lane and Z.
   // Defaults to the player's lane, just ahead — a few steps and it reaches them.
-  function spawn(kind = 'cactus', lane = laneIdx, z = -8) {
+  // `arg4` is polymorphic per kind: a roll's float height (number, 0 = ground) or
+  // an obstacle's tall flag (truthy = needs a double-jump to clear).
+  function spawn(kind = 'cactus', lane = laneIdx, z = -8, arg4) {
     let o, arr;
-    if (kind === 'roll') { o = makeRoll(); o.position.set(LANES[lane], 0.95, z); o.userData.lx = LANES[lane]; arr = rolls; }
+    if (kind === 'roll') { const h = +arg4 || 0; o = makeRoll(); o.userData.h = h; o.position.set(LANES[lane], 0.95 + h, z); o.userData.lx = LANES[lane]; arr = rolls; }
     else if (kind === 'gate' || kind === 'hurdle') {
       o = kind === 'gate' ? makeGate() : makeHurdle();
       o.position.set(0, 0, z); o.userData.halfW = 3.3; o.userData.lx = 0; arr = obstacles;
     } else if (kind.startsWith('powerup')) {
       const pk = kind.split(':')[1] || POWERUP_KINDS[0];
       o = makePowerup(POWERUPS[pk].color); o.position.set(LANES[lane], 1.0, z); o.userData.kind = pk; o.userData.lx = LANES[lane]; arr = pickups;
-    } else {                                       // cactus | rock | bar
-      o = makeObstacle(kind); o.position.set(LANES[lane], 0, z); o.userData.lane = lane; o.userData.lx = LANES[lane]; arr = obstacles;
+    } else {                                       // cactus | rock | bar (arg4 = tall)
+      o = makeObstacle(kind, !!arg4); o.position.set(LANES[lane], 0, z); o.userData.lane = lane; o.userData.lx = LANES[lane]; arr = obstacles;
     }
     scene.add(o); arr.push(o); return kind;
   }
@@ -1313,7 +1363,7 @@ function buildDebugApi() {
       lifecycle: ['start(overrides?)', 'reset()', 'fresh()', 'over()'],
       time: ['pause()', 'resume()', 'step(frames=1, dt=1/60)', 'seed(n)'],
       teleport: ['set({level,speed,shields,power,...})', `keys: ${Object.keys(SETTERS).join(', ')}`],
-      world: ['spawn(kind, lane?, z?)', 'clearField()', 'forceFinish(z?)', `kinds: ${OBSTACLE_KINDS.join('|')}|gate|hurdle|roll|powerup[:magnet|x2|ghost]`],
+      world: ['spawn(kind, lane?, z?, arg4?)', 'arg4: roll→height, obstacle→tall', 'clearField()', 'forceFinish(z?)', `kinds: ${OBSTACLE_KINDS.join('|')}|gate|hurdle|roll|powerup[:magnet|x2|ghost]`],
       input: ['left()', 'right()', 'lane(i)', 'jump()', 'duck()'],
       shop: ['wallet()', 'fund(n)', 'buy(id)', 'effects()', 'migrate(legacyOwned?)'],
       perks: ['perk(id)', 'draft()', 'openDraft()', 'pick(i)', 'reroll()', 'banish(i)', `ids: ${PERKS.map(p => p.id).join('|')}`],
