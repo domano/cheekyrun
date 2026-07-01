@@ -30,6 +30,10 @@ export const STAGE_LEAD = 40;
 // (factories in props.js) so each stage has its own props, not just a palette:
 // `jump` kinds are cleared by jumping, `duck` is the slide-under bar.
 // Per-biome fields beyond palette:
+// `scenery` is the roadside-decoration roster (factories in props.js) lining the
+//   track shoulders, so each stage's *flora* is its own, not just its palette —
+//   the leafy tree lives in the Meadow it fits, the desert gets a saguaro, etc.
+//   Listed with repeats to weight the random pick.
 // `air` is the fog band (near/far world units) — how far you can see, which sets
 //   the stage's mood and how much reaction room a run gives.
 // `play` tweaks gameplay so a biome is a different *place to play*, not just a
@@ -45,6 +49,7 @@ export const BIOMES = [
     hills: [0x8fd16f, 0x79c283, 0x9bd778],
     disc: 0xfff2b0,
     obstacles: { jump: ['cactus', 'rock'], duck: 'branch' },
+    scenery: ['tree', 'tree', 'bush', 'flower'],   // leafy & green — the tree's home
     air: { near: 32, far: 64 },                 // open, gentle — the warm-up stage
     play: {},                                   // neutral baseline
   },
@@ -57,6 +62,7 @@ export const BIOMES = [
     hills: [0xe08a5a, 0xd06a6a, 0xe0a060],
     disc: 0xffd27f,
     obstacles: { jump: ['barrel', 'boulder'], duck: 'bar' },
+    scenery: ['saguaro', 'deadbush', 'deadbush', 'desertrock'],   // warm desert
     air: { near: 30, far: 60 },
     play: { gateBias: 1.5 },                    // golden-hour gauntlet: more full-width gates
   },
@@ -69,6 +75,7 @@ export const BIOMES = [
     hills: [0x4a5a8a, 0x3a4a7a, 0x5a6a9a],
     disc: 0xeef0ff,
     obstacles: { jump: ['crystal', 'tombstone'], duck: 'beam' },
+    scenery: ['deadtree', 'deadtree', 'mushroom', 'crystalcluster'],   // spooky night
     air: { near: 22, far: 48 },                 // close, murky — you see hazards later
     play: { hazardBias: 1.25, rollBias: 0.9 },  // tense: more compound hazards, fewer rolls
   },
@@ -81,6 +88,7 @@ export const BIOMES = [
     hills: [0xff9ec9, 0xffb3d9, 0xffc2a8],
     disc: 0xfff0a0,
     obstacles: { jump: ['candycane', 'gumdrop'], duck: 'licorice' },
+    scenery: ['lollipop', 'lollipop', 'candybush', 'peppermint'],   // bright sweets
     air: { near: 34, far: 66 },                 // bright, airy
     play: { rollBias: 1.4, rowMult: 0.92 },     // sugar rush: dense rolls, tighter spacing
   },
@@ -93,6 +101,7 @@ export const BIOMES = [
     hills: [0xbcd9ec, 0xa9cce0, 0xd6e9f5],
     disc: 0xeaf6ff,
     obstacles: { jump: ['icespike', 'snowman'], duck: 'frostbar' },
+    scenery: ['pine', 'pine', 'snowmound', 'iceshard'],   // icy tundra — snow-capped pines
     air: { near: 26, far: 56 },                 // a crisp, biting blue haze
     play: { hazardBias: 1.15 },                 // frostbite: more compound hazards
   },
@@ -105,6 +114,7 @@ export const BIOMES = [
     hills: [0x5a2418, 0x7a2e1a, 0x9a3a1a],
     disc: 0xff8a3a,
     obstacles: { jump: ['lavarock', 'emberspire'], duck: 'emberbar' },
+    scenery: ['charredtree', 'charredtree', 'basaltrock', 'cinder'],   // volcanic ashlands
     air: { near: 20, far: 44 },                 // choking ash — hazards loom late
     play: { hazardBias: 1.3, rollBias: 0.85 },  // brutal: dense hazards, scarce rolls
   },
@@ -117,6 +127,7 @@ export const BIOMES = [
     hills: [0x2f9fb8, 0x49b8c8, 0x7fd0d8],
     disc: 0xfff6c0,
     obstacles: { jump: ['coral', 'clam'], duck: 'kelp' },
+    scenery: ['seaweed', 'seaweed', 'coralnub', 'anemone'],   // sunlit coral seabed
     air: { near: 30, far: 60 },                 // clear, sunlit shallows
     play: { rollBias: 1.25, rowMult: 0.95 },    // current sweep: dense rolls, flowing rows
   },
@@ -133,6 +144,10 @@ export const biomeOf = (level) => BIOMES[(level - 1) % BIOMES.length];
 
 // The lane-obstacle roster for a level's biome ({ jump: [...], duck }).
 export const obstacleSet = (level) => biomeOf(level).obstacles;
+
+// The roadside-scenery roster for a level's biome (weighted kind list). Falls
+// back to the Meadow set so a biome without its own scenery still decorates.
+export const scenerySet = (level) => biomeOf(level).scenery || BIOMES[0].scenery;
 
 // Resolved gameplay knobs for a level's biome (defaults filled in).
 export const biomePlay = (level) => ({ ...PLAY_DEFAULTS, ...(biomeOf(level).play || {}) });

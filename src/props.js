@@ -281,6 +281,175 @@ export function makeFlower() {
   return g;
 }
 
+// ---- per-biome roadside scenery ----
+// Decoration that lines the track shoulders, one roster per biome (see the
+// `scenery` field in levels.js) so each stage is a distinct *place*: the leafy
+// tree stays in the Meadow it belongs to, the desert gets a saguaro, the reef
+// gets kelp. Quieter and shorter than lane obstacles — never a hazard. Dark
+// props on dark ground (Ember) take a light ink edge so the silhouette reads.
+const SCENERY = {
+  // Meadow — lush & green (the leafy tree's home).
+  tree: makeTree,
+  bush: makeBush,
+  flower: makeFlower,
+
+  // Sunset — warm desert.
+  saguaro: () => {
+    const g = new THREE.Group(), m = toon(0x4f9d6b);
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.32, 2.0, 12), m); body.position.y = 1.0; body.castShadow = true; ink(body, 1.06); g.add(body);
+    [-1, 1].forEach(s => {
+      const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 0.5, 10), m); arm.position.set(s * 0.34, 1.0, 0); arm.rotation.z = -s * 1.1; ink(arm, 1.1); g.add(arm);
+      const up = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.7 + 0.3 * (s > 0 ? 1 : 0), 10), m); up.position.set(s * 0.6, 1.35, 0); ink(up, 1.1); g.add(up);
+    });
+    return g;
+  },
+  deadbush: () => {
+    const g = new THREE.Group(), m = toon(0xb89758);
+    for (let i = 0; i < 6; i++) {
+      const b = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.03, 0.7, 5), m);
+      b.position.set((Math.random() - 0.5) * 0.4, 0.34, (Math.random() - 0.5) * 0.4); b.rotation.set((Math.random() - 0.5) * 1.3, 0, (Math.random() - 0.5) * 1.3); ink(b, 1.12); g.add(b);
+    }
+    return g;
+  },
+  desertrock: () => {
+    const g = new THREE.Group();
+    const r = new THREE.Mesh(new THREE.DodecahedronGeometry(0.5, 0), toon(0xcaa46a, { flat: true })); r.position.y = 0.38; r.scale.set(1.3, 0.78, 1.1); r.castShadow = true; ink(r, 1.07); g.add(r); return g;
+  },
+
+  // Twilight — spooky night.
+  deadtree: () => {
+    const g = new THREE.Group(), m = toon(0x4a3a52);
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.2, 1.7, 8), m); trunk.position.y = 0.85; trunk.castShadow = true; ink(trunk, 1.08); g.add(trunk);
+    [[-0.38, 1.45, 0.7], [0.42, 1.65, -0.7], [0, 2.0, 0.25]].forEach(([x, y, rz]) => {
+      const b = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.08, 0.7, 6), m); b.position.set(x, y, 0); b.rotation.z = rz; ink(b, 1.1); g.add(b);
+    });
+    return g;
+  },
+  mushroom: () => {
+    const g = new THREE.Group();
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.13, 0.5, 8), toon(0xe6dcc8)); stem.position.y = 0.25; ink(stem, 1.1); g.add(stem);
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.32, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), toon(0x9a7bff, { emissive: 0x3a1a6a })); cap.position.y = 0.5; cap.scale.y = 0.8; cap.castShadow = true; ink(cap, 1.08); g.add(cap);
+    const spotM = toon(0xe6dcff, { emissive: 0xc9a7ff });
+    [[-0.14, 0.56, 0.2], [0.16, 0.6, 0.16], [0, 0.66, -0.18]].forEach(([x, y, z]) => { const sp = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), spotM); sp.position.set(x, y, z); g.add(sp); });
+    return g;
+  },
+  crystalcluster: () => {
+    const g = new THREE.Group(), m = toon(0x9a7bff, { emissive: 0x2a1a55, flat: true });
+    [[0, 0.5, 0.14], [-0.24, 0.34, 0.11], [0.27, 0.3, 0.11]].forEach(([x, h, w]) => {
+      const c = new THREE.Mesh(new THREE.ConeGeometry(w, h * 2, 5), m); c.position.set(x, h, 0); c.castShadow = true; ink(c, 1.1); g.add(c);
+    });
+    return g;
+  },
+
+  // Candyland — bright sweets.
+  lollipop: () => {
+    const g = new THREE.Group();
+    const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.0, 8), toon(0xffffff)); stick.position.y = 0.5; ink(stick, 1.08); g.add(stick);
+    const candy = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.12, 20), toon(0xff5fa6, { emissive: 0x3a0022 })); candy.position.y = 1.05; candy.rotation.x = Math.PI / 2; candy.castShadow = true; ink(candy, 1.06); g.add(candy);
+    return g;
+  },
+  candybush: () => {
+    const g = new THREE.Group(), cols = [0xff8ad0, 0x8ad0ff, 0xffd23f];
+    for (let i = 0; i < 3; i++) {
+      const d = new THREE.Mesh(new THREE.SphereGeometry(0.3, 12, 12), toon(cols[i], { emissive: 0x220011 }));
+      d.position.set((i - 1) * 0.34, 0.3, (Math.random() - 0.5) * 0.3); d.castShadow = true; ink(d, 1.08); g.add(d);
+    }
+    return g;
+  },
+  peppermint: () => {
+    const g = new THREE.Group();
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.26, 0.12, 10, 18), toon(0xff5151)); ring.position.y = 0.28; ring.castShadow = true; ink(ring, 1.07); g.add(ring);
+    const mid = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 12), toon(0xffffff)); mid.position.y = 0.28; g.add(mid);
+    return g;
+  },
+
+  // Frostpeak — icy tundra (the snow-capped pine's home).
+  pine: () => {
+    const g = new THREE.Group();
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.14, 0.5, 8), toon(0x8a6b4a)); trunk.position.y = 0.25; ink(trunk, 1.1); g.add(trunk);
+    const green = toon(0x3f8f6a), snow = toon(0xeaf6ff);
+    [[0.6, 0.8], [0.46, 1.25], [0.32, 1.65]].forEach(([r, y]) => {
+      const c = new THREE.Mesh(new THREE.ConeGeometry(r, 0.7, 9), green); c.position.y = y; c.castShadow = true; ink(c, 1.07, 0x3a4a5a); g.add(c);
+      const cap = new THREE.Mesh(new THREE.ConeGeometry(r * 0.5, 0.32, 9), snow); cap.position.y = y + 0.22; g.add(cap);
+    });
+    return g;
+  },
+  snowmound: () => {
+    const g = new THREE.Group(), m = toon(0xeaf6ff);
+    for (let i = 0; i < 3; i++) {
+      const s = new THREE.Mesh(new THREE.SphereGeometry(0.4 + Math.random() * 0.2, 12, 10), m);
+      s.position.set((Math.random() - 0.5) * 0.7, 0.2, (Math.random() - 0.5) * 0.4); s.scale.y = 0.6; s.castShadow = true; ink(s, 1.06, 0x9fbcd0); g.add(s);
+    }
+    return g;
+  },
+  iceshard: () => {
+    const g = new THREE.Group(), m = toon(0xbfe6ff, { emissive: 0x2a5a7a, flat: true });
+    [[0, 0.7, 0.18], [-0.22, 0.45, 0.12], [0.24, 0.5, 0.13]].forEach(([x, h, w]) => {
+      const c = new THREE.Mesh(new THREE.ConeGeometry(w, h * 2, 6), m); c.position.set(x, h, 0); c.castShadow = true; ink(c, 1.1, 0x3a4a5a); g.add(c);
+    });
+    return g;
+  },
+
+  // Ember — volcanic ashlands. Dark props on dark ground take a light ink edge.
+  charredtree: () => {
+    const g = new THREE.Group(), m = toon(0x2a201e);
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.2, 1.5, 8), m); trunk.position.y = 0.75; trunk.castShadow = true; ink(trunk, 1.08, 0x6a4a3a); g.add(trunk);
+    [[-0.38, 1.3, 0.8], [0.42, 1.5, -0.8]].forEach(([x, y, rz]) => {
+      const b = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.08, 0.6, 6), m); b.position.set(x, y, 0); b.rotation.z = rz; ink(b, 1.1, 0x6a4a3a); g.add(b);
+    });
+    const glow = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), toon(0xff6a2a, { emissive: 0xff5a10 })); glow.position.set(0.1, 0.13, 0.22); g.add(glow);
+    return g;
+  },
+  basaltrock: () => {
+    const g = new THREE.Group();
+    const r = new THREE.Mesh(new THREE.IcosahedronGeometry(0.5, 0), toon(0x3a2e2a, { flat: true })); r.position.y = 0.38; r.scale.set(1.3, 0.85, 1.1); r.castShadow = true; ink(r, 1.07, 0x7a5a4a); g.add(r);
+    const crack = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.08, 0.05), toon(0xff6a2a, { emissive: 0xff6a2a, flat: true })); crack.position.set(0, 0.45, 0.42); crack.rotation.z = 0.4; g.add(crack);
+    return g;
+  },
+  cinder: () => {
+    const g = new THREE.Group();
+    const r = new THREE.Mesh(new THREE.IcosahedronGeometry(0.3, 0), toon(0x4a2620, { flat: true })); r.position.y = 0.2; r.scale.y = 0.6; ink(r, 1.08, 0x7a5a4a); g.add(r);
+    const glow = new THREE.Mesh(new THREE.IcosahedronGeometry(0.16, 0), toon(0xff7a2a, { emissive: 0xff7a2a, flat: true })); glow.position.y = 0.3; g.add(glow);
+    return g;
+  },
+
+  // Reef — sunlit coral seabed.
+  seaweed: () => {
+    const g = new THREE.Group(), m = toon(0x2f9f6a, { emissive: 0x0a3a22 });
+    [-0.18, 0, 0.2].forEach((x, i) => {
+      const h = 1.2 + i * 0.2;
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.16, h, 0.06), m); blade.position.set(x, h / 2, 0); blade.rotation.z = (i - 1) * 0.18; blade.castShadow = true; ink(blade, 1.08); g.add(blade);
+    });
+    return g;
+  },
+  coralnub: () => {
+    const g = new THREE.Group(), m = toon(0xff7aa8, { emissive: 0x3a0a18 });
+    [[0, 0.5, 0], [-0.22, 0.4, 0.4], [0.24, 0.34, -0.4]].forEach(([x, h, rz]) => {
+      const b = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.14, h, 8), m); b.position.set(x, h / 2, 0); b.rotation.z = rz; b.castShadow = true; ink(b, 1.1); g.add(b);
+    });
+    return g;
+  },
+  anemone: () => {
+    const g = new THREE.Group();
+    const base = new THREE.Mesh(new THREE.SphereGeometry(0.3, 12, 10, 0, Math.PI * 2, 0, Math.PI / 2), toon(0xb85aa8, { emissive: 0x2a0a22 })); base.scale.y = 0.8; base.castShadow = true; ink(base, 1.07); g.add(base);
+    const tip = toon(0xffc2da);
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * Math.PI * 2;
+      const t = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.045, 0.42, 6), tip);
+      t.position.set(Math.cos(a) * 0.16, 0.3, Math.sin(a) * 0.16); t.rotation.z = Math.cos(a) * 0.6; t.rotation.x = -Math.sin(a) * 0.6; ink(t, 1.12); g.add(t);
+    }
+    return g;
+  },
+};
+
+// Build a roadside scenery prop by kind, falling back to a meadow tree.
+export function makeScenery(kind) {
+  return (SCENERY[kind] || makeTree)();
+}
+
+// Kinds available to the debug bridge / sanity checks.
+export const SCENERY_KINDS = Object.keys(SCENERY);
+
 // Clouds are positioned on creation; caller adds the returned group to the scene.
 export function makeCloud() {
   const g = new THREE.Group(), m = toon(0xffffff);

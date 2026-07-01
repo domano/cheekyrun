@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import { LANES, SPAWN_Z, DESPAWN_Z, INK, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE_RAMP, GATE_COOLDOWN, COMBO_WINDOW, comboMult, NEARMISS_MARGIN, NEARMISS_BONUS, SKIM_MARGIN, SKIM_BONUS, SKIM_WINDOW, SAFE_HAZARD_MIN_DIFF, SAFE_HAZARD_CHANCE, JUMP_BUFFER, HITSTOP_SHIELD, HITSTOP_DEATH, SLOWMO_FACTOR, SLOWMO_TIME, SLOWMO_MIN_MULT, SLOWMO_TIGHT_MARGIN, SLOWMO_TIGHT_TIME, DIFF_RAMP, ROW_MIN_GAP, COMBO_DECAY_STEP, COMBO_STEP, SCORE_FLOW_RATE, HEAT_PER_LEVEL, HEAT_LEVEL_CAP, HEAT_MAX, PHOENIX_COMBO, PHOENIX_INVULN, GREED_CAP, RING_TIME, POWERUP_DURATION, POWERUP_CHANCE, POWERUP_MIN_DIFF, POWERUP_COOLDOWN, POWERUPS, POWERUP_KINDS, DASH_SPEED_MULT, DRAFT_EVERY, DRAFT_CHOICES, DRAFT_ARM, DRAFT_GRACE, mulberry32, dailyKey, dailySeed, $, buzz, shuffle } from './config.js';
 import { makeGradient, toon } from './materials.js';
-import { makeObstacle, makeHurdle, makeGate, makeRoll, makePowerup, makeTree, makeBush, makeFlower, makeCloud, makeFinishLine, OBSTACLE_KINDS } from './props.js';
+import { makeObstacle, makeHurdle, makeGate, makeRoll, makePowerup, makeScenery, makeCloud, makeFinishLine, OBSTACLE_KINDS } from './props.js';
 import { createParticles } from './particles.js';
 import { buildPlayer, applyGear, tickGear } from './player.js';
-import { STAGE_BASE, STAGE_LEAD, stageLength, biomeOf, obstacleSet, biomePlay, biomeAir } from './levels.js';
+import { STAGE_BASE, STAGE_LEAD, stageLength, biomeOf, obstacleSet, scenerySet, biomePlay, biomeAir } from './levels.js';
 import { trackOffset, deformRoad } from './track.js';
 import { UPGRADES, effects, tierOf, nextCost, nextGate, buy, getWallet, addRolls, DEFAULT_POOL, unlockedPerkIds, META, buyMeta } from './upgrades.js';
 import { PERKS, freshMods, applyPerks, perkById, draftChoices } from './perks.js';
@@ -275,8 +275,9 @@ function spawnGate() {
   if (rng() < 0.7) { const li = (rng() * 3) | 0; const r = makeRoll(); r.position.set(LANES[li], 0.95, SPAWN_Z); r.userData.lx = LANES[li]; scene.add(r); rolls.push(r); }
 }
 function spawnScenery() {
-  const x = (Math.random() < 0.5 ? -1 : 1) * (4.4 + Math.random() * 3.5), roll = Math.random();
-  const o = roll < 0.4 ? makeTree() : roll < 0.7 ? makeBush() : makeFlower();
+  const x = (Math.random() < 0.5 ? -1 : 1) * (4.4 + Math.random() * 3.5);
+  const roster = scenerySet(level);                       // this stage's own flora
+  const o = makeScenery(roster[(Math.random() * roster.length) | 0]);
   o.position.set(x, 0, SPAWN_Z - Math.random() * 6); o.rotation.y = Math.random() * Math.PI; o.userData.lx = x; scene.add(o); scenery.push(o);
 }
 
@@ -1176,6 +1177,7 @@ function buildDebugApi() {
       stageStart: +stageStart.toFixed(2), stageLen: +stageLen.toFixed(2),
       finishLine: finishLine ? +finishLine.position.z.toFixed(2) : null, finishArmed,
       biomeObstacles: [...obstacleSet(level).jump, obstacleSet(level).duck],
+      biomeScenery: [...new Set(scenerySet(level))],
       biomePlay: biomePlay(level), fog: { near: +scene.fog.near.toFixed(1), far: +scene.fog.far.toFixed(1) },
       rollCount, rollPoints, combo, comboMult: cmult(combo), comboMax, comboTimer: +comboTimer.toFixed(2),
       shields, invuln: +invuln.toFixed(2), magnetR, rollValue, extraJumps, jumpsLeft,

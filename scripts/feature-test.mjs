@@ -207,6 +207,34 @@ const SCENARIOS = [
     },
   },
   {
+    name: 'biome-scenery-variety',
+    fn: (c, assert) => {
+      // Each stage lines its road with its own flora; the leafy tree stays in the
+      // Meadow it fits — it isn't reused by any other biome.
+      c.start();                                   // level 1 = Meadow
+      const meadow = c.state().biomeScenery;
+      assert(meadow.includes('tree'), 'the Meadow lines its road with the leafy tree');
+
+      const rosters = { 1: meadow.join(',') };
+      const treeStages = [];
+      for (let lv = 1; lv <= 7; lv++) {
+        c.set({ level: lv });
+        const s = c.state();
+        assert(Array.isArray(s.biomeScenery) && s.biomeScenery.length > 0, `${s.biome} has its own scenery roster`);
+        if (s.biomeScenery.includes('tree')) treeStages.push(s.biome);
+        rosters[lv] = s.biomeScenery.join(',');
+      }
+      assert(treeStages.length === 1 && treeStages[0] === 'Meadow', 'the leafy tree stays in the Meadow — no other stage reuses it');
+
+      // Adjacent stages look like different places: their rosters differ.
+      assert(rosters[1] !== rosters[2] && rosters[2] !== rosters[3], 'each stage draws roadside props from its own set');
+
+      // The signature prop of a couple of biomes stays put where it fits.
+      c.set({ level: 5 }); assert(c.state().biomeScenery.includes('pine'), 'Frostpeak lines its road with snow-capped pines');
+      c.set({ level: 2 }); assert(c.state().biomeScenery.includes('saguaro'), 'the desert gets a saguaro instead of a tree');
+    },
+  },
+  {
     name: 'shield-absorbs-hit',
     fn: (c, assert) => {
       c.start(); c.set({ shields: 1 }); c.clearField();
