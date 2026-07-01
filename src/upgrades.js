@@ -15,55 +15,25 @@ export { getWallet, addRolls };
 // values can't reach this module. Renames across versions belong in save.js's
 // MIGRATIONS chain.
 
-// Each upgrade declares: a max tier, the cost to reach the *next* tier from a
-// given current tier (cost(currentTier) is valid for currentTier < max), the
-// gameplay value at a tier, and a short human label for the current tier.
-//
-// Tiers past the old cap are "prestige" tiers, each fenced behind a skill gate
-// (gate(currentTier) -> {test, label} or null) so the late upgrades reward play,
-// not just banked rolls — and the wallet always has somewhere to climb.
-export const UPGRADES = [
-  {
-    id: 'shield', icon: '🛡️', name: 'Cushion',
-    desc: 'Soaks up a crash. Refills each run.',
-    max: 5,
-    cost: (l) => [60, 140, 280, 520, 900][l],
-    value: (l) => l,                              // crashes survived per run
-    label: (l) => `${l} hit${l === 1 ? '' : 's'}`,
-    gate: (l) => [null, null, null,
-      { test: (s) => s.maxLevel >= 12, label: 'Reach Lv 12' },
-      { test: (s) => s.maxLevel >= 18, label: 'Reach Lv 18' }][l],
-  },
-  {
-    id: 'headstart', icon: '🚀', name: 'Head Start',
-    desc: 'Begin a few levels in.',
-    max: 5,
-    cost: (l) => [60, 130, 240, 440, 760][l],
-    value: (l) => l,                             // levels skipped at the start
-    label: (l) => `start Lv ${1 + l}`,
-    gate: (l) => [null, null, null,
-      { test: (s) => s.maxLevel >= 10, label: 'Reach Lv 10' },
-      { test: (s) => s.runs >= 25, label: '25 runs' }][l],
-  },
-];
-
-// Late-game unlocks: one self-contained file per upgrade under ./lategame/.
-// Each default-exports the shop entry (id, icon, name, desc, max, cost, gate,
-// optional value/label) PLUS an optional run-mods contribution `mods(tier, m)`
-// and its worn 3D prop (build/scale/tick, read by player.js). Files prefixed
-// `_` are templates and skipped. See src/lategame/_example.js.
-export const LATEGAME = Object.entries(
-  import.meta.glob('./lategame/*.js', { eager: true }),
+// EVERY upgrade is one self-contained file under ./upgrades/ (including the
+// core Cushion + Head Start — there's no hardcoded list any more). Each file
+// default-exports the shop entry (id, icon, name, desc, max, cost, gate) PLUS
+// its effect and its worn 3D prop:
+//   • effect(tier, eff) — set base run values (shields/headstart/magnet/... —
+//     see effects() below). Used by the core floor upgrades.
+//   • mods(tier, m)     — fold into the run mods accumulator (perks.js shape).
+//     Used by the late-game unlocks; a permanent, milder echo of a perk, so it
+//     rides the exact same consumption points in main.js with no new wiring.
+//   • build()/scale()/tick() — the worn prop (read by player.js).
+// Files prefixed `_` are templates and skipped. See ./upgrades/_example.js.
+// renderShop() paints them all the same way (tiers/cost/gate), so dropping a
+// new file into the folder makes it appear in the shop automatically.
+export const UPGRADES = Object.entries(
+  import.meta.glob('./upgrades/*.js', { eager: true }),
 ).filter(([path]) => !path.split('/').pop().startsWith('_'))
   .map(([, m]) => m.default).filter(Boolean)
   // Stable order so the shop layout doesn't shuffle between builds.
   .sort((a, b) => (a.order || 0) - (b.order || 0) || a.id.localeCompare(b.id));
-
-export const LATEGAME_IDS = LATEGAME.map((u) => u.id);
-
-// The core floor plus every late-game unlock. renderShop() paints them all the
-// same way (tiers/cost/gate), so a new file appears in the shop automatically.
-UPGRADES.push(...LATEGAME);
 
 const byId = (id) => UPGRADES.find((u) => u.id === id);
 
@@ -106,26 +76,27 @@ export function buy(id) {
   return true;
 }
 
-// Resolved gameplay effects for the current save, read once at run start. The
-// magnet/rollValue/extraJumps floors are now perk territory; perks build on these.
+// Resolved base gameplay values for the current save, read once at run start.
+// Starts from neutral defaults (magnet/rollValue/extraJumps are perk territory)
+// then folds each owned upgrade's effect(tier, eff) on top — so the core floor
+// upgrades (Cushion → shields, Head Start → headstart) live in their own files.
 export function effects() {
-  return {
-    magnet: 0,
-    shields: byId('shield').value(tierOf('shield')),
-    rollValue: 15,
-    extraJumps: 0,
-    headstart: byId('headstart').value(tierOf('headstart')),
-  };
+  const eff = { magnet: 0, shields: 0, rollValue: 15, extraJumps: 0, headstart: 0 };
+  for (const u of UPGRADES) {
+    const l = tierOf(u.id);
+    if (l > 0 && typeof u.effect === 'function') u.effect(l, eff);
+  }
+  return eff;
 }
 
-// Fold every owned late-game upgrade's contribution into a run `mods`
+// Fold every owned upgrade's mods(tier, m) contribution into a run `mods`
 // accumulator (the same shape perks use — see perks.js freshMods). Called once
-// at run start after applyPerks, so late-game unlocks are permanent, milder
+// at run start after applyPerks, so the late-game unlocks are permanent, milder
 // echoes of perks that ride the exact same consumption points in main.js — no
-// per-upgrade gameplay wiring. Each def's mods(tier, m) mutates m in place; it's
-// only called for owned tiers (tier >= 1), and daily runs skip this entirely.
-export function foldLateGameMods(m) {
-  for (const u of LATEGAME) {
+// per-upgrade gameplay wiring. Only owned tiers (tier >= 1) contribute, and
+// daily runs skip this entirely.
+export function foldUpgradeMods(m) {
+  for (const u of UPGRADES) {
     const l = tierOf(u.id);
     if (l > 0 && typeof u.mods === 'function') u.mods(l, m);
   }

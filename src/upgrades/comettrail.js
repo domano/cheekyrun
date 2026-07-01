@@ -1,7 +1,7 @@
 // 🔥 Comet Trail — a blazing wake streaming off the tail. Run hotter.
 // Body zone: behind the tail on the camera-facing side (+z). Solid toon flame
 // tongues (NOT additive — additive warm light vanishes on the pale path) with a
-// hot-pink inner tongue for contrast on every biome. See src/lategame/_example.js.
+// hot-pink inner tongue for contrast on every biome. See src/upgrades/_example.js.
 import * as THREE from 'three';
 import { toon } from '../materials.js';
 

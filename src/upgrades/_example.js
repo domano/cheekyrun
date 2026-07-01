@@ -1,15 +1,21 @@
-// TEMPLATE — copy this to src/lategame/<yourid>.js for a new late-game shop
-// unlock. Files whose name starts with `_` are skipped by the loaders, so this
-// one never ships. One self-contained file declares EVERYTHING:
+// TEMPLATE — copy this to src/upgrades/<yourid>.js for a new shop upgrade.
+// Files whose name starts with `_` are skipped by the loaders, so this one
+// never ships. One self-contained file declares EVERYTHING for an upgrade:
 //
 //   • the shop entry  — read by upgrades.js (appears in the shop automatically)
-//   • the run effect  — mods(tier, m): folded into the run's `mods` accumulator
-//                       once at run start (permanent, milder echo of a perk).
-//                       Use ONLY the knobs in perks.js freshMods() — they're all
-//                       already consumed in main.js, so there is zero new wiring.
+//   • the run effect  — TWO ways, use whichever fits (or both):
+//       - mods(tier, m):    fold into the run's `mods` accumulator (perks.js
+//         freshMods shape). A permanent, milder echo of a perk — those knobs are
+//         all already consumed in main.js, so zero new wiring. Best for unlocks.
+//       - effect(tier, eff): set a BASE run value on the effects object
+//         { magnet, shields, rollValue, extraJumps, headstart }, read once at run
+//         start. This is how the core floor upgrades work (see ./shield.js,
+//         ./headstart.js).
 //   • the worn 3D prop — build()/scale()/tick(): read by player.js, shown on the
 //                       butt-with-ears character while any tier is owned, sized
-//                       by owned tier. Same contract as src/perkgear/*.js.
+//                       by owned tier. Same contract as src/perkgear/*.js. Set
+//                       `liveGear: true` if the game loop drives its reveal itself
+//                       (like the Cushion bubble tracking the live shield count).
 //
 // House style: every solid mesh gets toon() + an ink() outline; glows stay
 // translucent with NO outline; cheap primitives only; stay readable when small.

@@ -1,7 +1,7 @@
 // 🃏 Gambler's Cape — a flowing crimson cape clasped at the neck: more rolls,
 // but it thins the shields. High risk, high reward for a late-game min-maxer.
 // Contract: shop entry + mods(tier,m) + worn-prop build/scale/tick — see
-// src/lategame/_example.js. Body zone: camera-facing upper/lower back (+z);
+// src/upgrades/_example.js. Body zone: camera-facing upper/lower back (+z);
 // a squashed open cone reads as the drape, a torus arc as the collar.
 import * as THREE from 'three';
 import { toon, ink } from '../materials.js';

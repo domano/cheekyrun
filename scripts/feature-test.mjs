@@ -386,6 +386,9 @@ const SCENARIOS = [
       const s = c.start();
       assert(s.gearTiers.shield === 2, 'owning Cushion shows its gear at tier 2');
       assert(s.gearTiers.headstart === 1, 'a Head Start tier is owned');
+      // the folder-driven effect() feeds the base run values read in resetGame:
+      assert(s.shields === 2, 'owning Cushion tier 2 starts the run with 2 shields');
+      assert(s.level === 2, 'owning Head Start tier 1 begins the run one level in');
       // the worn props actually toggle with ownership...
       assert(s.gearVisible.shield === true, 'the shield bubble is worn');
       assert(s.gearVisible.headstart === true, 'the rocket is worn');
@@ -1731,7 +1734,7 @@ const SCENARIOS = [
       assert(g.sceneryContact === true, 'roadside scenery drops a contact shadow too');
     },
   },
-  // ---- late-game shop unlocks (src/lategame/*.js) ----
+  // ---- late-game shop unlocks (src/upgrades/*.js) ----
   // Each owns its upgrade via the debug own() helper (bypassing cost + gate),
   // starts a run, and asserts the effect folded into mods AND its worn prop
   // reveals + scales by owned tier.
@@ -1792,20 +1795,27 @@ const SCENARIOS = [
       assert(s.gearTiers.comettrail === 3, 'owned tier reported as 3');
     },
   },
-  // A daily run is meta-free: owned late-game upgrades neither affect its mods
-  // nor show gear (mirrors how effects() is zeroed for a daily).
+  // A daily run is meta-free: owned upgrades — late-game unlocks AND the core
+  // floor (shields/headstart) — neither affect its mods/effects nor show gear
+  // (mirrors how effects() is zeroed for a daily).
   {
-    name: 'lategame-off-in-daily',
+    name: 'upgrades-off-in-daily',
     fn: (c, assert) => {
       c.fresh();
       c.own('comettrail', 3);
       c.own('gamblerscape', 3);
+      c.own('shield', 3);
+      c.own('headstart', 2);
       const s = c.startDaily();
       assert(s.daily === true, 'a daily run is active');
       assert(Math.abs(s.mods.speedMult - 1) < 1e-9, 'no late-game speed boost in a daily');
       assert(s.mods.noShields === false, 'no late-game curse in a daily');
+      assert(s.shields === 0, 'no owned Cushion carries into a daily');
+      assert(s.level === 1, 'no Head Start levels in a daily');
       assert(s.gearVisible.comettrail === false, 'late-game gear hidden in a daily');
       assert(s.gearVisible.gamblerscape === false, 'late-game gear hidden in a daily');
+      assert(s.gearVisible.headstart === false, 'core upgrade gear hidden in a daily');
+      assert(s.gearVisible.shield === false, 'Cushion bubble hidden in a daily');
     },
   },
 ];

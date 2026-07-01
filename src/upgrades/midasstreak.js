@@ -1,7 +1,7 @@
 // 💎 Midas Streak — a gold coin bandolier; the longer the run, the richer each
 // roll (echoes the Magpie perk's greedScale). Worn as a shallow front ARC of
 // coins across the camera-facing left cheek (not a torso wrap — a wrap hides
-// 80% of the coins behind the body). See src/lategame/_example.js.
+// 80% of the coins behind the body). See src/upgrades/_example.js.
 import * as THREE from 'three';
 import { toon, ink } from '../materials.js';
 
