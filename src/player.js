@@ -1,15 +1,26 @@
 import * as THREE from 'three';
 import { toon, ink } from './materials.js';
 
-// Auto-loaded perk-gear definitions: one file per perk under ./perkgear/.
-// Each default-exports { id, build(), scale?(stacks), tick?(group, t, dt) }.
-// Dropping a new file in that folder is all it takes to give a perk a worn
-// prop — buildGear() builds it hidden, applyGear() reveals/scales it by stack
-// count, and tickGear() runs its animation. No other edits, so the props are
-// collision-free to author in parallel.
-const PERK_GEAR_DEFS = Object.values(
-  import.meta.glob('./perkgear/*.js', { eager: true }),
-).map((m) => m.default).filter(Boolean);
+// Auto-loaded worn-gear definitions. Two folders feed the same pipeline:
+//   ./perkgear/*.js  — one file per drafted perk (keyed by perk id)
+//   ./lategame/*.js  — one file per late-game shop upgrade (keyed by upgrade id;
+//                      the same file also declares the shop entry + effect, read
+//                      by upgrades.js — see src/lategame/_example.js)
+// Each default-exports { id, build(), scale?(n), tick?(group, t, dt) } (a
+// lategame file carries extra shop fields too, ignored here). Dropping a new
+// file in either folder is all it takes to give it a worn prop — buildGear()
+// builds it hidden, applyGear() reveals/scales it by tier/stack count, and
+// tickGear() runs its animation. Files prefixed `_` are templates, skipped.
+// No other edits, so the props are collision-free to author in parallel.
+const loadDefs = (glob) => Object.entries(glob)
+  .filter(([path]) => !path.split('/').pop().startsWith('_'))
+  .map(([, m]) => m.default).filter(Boolean);
+const GEAR_DEFS = [
+  ...loadDefs(import.meta.glob('./perkgear/*.js', { eager: true })),
+  // lategame files that actually declare a worn prop (build()); effect-only
+  // upgrades without a model are simply skipped here.
+  ...loadDefs(import.meta.glob('./lategame/*.js', { eager: true })).filter((d) => typeof d.build === 'function'),
+];
 
 // Builds the star of the show — a butt with ears — and returns the group plus
 // the animated sub-parts the game loop needs to wiggle each frame.
@@ -129,8 +140,8 @@ function buildGear(player) {
 
   // Dynamic perk props (one file each under ./perkgear/). Built hidden and
   // keyed by perk id; applyGear() reveals/scales them, tickGear() animates them.
-  gear._defs = PERK_GEAR_DEFS;
-  for (const def of PERK_GEAR_DEFS) {
+  gear._defs = GEAR_DEFS;
+  for (const def of GEAR_DEFS) {
     const g = def.build();
     g.visible = false;
     player.add(g);

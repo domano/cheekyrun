@@ -47,9 +47,36 @@ export const UPGRADES = [
   },
 ];
 
+// Late-game unlocks: one self-contained file per upgrade under ./lategame/.
+// Each default-exports the shop entry (id, icon, name, desc, max, cost, gate,
+// optional value/label) PLUS an optional run-mods contribution `mods(tier, m)`
+// and its worn 3D prop (build/scale/tick, read by player.js). Files prefixed
+// `_` are templates and skipped. See src/lategame/_example.js.
+export const LATEGAME = Object.entries(
+  import.meta.glob('./lategame/*.js', { eager: true }),
+).filter(([path]) => !path.split('/').pop().startsWith('_'))
+  .map(([, m]) => m.default).filter(Boolean)
+  // Stable order so the shop layout doesn't shuffle between builds.
+  .sort((a, b) => (a.order || 0) - (b.order || 0) || a.id.localeCompare(b.id));
+
+export const LATEGAME_IDS = LATEGAME.map((u) => u.id);
+
+// The core floor plus every late-game unlock. renderShop() paints them all the
+// same way (tiers/cost/gate), so a new file appears in the shop automatically.
+UPGRADES.push(...LATEGAME);
+
 const byId = (id) => UPGRADES.find((u) => u.id === id);
 
 export const tierOf = (id) => save.owned[id] | 0;
+
+// Debug-only: force an owned tier (bypassing cost + gate) so feature tests can
+// exercise an upgrade's effect/gear deterministically. Wired to cheeky.own().
+export function setTier(id, tier) {
+  if (!byId(id)) return false;
+  save.owned[id] = Math.max(0, tier | 0);
+  persist();
+  return true;
+}
 
 // The unmet skill gate fencing the NEXT tier, or null if it's free to buy
 // (no gate, gate already satisfied, or already maxed).
@@ -89,6 +116,20 @@ export function effects() {
     extraJumps: 0,
     headstart: byId('headstart').value(tierOf('headstart')),
   };
+}
+
+// Fold every owned late-game upgrade's contribution into a run `mods`
+// accumulator (the same shape perks use — see perks.js freshMods). Called once
+// at run start after applyPerks, so late-game unlocks are permanent, milder
+// echoes of perks that ride the exact same consumption points in main.js — no
+// per-upgrade gameplay wiring. Each def's mods(tier, m) mutates m in place; it's
+// only called for owned tiers (tier >= 1), and daily runs skip this entirely.
+export function foldLateGameMods(m) {
+  for (const u of LATEGAME) {
+    const l = tierOf(u.id);
+    if (l > 0 && typeof u.mods === 'function') u.mods(l, m);
+  }
+  return m;
 }
 
 /* ----- roguelite META layer: perk-pool unlocks, charges ----- */

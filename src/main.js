@@ -6,7 +6,7 @@ import { createParticles } from './particles.js';
 import { buildPlayer, applyGear, tickGear } from './player.js';
 import { STAGE_BASE, STAGE_LEAD, stageLength, biomeOf, obstacleSet, scenerySet, biomePlay, biomeAir } from './levels.js';
 import { trackOffset, deformRoad } from './track.js';
-import { UPGRADES, effects, tierOf, nextCost, nextGate, buy, getWallet, addRolls, DEFAULT_POOL, unlockedPerkIds, META, buyMeta } from './upgrades.js';
+import { UPGRADES, effects, tierOf, nextCost, nextGate, buy, getWallet, addRolls, DEFAULT_POOL, unlockedPerkIds, META, buyMeta, foldLateGameMods, LATEGAME_IDS, setTier } from './upgrades.js';
 import { PERKS, freshMods, applyPerks, perkById, draftChoices } from './perks.js';
 import { save, getRerolls, useReroll, getBanishes, useBanish, banishPerk } from './save.js';
 import { getBest, setBest, getStats, bumpStats, getHistory, pushHistory, resetSave, reload, requestPersistence, onExternalChange } from './save.js';
@@ -367,7 +367,9 @@ function spawnScenery() {
 /* ---------------- perks (roguelite draft) ---------------- */
 // Re-derive the run modifiers from the perks picked so far. perks[] is the source
 // of truth; mods is a pure fold of it, so stacking is just stacks++ then recompute.
-function recomputeRunMods() { mods = applyPerks(perks); }
+// Run mods = drafted perks, then permanent late-game unlocks folded on top
+// (skipped in a daily, which runs meta-free so everyone competes evenly).
+function recomputeRunMods() { mods = applyPerks(perks); if (!daily) foldLateGameMods(mods); }
 // Which drafted perk wears which cosmetic prop. The magnet/spring/clover used to
 // be permanent upgrades; they're perks now, so the gear follows the live draft.
 const PERK_GEAR = { vacuum: 'magnet', hops: 'spring', lucky: 'fortune' };
@@ -376,6 +378,9 @@ const PERK_GEAR = { vacuum: 'magnet', hops: 'spring', lucky: 'fortune' };
 // stacks. Rebuilt whenever ownership or the draft changes.
 function wornGear() {
   const t = daily ? {} : { shield: tierOf('shield'), headstart: tierOf('headstart') };
+  // Owned late-game unlocks wear a prop keyed by their own id (its file in
+  // src/lategame/<id>.js), sized by owned tier. Skipped in a daily (meta-free).
+  if (!daily) for (const id of LATEGAME_IDS) { const l = tierOf(id); if (l) t[id] = l; }
   // Drafted perks each wear a prop: the legacy three map onto magnet/spring/
   // clover (PERK_GEAR); every other perk keys onto its own id (its file in
   // src/perkgear/<id>.js). Sized by stack count.
@@ -1271,7 +1276,7 @@ function buildDebugApi() {
       teleport: ['set({level,speed,shields,power,...})', `keys: ${Object.keys(SETTERS).join(', ')}`],
       world: ['spawn(kind, lane?, z?, arg4?)', 'arg4: roll→height, obstacle→tall', 'clearField()', 'forceFinish(z?)', `kinds: ${OBSTACLE_KINDS.join('|')}|gate|hurdle|roll|powerup[:magnet|x2|ghost]`],
       input: ['left()', 'right()', 'lane(i)', 'jump()', 'duck()'],
-      shop: ['wallet()', 'fund(n)', 'buy(id)', 'effects()', 'migrate(legacyOwned?)'],
+      shop: ['wallet()', 'fund(n)', 'buy(id)', 'own(id, tier)', 'effects()', 'migrate(legacyOwned?)'],
       perks: ['perk(id)', 'draft()', 'openDraft()', 'pick(i)', 'reroll()', 'banish(i)', `ids: ${PERKS.map(p => p.id).join('|')}`],
       meta: ['buyMeta(id)', 'startDaily()', `items: ${META.map(m => m.id).join('|')}`],
       cosmetics: ['skin()', 'pickSkin(id)', 'unlockAch(id)'],
@@ -1332,6 +1337,9 @@ function buildDebugApi() {
     },
     wallet: getWallet, fund: (n) => { addRolls(n); renderShop(); return getWallet(); },
     buy: (id) => { const ok = buy(id); renderShop(); return ok; }, effects,
+    // Force an owned upgrade tier (bypass cost + gate) so a scenario can exercise
+    // a late-game unlock's effect/gear deterministically, then refresh gear/shop.
+    own: (id, tier = 1) => { setTier(id, tier); refreshGear(); renderShop(); return snapshot(); },
     // ---- perks (roguelite draft) ----
     perk: (id) => { applyPerk(id); return snapshot(); },
     draft: () => ({ state, choices: draftCards.map(p => p.id) }),
