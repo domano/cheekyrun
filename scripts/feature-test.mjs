@@ -787,15 +787,6 @@ const SCENARIOS = [
     },
   },
   {
-    name: 'starting-boon',
-    fn: (c, assert) => {
-      c.boon('lucky');
-      const s = c.start();
-      assert(s.perks.length === 1 && s.perks[0].id === 'lucky', 'the run begins with the boon perk');
-      assert(s.mods.rollMult === 1.18, 'the boon effect is live from the first frame');
-    },
-  },
-  {
     name: 'perk-overdrive',
     fn: (c, assert) => {
       c.start({ magnetR: 0 });
@@ -971,12 +962,13 @@ const SCENARIOS = [
     name: 'perk-pillow-cushion',
     fn: (c, assert) => {
       // Pillow Stack is a one-shot cushion grant — it stacks on a bought Cushion.
-      c.boon('pillow');
-      let s = c.start();
-      assert(s.perks.length === 1 && s.perks[0].id === 'pillow', 'the boon perk is drafted at run start');
-      assert(s.shields === 1, 'Pillow Stack begins the run with a cushion');
+      c.start();
+      let s = c.perk('pillow');
+      assert(s.perks.length === 1 && s.perks[0].id === 'pillow', 'the drafted perk shows up in the run');
+      assert(s.shields === 1, 'Pillow Stack grants a cushion when drafted');
       c.fund(1000); c.buy('shield');            // +1 permanent cushion
       s = c.start();
+      s = c.perk('pillow');
       assert(s.shields === 2, 'Pillow adds its cushion on top of the bought Cushion');
     },
   },
@@ -1007,12 +999,12 @@ const SCENARIOS = [
     },
   },
   {
-    name: 'daily-ignores-perks-and-boon',
+    name: 'daily-ignores-perks-and-unlocks',
     fn: (c, assert) => {
-      c.boon('lucky'); c.fund(9999); c.buyMeta('unlock:doubledown');
+      c.fund(9999); c.buyMeta('unlock:doubledown');
       const s = c.startDaily();
       assert(s.daily === true, 'a daily run is flagged');
-      assert(s.perks.length === 0, 'daily ignores the starting boon');
+      assert(s.perks.length === 0, 'daily starts with no drafted perks');
       assert(s.mods.rollMult === 1, 'no perk mods at a daily start');
       assert(!s.meta.eligible.includes('doubledown'), 'daily drafts the default pool, not meta unlocks');
       assert(s.meta.eligible.length === 7, 'daily pool is the seven-perk default');

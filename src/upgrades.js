@@ -91,7 +91,7 @@ export function effects() {
   };
 }
 
-/* ----- roguelite META layer: perk-pool unlocks, charges, boon ----- */
+/* ----- roguelite META layer: perk-pool unlocks, charges ----- */
 
 // Perks draftable for free, without buying an unlock.
 export const DEFAULT_POOL = ['tailwind', 'vacuum', 'lucky', 'hops', 'pillow', 'daredevil', 'memory'];
