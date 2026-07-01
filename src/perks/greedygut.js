@@ -1,6 +1,6 @@
 // 🤑 Greedy Gut — a bulging burlap coin sack cinched at the hip, heavy with loot.
-// Reference template for a perk-gear prop: default-export an object with
-//   id     — the perk id (must match perks.js); also its key in PERK_GEAR.
+// Worn-gear members (the full perk-file template is ./_example.js):
+//   id     — the perk id; also the key for its worn prop (see player.js).
 //   build()        → a THREE.Object3D, already positioned/oriented on the body.
 //                    Built once, hidden; the game shows it when the perk is drafted.
 //   scale(stacks)  → optional scalar so more stacks read a touch bigger. Keep it
@@ -17,6 +17,9 @@ const COIN = 0xffcf45;   // gold
 
 export default {
   id: 'greedygut',
+  icon: '🤑', name: 'Greedy Gut', desc: '+60% rolls, but +25% hazards.',
+  rarity: 'curse', weight: 30, stack: 2, order: 100,
+  apply: (m) => { m.rollSpawnMult *= 1.6; m.obstacleMult *= 1.25; },
   build() {
     const g = new THREE.Group();
     const sackM = toon(SACK), tieM = toon(TIE), coinM = toon(COIN, { flat: true });

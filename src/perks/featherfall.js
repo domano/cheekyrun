@@ -1,6 +1,6 @@
 // 🪶 Featherfall — a fluffy plume tucked beside the left ear, swaying as you float.
-// Reference template for a perk-gear prop: default-export an object with
-//   id     — the perk id (must match perks.js); also its key in PERK_GEAR.
+// Worn-gear members (the full perk-file template is ./_example.js):
+//   id     — the perk id; also the key for its worn prop (see player.js).
 //   build()        → a THREE.Object3D, already positioned/oriented on the body.
 //                    Built once, hidden; the game shows it when the perk is drafted.
 //   scale(stacks)  → optional scalar so more stacks read a touch bigger. Keep it
@@ -16,6 +16,9 @@ const QUILL = 0xbfe3ff;  // pale-blue quill spine
 
 export default {
   id: 'featherfall',
+  icon: '🪶', name: 'Featherfall', desc: 'Hang in the air longer.',
+  rarity: 'epic', weight: 22, stack: 1, order: 110,
+  apply: (m) => { m.floatMult *= 0.5; },
   build() {
     const g = new THREE.Group();
     const plumeM = toon(PLUME), quillM = toon(QUILL, { flat: true });

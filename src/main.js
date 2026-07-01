@@ -370,9 +370,6 @@ function spawnScenery() {
 // Run mods = drafted perks, then permanent upgrade contributions folded on top
 // (skipped in a daily, which runs meta-free so everyone competes evenly).
 function recomputeRunMods() { mods = applyPerks(perks); if (!daily) foldUpgradeMods(mods); }
-// Which drafted perk wears which cosmetic prop. The magnet/spring/clover used to
-// be permanent upgrades; they're perks now, so the gear follows the live draft.
-const PERK_GEAR = { vacuum: 'magnet', hops: 'spring', lucky: 'fortune' };
 // Worn props = the permanent upgrades you own (Cushion, Head Start; none in a
 // daily — it's gear-free) plus the per-run perks that map onto a prop, sized by
 // stacks. Rebuilt whenever ownership or the draft changes.
@@ -383,10 +380,9 @@ function wornGear() {
   // Head Start. Skipped in a daily (meta-free). The Cushion is a liveGear prop,
   // so applyGear ignores this entry and the live shield count drives it instead.
   if (!daily) for (const u of UPGRADES) { const l = tierOf(u.id); if (l) t[u.id] = l; }
-  // Drafted perks each wear a prop: the legacy three map onto magnet/spring/
-  // clover (PERK_GEAR); every other perk keys onto its own id (its file in
-  // src/perkgear/<id>.js). Sized by stack count.
-  for (const p of perks) { const g = PERK_GEAR[p.id] || p.id; t[g] = p.stacks; }
+  // Drafted perks each wear a prop keyed by their own id (its file in
+  // src/perks/<id>.js). Sized by stack count.
+  for (const p of perks) t[p.id] = p.stacks;
   return t;
 }
 function refreshGear() { gearTiers = wornGear(); applyGear(gear, gearTiers); }
@@ -1195,10 +1191,9 @@ function buildDebugApi() {
       player: { x: +player.position.x.toFixed(3), groundY: +groundY.toFixed(3), vy: +vy.toFixed(2), grounded, ducking: duckTimer > 0 },
       airTimer: +airTimer.toFixed(2), airPeak: +airPeak.toFixed(2),
       gearTiers, auraVisible: !!(aura && aura.visible), fartCount,
-      // shield/headstart (and any other folder-driven props) come from the _defs spread;
-      // spring/magnet/fortune are the inline perk gear. shieldPips reports the
-      // live pip count on the Cushion bubble.
-      gearVisible: gear ? { spring: gear.spring.visible, magnet: gear.magnet.visible, fortune: gear.fortune.visible, shieldPips: gear.shield.userData.pips.filter(p => p.visible).length,
+      // every folder-driven prop (perks + shop upgrades, keyed by id) comes from
+      // the _defs spread. shieldPips reports the live pip count on the Cushion bubble.
+      gearVisible: gear ? { shieldPips: gear.shield.userData.pips.filter(p => p.visible).length,
         ...Object.fromEntries((gear._defs || []).map(d => [d.id, gear[d.id].visible])) } : {},
       counts: { obstacles: obstacles.length, rolls: rolls.length, airRolls: rolls.filter(r => r.userData.h).length, airRollMaxH: +rolls.reduce((m, r) => Math.max(m, r.userData.h || 0), 0).toFixed(2), tallObstacles: obstacles.filter(o => o.userData.tall).length, pickups: pickups.length, scenery: scenery.length, finish: finishLine ? 1 : 0,
         cheerers: finishLine && finishLine.userData.crowd ? finishLine.userData.crowd.userData.fans.length : 0 },

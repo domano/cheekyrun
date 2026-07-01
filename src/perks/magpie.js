@@ -1,6 +1,6 @@
 // 🐦 Magpie — a tiny perched magpie on the right ear tip, head-bobbing as it rides.
-// Reference template for a perk-gear prop: default-export an object with
-//   id     — the perk id (must match perks.js); also its key in PERK_GEAR.
+// Worn-gear members (the full perk-file template is ./_example.js):
+//   id     — the perk id; also the key for its worn prop (see player.js).
 //   build()        → a THREE.Object3D, already positioned/oriented on the body.
 //                    Built once, hidden; the game shows it when the perk is drafted.
 //   scale(stacks)  → optional scalar so more stacks read a touch bigger. Keep it
@@ -18,6 +18,11 @@ const EYE = 0xffffff;    // single white dot eye
 
 export default {
   id: 'magpie',
+  icon: '🐦', name: 'Magpie', desc: 'Each roll grabbed: +1% value, up to +150%.',
+  rarity: 'epic', weight: 20, stack: 1, order: 170,
+  // A keystone greed build: every roll you bank makes the next ones worth more
+  // (up to +150%), so a long, clean harvest snowballs.
+  apply: (m) => { m.greedScale += 0.01; },
   build() {
     const g = new THREE.Group();
     const bodyM = toon(BODY), bellyM = toon(BELLY), beakM = toon(BEAK, { flat: true }), eyeM = toon(EYE, { flat: true });

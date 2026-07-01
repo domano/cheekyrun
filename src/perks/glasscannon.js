@@ -1,6 +1,6 @@
 // 🥃 Glass Cannon — a little amber shot glass balanced at the left hip, trembling.
-// Reference template for a perk-gear prop: default-export an object with
-//   id     — the perk id (must match perks.js); also its key in PERK_GEAR.
+// Worn-gear members (the full perk-file template is ./_example.js):
+//   id     — the perk id; also the key for its worn prop (see player.js).
 //   build()        → a THREE.Object3D, already positioned/oriented on the body.
 //                    Built once, hidden; the game shows it when the perk is drafted.
 //   scale(stacks)  → optional scalar so more stacks read a touch bigger. Keep it
@@ -17,6 +17,9 @@ const HILITE = 0xfff3d6;  // bright rim highlight, near-white amber
 
 export default {
   id: 'glasscannon',
+  icon: '🥃', name: 'Glass Cannon', desc: '2× rolls, but no cushions & more hazards.',
+  rarity: 'curse', weight: 30, stack: 1, order: 90,
+  apply: (m) => { m.rollX *= 2; m.obstacleMult *= 1.25; m.noShields = true; },
   build() {
     const g = new THREE.Group();
     // short tapered shot glass, translucent amber — no ink, it's glass

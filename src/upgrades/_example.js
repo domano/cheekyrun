@@ -13,7 +13,7 @@
 //         ./headstart.js).
 //   • the worn 3D prop — build()/scale()/tick(): read by player.js, shown on the
 //                       butt-with-ears character while any tier is owned, sized
-//                       by owned tier. Same contract as src/perkgear/*.js. Set
+//                       by owned tier. Same contract as src/perks/*.js. Set
 //                       `liveGear: true` if the game loop drives its reveal itself
 //                       (like the Cushion bubble tracking the live shield count).
 //
@@ -51,7 +51,7 @@ export default {
   // (>= 1). Multiply/accumulate onto existing knobs — see perks.js freshMods().
   mods: (tier, m) => { m.rollMult *= 1 + 0.04 * tier; },
 
-  // ---- worn 3D prop (identical contract to src/perkgear/*.js) ----
+  // ---- worn 3D prop (identical contract to src/perks/*.js) ----
   build() {
     const g = new THREE.Group();
     const bead = new THREE.Mesh(new THREE.SphereGeometry(0.12, 14, 14), toon(0xffd23f));

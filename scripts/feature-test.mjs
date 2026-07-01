@@ -393,7 +393,7 @@ const SCENARIOS = [
       assert(s.gearVisible.shield === true, 'the shield bubble is worn');
       assert(s.gearVisible.headstart === true, 'the rocket is worn');
       // the reframed upgrades are perks now: their props stay off until drafted.
-      assert(s.gearVisible.magnet === false && s.gearVisible.spring === false && s.gearVisible.fortune === false, 'undrafted perk gear is hidden');
+      assert(s.gearVisible.vacuum === false && s.gearVisible.hops === false && s.gearVisible.lucky === false, 'undrafted perk gear is hidden');
       // ...and the shield's tier shows as orbiting pips, one per tier, not bulk.
       assert(s.gearVisible.shieldPips === 2, 'a tier-2 Cushion shows two tier pips');
     },
@@ -421,40 +421,36 @@ const SCENARIOS = [
     name: 'perk-gear',
     fn: (c, assert) => {
       c.start();
-      assert(c.state().gearVisible.magnet === false, 'no magnet before drafting Vacuum');
+      assert(c.state().gearVisible.vacuum === false, 'no magnet before drafting Vacuum');
       let s = c.perk('vacuum');                    // 🧲 Vacuum → magnet prop
-      assert(s.gearVisible.magnet === true, 'drafting Vacuum wears the magnet');
+      assert(s.gearVisible.vacuum === true, 'drafting Vacuum wears the magnet');
       s = c.perk('hops');                          // 🦿 Hops → springs prop
-      assert(s.gearVisible.spring === true, 'drafting Hops wears the springs');
+      assert(s.gearVisible.hops === true, 'drafting Hops wears the springs');
       s = c.perk('lucky');                         // 🍀 Lucky → clover prop
-      assert(s.gearVisible.fortune === true, 'drafting Lucky wears the clover');
+      assert(s.gearVisible.lucky === true, 'drafting Lucky wears the clover');
       // a fresh run drops the worn perk gear (perks are per-run, not banked).
       const f = c.start();
-      assert(f.gearVisible.magnet === false && f.gearVisible.spring === false && f.gearVisible.fortune === false, 'perk gear resets each run');
+      assert(f.gearVisible.vacuum === false && f.gearVisible.hops === false && f.gearVisible.lucky === false, 'perk gear resets each run');
     },
   },
   {
-    // Completeness gate: every perk wears a visible 3D prop. The legacy three map
-    // onto magnet/spring/clover; every other perk keys onto a prop in its own
-    // file (src/perkgear/<id>.js). Goes fully green once each perk has a model.
+    // Completeness gate: every perk wears a visible 3D prop keyed by its own id
+    // (its file in src/perks/<id>.js). Goes fully green once each perk has a model.
     name: 'perk-gear-models',
     fn: (c, assert) => {
-      const MAP = {
-        vacuum: 'magnet', hops: 'spring', lucky: 'fortune',
-        tailwind: 'tailwind', memory: 'memory', pillow: 'pillow', daredevil: 'daredevil',
-        doubledown: 'doubledown', glasscannon: 'glasscannon', greedygut: 'greedygut',
-        featherfall: 'featherfall', secondwind: 'secondwind', overdrive: 'overdrive',
-        hotstreak: 'hotstreak', featherweight: 'featherweight', perfectionist: 'perfectionist',
-        magpie: 'magpie', allin: 'allin',
-      };
+      const IDS = [
+        'tailwind', 'vacuum', 'lucky', 'hops', 'memory', 'pillow', 'daredevil',
+        'doubledown', 'glasscannon', 'greedygut', 'featherfall', 'secondwind',
+        'overdrive', 'hotstreak', 'featherweight', 'perfectionist', 'magpie', 'allin',
+      ];
       c.start();
-      for (const id in MAP) {
+      for (const id of IDS) {
         const s = c.perk(id);
-        assert(s.gearVisible[MAP[id]] === true, `drafting ${id} wears its ${MAP[id]} prop`);
+        assert(s.gearVisible[id] === true, `drafting ${id} wears its prop`);
       }
       const f = c.start();   // perks are per-run: a fresh run strips every prop off
-      for (const id in MAP) {
-        assert(f.gearVisible[MAP[id]] === false, `${id}'s prop is gone on a fresh run`);
+      for (const id of IDS) {
+        assert(f.gearVisible[id] === false, `${id}'s prop is gone on a fresh run`);
       }
     },
   },

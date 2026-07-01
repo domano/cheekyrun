@@ -1,7 +1,7 @@
 // 🎯 Perfectionist — a bullseye target badge pinned on the left cheek, pulsing
 // gently as if proud of every clean near-miss.
-// Reference template for a perk-gear prop: default-export an object with
-//   id     — the perk id (must match perks.js); also its key in PERK_GEAR.
+// Worn-gear members (the full perk-file template is ./_example.js):
+//   id     — the perk id; also the key for its worn prop (see player.js).
 //   build()        → a THREE.Object3D, already positioned/oriented on the body.
 //                    Built once, hidden; the game shows it when the perk is drafted.
 //   scale(stacks)  → optional scalar so more stacks read a touch bigger. Keep it
@@ -18,6 +18,11 @@ const DART = 0x6b6f76; // dull metal dart body
 
 export default {
   id: 'perfectionist',
+  icon: '🎯', name: 'Perfectionist', desc: 'Near-misses pay 3×, but rolls give no combo.',
+  rarity: 'epic', weight: 20, stack: 1, order: 160,
+  // A keystone dodge build: rolls no longer feed the combo, so the only way to
+  // keep a streak alive is to thread obstacles — and those near-misses pay triple.
+  apply: (m) => { m.nearMissMult *= 3; m.rollsNoCombo = true; },
   build() {
     const g = new THREE.Group();
     const redM = toon(RED, { flat: true });

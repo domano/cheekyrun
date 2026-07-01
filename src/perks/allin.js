@@ -12,6 +12,11 @@ const PIP = 0x2a2a33;
 
 export default {
   id: 'allin',
+  icon: '🎰', name: 'All In', desc: '3× rolls, but no cushions & much more danger.',
+  rarity: 'curse', weight: 22, stack: 1, order: 180,
+  // A keystone high-roller curse: triple roll value, but you run bare (no
+  // cushions) through a denser hazard field — pure score, no safety net.
+  apply: (m) => { m.rollX *= 3; m.noShields = true; m.obstacleMult *= 1.4; },
   build() {
     const g = new THREE.Group();
 

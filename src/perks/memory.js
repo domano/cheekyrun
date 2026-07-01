@@ -1,6 +1,6 @@
 // 🧠 Long Memory — a lavender brain-bun haloed by a soft glowing ring,
 // hovering just above the head. Reference template: overdrive.js.
-//   id     — the perk id (must match perks.js); also its key in PERK_GEAR.
+//   id     — the perk id; also the key for its worn prop (see player.js).
 //   build()        → a THREE.Object3D, already positioned/oriented on the body.
 //                    Built once, hidden; the game shows it when the perk is drafted.
 //   scale(stacks)  → optional scalar so more stacks read a touch bigger. Keep it
@@ -17,6 +17,9 @@ const HALO = 0xf4d873;      // gold glow ring
 
 export default {
   id: 'memory',
+  icon: '🧠', name: 'Long Memory', desc: 'Combo lasts 40% longer.',
+  rarity: 'rare', weight: 50, stack: 2, order: 50,
+  apply: (m) => { m.comboWindowMult *= 1.4; },
   build() {
     const g = new THREE.Group();
     const brainM = toon(BRAIN);
