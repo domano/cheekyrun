@@ -138,6 +138,31 @@ export const POWERUP_CHANCE = 0.06;    // chance on an eligible (off-cooldown) r
 export const POWERUP_MIN_DIFF = 0.12;  // only after a short warm-up
 export const POWERUP_COOLDOWN = 14;    // rows guaranteed between power-up spawns
 
+// Butt Slam perk: an air-duck arms a slam; landing armed smashes the nearest
+// ground jump-hazard ahead in your lane (duck bars and full-width gates resist).
+export const SLAM_RANGE = 7;        // z-window ahead of the player a slam can reach
+export const SLAM_BONUS = 12;       // base slam bonus, scaled by the live combo mult
+export const SLAM_INVULN = 0.25;    // brief invuln after an armed landing
+
+// Coil Spring perk: a grounded duck compresses a spring; a grounded jump inside
+// the window launches a mega-hop. COIL_VY 12.5 peaks ~3.4 (v²/2g, g=23) — well
+// over a tall wall's 2.1 clear height, where a normal hop (9.4) peaks ~1.9.
+export const COIL_WINDOW = 0.4;     // seconds the coil stays compressed after a grounded duck
+export const COIL_VY = 12.5;        // coiled launch velocity (extra jumps still add their +0.5)
+
+// Piggy Bank perk: a share of every roll feeds a vault that only cashes at the
+// finish line — ANY hit (even a cushioned one) forfeits the lot.
+export const BANK_SHARE = 0.6;      // share of each roll's points diverted into the vault
+export const BANK_MULT_STEP = 0.06; // vault multiplier growth per banked grab
+export const BANK_MULT_CAP = 3;     // vault multiplier ceiling
+
+// Blink Step perk: airborne lane-swipes teleport instead of sliding.
+export const BLINK_INVULN = 0.18;   // invuln seconds granted per blink
+
+// Kindling perk: chained near-misses/skims spark bonus rolls onto the road.
+export const KINDLING_WINDOW = 2.2; // seconds between links before the chain fizzles
+export const KINDLING_LINKS = 3;    // links per spark (each extra stack needs one fewer)
+
 // Roguelite draft: a level-up offers a choice of perks. Drafts fire on every
 // DRAFT_EVERY-th level-up (so they feel like an event, not every biome change),
 // showing DRAFT_CHOICES cards to pick one from.

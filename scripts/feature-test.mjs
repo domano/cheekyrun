@@ -442,6 +442,7 @@ const SCENARIOS = [
         'tailwind', 'vacuum', 'lucky', 'hops', 'memory', 'pillow', 'daredevil',
         'doubledown', 'glasscannon', 'greedygut', 'featherfall', 'secondwind',
         'overdrive', 'hotstreak', 'featherweight', 'perfectionist', 'magpie', 'allin',
+        'buttslam', 'coilspring', 'piggybank', 'blinkstep', 'kindling',
       ];
       c.start();
       for (const id of IDS) {
@@ -982,6 +983,128 @@ const SCENARIOS = [
       s = c.start();
       s = c.perk('pillow');
       assert(s.shields === 2, 'Pillow adds its cushion on top of the bought Cushion');
+    },
+  },
+  {
+    name: 'perk-buttslam',
+    fn: (c, assert) => {
+      // Air-duck to arm, land by a cactus → it's smashed, pays out, grants invuln.
+      c.start({ magnetR: 0 }); c.clearField();
+      assert(c.perk('buttslam').mods.slam === true, 'Butt Slam arms the slam mod');
+      assert(c.state().gearVisible.buttslam === true, 'drafting wears the impact-star badge');
+      c.spawn('cactus', 1, -6);
+      c.jump(); c.step(10); c.duck();              // the air-duck arms the slam (and still fast-falls)
+      assert(c.state().slamArmed === true, 'an airborne duck arms the slam');
+      let s = c.step(12);                          // fall + touch down: the slam fires on landing
+      assert(s.player.grounded, 'back on the ground');
+      assert(s.slamArmed === false, 'the slam disarms on landing');
+      assert(s.counts.obstacles === 0, 'the hazard by the landing spot is smashed');
+      assert(s.rollPoints > 0, 'the slam pays a bonus');
+      assert(s.invuln > 0, 'the slam grants a beat of invuln');
+      // negative control: a duck-bar is slam-proof (and pays nothing).
+      c.start({ magnetR: 0 }); c.clearField(); c.perk('buttslam');
+      c.spawn('bar', 1, -6);
+      c.jump(); c.step(10); c.duck();
+      s = c.step(12);
+      assert(s.player.grounded && s.slamArmed === false, 'the armed landing still disarms');
+      assert(s.counts.obstacles === 1, 'a duck-bar is not smashed by a slam');
+      assert(s.rollPoints === 0, 'no slam bonus without a smashable target');
+    },
+  },
+  {
+    name: 'perk-coilspring',
+    fn: (c, assert) => {
+      // Duck, then jump inside the window → a mega-hop that peaks over tall walls.
+      c.start({ magnetR: 0 }); c.clearField();
+      assert(c.perk('coilspring').mods.coil === true, 'Coil Spring arms the coil mod');
+      c.duck();
+      assert(c.state().coilT > 0, 'a grounded duck compresses the coil');
+      c.step(6); c.jump();                         // ~0.1s later — inside the 0.4s window
+      assert(c.state().coilT === 0, 'the coiled jump consumes the window');
+      let peak = 0;
+      for (let i = 0; i < 26; i++) peak = Math.max(peak, c.step(2).player.groundY);   // sample across the whole arc
+      assert(peak > 2.8, `a coiled hop peaks over tall walls (peak ${peak})`);
+      // negative control: the window lapses — a late jump is a normal hop.
+      c.start({ magnetR: 0 }); c.clearField(); c.perk('coilspring');
+      c.duck(); c.step(28);                        // ~0.47s — past the window
+      assert(c.state().coilT === 0, 'the coil window lapses');
+      c.jump();
+      let peak2 = 0;
+      for (let i = 0; i < 26; i++) peak2 = Math.max(peak2, c.step(2).player.groundY);
+      assert(peak2 < 2.2, `a jump after the window is a normal hop (peak ${peak2})`);
+    },
+  },
+  {
+    name: 'perk-piggybank',
+    fn: (c, assert) => {
+      // A share of every roll feeds the vault; the finish line cashes it out.
+      c.start({ magnetR: 0 }); c.clearField();
+      assert(c.perk('piggybank').mods.bankShare === 0.6, 'Piggy Bank diverts a 0.6 share of rolls');
+      c.spawn('roll', 1, -4);
+      let s = c.step(40);
+      assert(s.rollCount === 1, 'the roll is grabbed');
+      assert(s.bank === Math.round(15 * 0.6), 'the share lands in the vault, not the score');
+      assert(s.rollPoints === 15 - s.bank, 'the rest still pays out live');
+      assert(s.bankMult > 1, 'each banked grab nudges the vault multiplier');
+      const kept = s.rollPoints, payout = Math.round(s.bank * s.bankMult);
+      c.forceFinish();
+      for (let i = 0; i < 40; i++) { s = c.step(6); if (s.level === 2) break; }
+      assert(s.level === 2, 'crossed the finish line');
+      assert(s.bank === 0 && s.bankMult === 1, 'the vault cashes and resets at the line');
+      assert(s.rollPoints === kept + payout, 'the multiplied payout lands in roll points');
+      // any hit — even a cushioned one — forfeits the vault.
+      c.start({ magnetR: 0 }); c.clearField(); c.perk('piggybank'); c.set({ shields: 1 });
+      c.spawn('roll', 1, -4);
+      s = c.step(40);
+      assert(s.bank > 0, 'the vault is stocked again');
+      c.spawn('cactus', 1, -4);
+      s = c.step(40);
+      assert(s.state === 'playing' && s.shields === 0, 'the cushion absorbed the hit');
+      assert(s.bank === 0 && s.bankMult === 1, 'a shielded hit still forfeits the vault');
+    },
+  },
+  {
+    name: 'perk-blinkstep',
+    fn: (c, assert) => {
+      // Airborne swipes teleport with a flash of invuln; grounded ones still ease.
+      c.start({ magnetR: 0 }); c.clearField();
+      assert(c.perk('blinkstep').mods.airDash === true, 'Blink Step arms the air-dash mod');
+      c.jump(); c.step(3); c.left();
+      let s = c.state();
+      assert(s.player.x === -2.2, 'an airborne swipe teleports straight to the lane');
+      assert(s.invuln > 0, 'the blink grants a flash of invuln');
+      // negative control: a grounded swipe is the normal eased slide, no invuln.
+      c.start({ magnetR: 0 }); c.clearField(); c.perk('blinkstep');
+      c.right(); s = c.state();
+      assert(s.player.x < 2.2, 'a grounded swipe does not teleport');
+      assert(s.invuln === 0, 'no invuln on a grounded swipe');
+      s = c.step(60);
+      assert(s.player.x === 2.2, 'the grounded slide still settles normally');
+    },
+  },
+  {
+    name: 'perk-kindling',
+    fn: (c, assert) => {
+      // Every 3rd chained near-miss sparks a bonus roll onto the road ahead.
+      c.start({ magnetR: 0 }); c.set({ stageStart: -1e9, stageLen: 1e9 }); c.clearField();   // breather: no auto-spawns
+      assert(c.perk('kindling').mods.kindling === 1, 'Kindling arms the spark chain');
+      // one link: hop a close-in cactus (near-miss at ~0.25s), land by 1s
+      const link = () => { c.spawn('cactus', 1, -3); c.jump(); c.step(60); };
+      link(); link();
+      let s = c.state();
+      assert(s.sparkChain === 2, 'two near-misses build the chain');
+      assert(s.counts.rolls === 0, 'no spark before the 3rd link');
+      link();
+      s = c.state();
+      assert(s.sparkChain === 3, 'the chain keeps counting');
+      assert(s.counts.rolls === 1, 'the 3rd link sparks a bonus roll onto the road');
+      // negative control: the window lapses and the chain fizzles.
+      c.clearField(); c.step(150);                 // 2.5s idle — past the 2.2s window
+      assert(c.state().sparkChain === 0, 'the chain resets when the window lapses');
+      // stacking: a 2nd stack needs one fewer link per spark.
+      assert(c.perk('kindling').mods.kindling === 2, 'a second stack deepens the kindling');
+      link(); link();
+      assert(c.state().counts.rolls === 1, 'with 2 stacks every 2nd link sparks');
     },
   },
   {

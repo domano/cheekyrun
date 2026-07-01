@@ -70,6 +70,7 @@ canvas{display:block}
 #pauseBtn:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--ink)}
 #pauseBtn.hide{display:none}
 #rollpill #shieldHud{display:inline-flex;align-items:center;gap:3px;margin-right:6px}
+#rollpill #bankHud{display:inline-flex;align-items:center;gap:3px;margin-right:6px;color:#e2578f}   /* Piggy vault: the projected cash-out */
 #rollpill #phoenixHud{display:inline-flex;align-items:center;margin-right:6px;animation:phoenixpulse 1s ease-in-out infinite}
 @keyframes phoenixpulse{0%,100%{transform:scale(1);filter:none}50%{transform:scale(1.28);filter:drop-shadow(0 0 4px #ff9a3a)}}
 @media (prefers-reduced-motion:reduce){#rollpill #phoenixHud{animation:none}}

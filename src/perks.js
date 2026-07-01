@@ -22,6 +22,11 @@ export function freshMods() {
     comboCeil: 0,
     rollsNoCombo: false,   // Perfectionist: rolls stop feeding the combo (near-misses must)
     greedScale: 0,         // Magpie: roll value escalates per roll already grabbed this run
+    slam: false,           // Butt Slam: an air-duck arms a hazard-smashing landing
+    coil: false,           // Coil Spring: a grounded duck arms a mega-hop jump window
+    bankShare: 0,          // Piggy Bank: share of each roll diverted into the run vault
+    airDash: false,        // Blink Step: airborne lane-swipes teleport (with a flash of invuln)
+    kindling: 0,           // Kindling: spark-chain stacks (more = fewer near-miss links per spark)
   };
 }
 

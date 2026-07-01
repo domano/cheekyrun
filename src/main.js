@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { LANES, SPAWN_Z, DESPAWN_Z, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE_RAMP, GATE_COOLDOWN, COMBO_WINDOW, comboMult, NEARMISS_MARGIN, NEARMISS_BONUS, SKIM_MARGIN, SKIM_BONUS, SKIM_WINDOW, SAFE_HAZARD_MIN_DIFF, SAFE_HAZARD_CHANCE, TALL_CLEAR_H, TALL_CLEAR_PER_JUMP, TALL_MIN_DIFF, TALL_CHANCE, ROLL_GRAB_H, AIR_ARC_MIN_DIFF, AIR_ARC_CHANCE, AIR_ARC_TALL_CHANCE, AIR_ARC_TALL_PEAK, AIR_MIN_H, AIR_BASE, AIR_POINTS, AIR_PEAK_CAP, JUMP_BUFFER, HITSTOP_SHIELD, HITSTOP_DEATH, SLOWMO_FACTOR, SLOWMO_TIME, SLOWMO_MIN_MULT, SLOWMO_TIGHT_MARGIN, SLOWMO_TIGHT_TIME, DIFF_RAMP, ROW_MIN_GAP, COMBO_DECAY_STEP, COMBO_STEP, SCORE_FLOW_RATE, HEAT_PER_LEVEL, HEAT_LEVEL_CAP, HEAT_MAX, PHOENIX_COMBO, PHOENIX_INVULN, GREED_CAP, RING_TIME, POWERUP_DURATION, POWERUP_CHANCE, POWERUP_MIN_DIFF, POWERUP_COOLDOWN, DRAFT_EVERY, DRAFT_CHOICES, DRAFT_ARM, DRAFT_GRACE, mulberry32, dailyKey, dailySeed, $, buzz, shuffle } from './config.js';
+import { LANES, SPAWN_Z, DESPAWN_Z, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE_RAMP, GATE_COOLDOWN, COMBO_WINDOW, comboMult, NEARMISS_MARGIN, NEARMISS_BONUS, SKIM_MARGIN, SKIM_BONUS, SKIM_WINDOW, SAFE_HAZARD_MIN_DIFF, SAFE_HAZARD_CHANCE, TALL_CLEAR_H, TALL_CLEAR_PER_JUMP, TALL_MIN_DIFF, TALL_CHANCE, ROLL_GRAB_H, AIR_ARC_MIN_DIFF, AIR_ARC_CHANCE, AIR_ARC_TALL_CHANCE, AIR_ARC_TALL_PEAK, AIR_MIN_H, AIR_BASE, AIR_POINTS, AIR_PEAK_CAP, JUMP_BUFFER, HITSTOP_SHIELD, HITSTOP_DEATH, SLOWMO_FACTOR, SLOWMO_TIME, SLOWMO_MIN_MULT, SLOWMO_TIGHT_MARGIN, SLOWMO_TIGHT_TIME, DIFF_RAMP, ROW_MIN_GAP, COMBO_DECAY_STEP, COMBO_STEP, SCORE_FLOW_RATE, HEAT_PER_LEVEL, HEAT_LEVEL_CAP, HEAT_MAX, PHOENIX_COMBO, PHOENIX_INVULN, GREED_CAP, RING_TIME, POWERUP_DURATION, POWERUP_CHANCE, POWERUP_MIN_DIFF, POWERUP_COOLDOWN, DRAFT_EVERY, DRAFT_CHOICES, DRAFT_ARM, DRAFT_GRACE, SLAM_RANGE, SLAM_BONUS, SLAM_INVULN, COIL_WINDOW, COIL_VY, BANK_MULT_STEP, BANK_MULT_CAP, BLINK_INVULN, KINDLING_WINDOW, KINDLING_LINKS, mulberry32, dailyKey, dailySeed, $, buzz, shuffle } from './config.js';
 import { makeGradient, toon, glow, rampShadow } from './materials.js';
 import { makeObstacle, makeHurdle, makeGate, makeRoll, makePowerup, makeBoostPickup, makeScenery, makeCloud, makeFinishLine, makeCheerCrowd, tickCheerCrowd, OBSTACLE_KINDS } from './props.js';
 import { BOOSTS, boostById, eligibleBoosts, drawBoost } from './boosts.js';
@@ -77,6 +77,10 @@ let lastRun = null;
 // Roguelite draft: perks[] picked this run ({id,stacks}); mods derives the run
 // modifiers from them; levelUps counts level-up events to time the every-2nd draft.
 let perks = [], mods = freshMods(), levelUps = 0, draftCards = [], draftArm = 0;
+// Perk run-state: Butt Slam's armed flag, Coil Spring's compressed window,
+// Piggy Bank's vault (+ its cash-out multiplier), Kindling's spark chain
+// (link count + the rolling window keeping it alive).
+let slamArmed = false, coilT = 0, bank = 0, bankMult = 1, sparkChain = 0, sparkT = 0;
 
 // Biome colour tween state — current values lerp toward the target each frame.
 const bCur = { fog: new THREE.Color(), ground: new THREE.Color(), path: new THREE.Color(), disc: new THREE.Color(), hills: [new THREE.Color(), new THREE.Color(), new THREE.Color()] };
@@ -507,9 +511,10 @@ function resetGame() {
   peakSpeed = speed; tightestGap = Infinity;
   scoreHeat = 0;
   phoenix = false; phoenixUsed = false; ringT = 0; camKick = 0;
+  slamArmed = false; coilT = 0; bank = 0; bankMult = 1; sparkChain = 0; sparkT = 0;
   player.position.set(0, 0, 0); player.rotation.set(0, 0, 0); player.scale.set(1, 1, 1);
   applySkin(playerMats, selectedSkin());
-  refreshGear(); fartCount = 0; updatePowerVisual(); renderPerkTray();
+  refreshGear(); fartCount = 0; updatePowerVisual(); renderPerkTray(); updateBankHud();
   applyBiome(level, true);
 }
 function startGame(isDaily = false) {
@@ -518,7 +523,7 @@ function startGame(isDaily = false) {
   resetGame(); state = 'playing';
   $('overlay').classList.add('hide'); $('gameover').classList.add('hide'); $('hud').classList.remove('hide');
   $('pause').classList.add('hide'); $('pauseBtn').classList.remove('hide'); $('pauseBtn').textContent = '⏸️';
-  updateHud(); updateLevelHud(); updateShieldHud(); updateComboHud(false); updatePowerHud(); updatePhoenixHud();
+  updateHud(); updateLevelHud(); updateShieldHud(); updateComboHud(false); updatePowerHud(); updatePhoenixHud(); updateBankHud();
   const streak = daily ? getDailyStreak(dailyDay) : 0;
   showBanner(daily ? (streak > 1 ? `📅 Daily · 🔥 ${streak}-day streak` : '📅 Daily Challenge') : `Lvl ${level} · ${biomeOf(level).name}`);
 }
@@ -601,6 +606,29 @@ function updateShieldGear() {
 }
 // The armed-Phoenix badge: a pulsing flame that shows you've banked a save.
 function updatePhoenixHud() { $('phoenixHud').classList.toggle('hide', !phoenix); }
+// The Piggy Bank vault chip: the live projected payout, shown only while the
+// perk is held and the vault is stocked.
+function updateBankHud() {
+  const box = $('bankHud');
+  if (mods.bankShare > 0 && bank > 0) { box.classList.remove('hide'); $('bank').textContent = Math.round(bank * bankMult); }
+  else box.classList.add('hide');
+}
+// Piggy Bank: crossing the finish line with a stocked vault cashes it out,
+// multiplier and all — the celebratory payoff for a clean stage.
+function cashBank() {
+  const payout = Math.round(bank * bankMult);
+  bank = 0; bankMult = 1; updateBankHud();
+  if (payout <= 0) return;
+  rollPoints += payout; popScore(payout, 1, false); updateHud();
+  showBanner(`🐷 Vault cashed +${payout}!`); sfxFanfare(); buzz([10, 30, 10]);
+  particles.emit(player.position.clone().add(new THREE.Vector3(0, 1.0, 0)), { count: 18, color: 0xffd23f, speed: 4, up: 5, life: .8, grav: 8 });
+}
+// Piggy Bank: ANY hit — even a cushioned or Phoenix-saved one — dumps the vault.
+function forfeitBank(quiet) {
+  if (bank <= 0 && bankMult === 1) return;
+  if (!quiet && bank > 0) showBanner('🐷💨 Vault lost!');
+  bank = 0; bankMult = 1; updateBankHud();
+}
 // Earn the once-per-run save when a streak gets hot enough; celebrate the arm.
 function armPhoenix() {
   phoenix = true; updatePhoenixHud();
@@ -630,7 +658,19 @@ function updateComboBar() { if (combo >= 2) { const w = COMBO_WINDOW * mods.comb
 // Combo: bump on a roll/near-miss, refresh the window, and pulse the HUD chip.
 let comboHideT;
 function bumpCombo() { clearTimeout(comboHideT); $('comboHud').classList.remove('lose'); combo++; comboTimer = COMBO_WINDOW * mods.comboWindowMult; comboMax = Math.max(comboMax, combo); updateComboHud(true); }
+// Kindling: chained near-misses/skims build a spark chain; every needed-th link
+// flings a bonus roll onto the open lane at the horizon (a normal roll — magnet
+// and grab treat it like any other). Extra stacks shorten the chain by a link.
+function sparkLink() {
+  sparkChain++; sparkT = KINDLING_WINDOW;
+  const need = Math.max(1, KINDLING_LINKS - (mods.kindling - 1));
+  if (sparkChain % need) return;
+  const r = makeRoll(); r.position.set(LANES[safeLane], 0.95, SPAWN_Z); r.userData.lx = LANES[safeLane]; scene.add(r); rolls.push(r);
+  particles.emit(player.position.clone().add(new THREE.Vector3(0, 1.1, 0)), { count: 12, color: 0xffb347, speed: 4, up: 3.5, life: .55, grav: 6, size: 0.4 });
+  sfxCoin(combo);
+}
 function breakCombo() {
+  sparkChain = 0; sparkT = 0;   // Kindling: a broken streak douses the spark chain
   if (!combo) return;
   const had = combo >= 2; combo = 0;
   if (!had) { updateComboHud(false); return; }
@@ -658,7 +698,18 @@ function updateComboHud(pulse) {
 }
 
 /* ---------------- controls ---------------- */
-function moveLane(dir) { const n = Math.max(0, Math.min(2, laneIdx + dir)); if (n !== laneIdx) { laneIdx = n; targetX = LANES[laneIdx]; laneChangeT = simTime; buzz(12); sfxLane(); } }
+function moveLane(dir) {
+  const n = Math.max(0, Math.min(2, laneIdx + dir)); if (n === laneIdx) return;
+  laneIdx = n; targetX = LANES[laneIdx]; laneChangeT = simTime; buzz(12); sfxLane();
+  // Blink Step: an airborne swipe teleports — snap straight to the lane (no
+  // eased slide), flash invulnerable, and leave a streak tracing the dash.
+  if (mods.airDash && !grounded && state === 'playing') {
+    const fromX = player.position.x;
+    player.position.x = targetX; invuln = Math.max(invuln, BLINK_INVULN); sfxWhoosh();
+    particles.emit(new THREE.Vector3((fromX + targetX) / 2, player.position.y + 0.6, player.position.z),
+      { count: 9, color: 0xcfe8ff, speed: 3.5, up: 0.3, life: .35, grav: 0, size: 0.45, dir: new THREE.Vector3(dir, 0, 0) });
+  }
+}
 function jump() {
   // A press with no jumps left (e.g. just before touchdown) is buffered, not
   // dropped — updatePlayer fires it the instant you land, so chained hops feel
@@ -667,11 +718,49 @@ function jump() {
   else jumpBufferT = JUMP_BUFFER;
 }
 function doJump() {
-  const dbl = !grounded; if (dbl) usedDouble = true; vy = (grounded ? 9.4 : 8.4) + extraJumps * 0.5; grounded = false; jumpsLeft--; jumpBufferT = 0; squash = -0.32; buzz(15); sfxJump(dbl);
+  const dbl = !grounded; if (dbl) usedDouble = true;
+  // Coil Spring: a grounded jump inside the duck-armed window is a mega-hop —
+  // launch high enough to clear tall walls in one, and consume the coil.
+  const coiled = !dbl && coilT > 0;
+  vy = (dbl ? 8.4 : coiled ? COIL_VY : 9.4) + extraJumps * 0.5;
+  if (coiled) {
+    coilT = 0; sfxWhoosh(); buzz(20);
+    particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.1, 0)), { count: 10, color: 0xffe08a, speed: 2.5, up: 2, life: .5, grav: 7, size: 0.5 });
+  }
+  grounded = false; jumpsLeft--; jumpBufferT = 0; squash = coiled ? -0.5 : -0.32; buzz(15); sfxJump(dbl);
   particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.05, 0.2)), { count: 5, color: 0xeaddc6, speed: 1.6, up: 1.2, life: .4, grav: 6, size: 0.5 });
   fart();
 }
-function duck() { duckTimer = 0.5; buzz(12); sfxDuck(); if (!grounded) vy = Math.min(vy, -3) - 6; fart(); }
+function duck() {
+  duckTimer = 0.5; buzz(12); sfxDuck();
+  if (!grounded) { if (mods.slam) slamArmed = true; vy = Math.min(vy, -3) - 6; }   // air-duck fast-fall; Butt Slam arms on it
+  else if (mods.coil) coilT = COIL_WINDOW;                                         // Coil Spring compresses on a grounded duck
+  fart();
+}
+// Butt Slam: an armed landing smashes the nearest ground jump-hazard in the
+// player's lane within a short window ahead (duck bars and full-width gates are
+// slam-proof) — debris, a shockwave ring, a combo-scaled bonus, a beat of invuln.
+function doSlam() {
+  let best = null, bestZ = -Infinity;
+  for (const o of obstacles) {
+    const sz = o.position.z - player.position.z;
+    if (sz < -SLAM_RANGE || sz > 0.6) continue;                          // the short window ahead
+    if (o.userData.duck || (o.userData.halfW || 0.95) > 1.2) continue;   // duck bars / full-width gates resist
+    if (Math.abs(o.userData.lx - player.position.x) > 0.95) continue;    // your lane only
+    if (sz > bestZ) { bestZ = sz; best = o; }
+  }
+  squash = Math.max(squash, 0.5);
+  if (!best) return;
+  const m = cmult(combo), bonus = Math.round(SLAM_BONUS * m);
+  rollPoints += bonus; popScore(bonus, m, false);
+  invuln = Math.max(invuln, SLAM_INVULN);
+  shakeT = Math.max(shakeT, 0.2); buzz([15, 30, 15]); sfxCrash();
+  hitStopT = reduceMotion ? 0 : HITSTOP_SHIELD;   // the smash lands as a real impact
+  ringT = RING_TIME; fxRing.material.color.setHex(hitColor(best)); fxRing.scale.setScalar(1); fxRing.material.opacity = 0.7;
+  fxRing.position.set(player.position.x, 0.04, player.position.z); fxRing.visible = true;
+  particles.emit(best.position.clone().add(new THREE.Vector3(0, 0.6, 0)), { count: 16, color: hitColor(best), speed: 5, up: 4, life: .6, grav: 10 });
+  scene.remove(best); obstacles.splice(obstacles.indexOf(best), 1);
+}
 // A cheeky little parp — a soft green puff that lingers behind the character on
 // every jump and slide. `fartCount` is a deterministic hook for the tests.
 function fart() {
@@ -748,6 +837,8 @@ function tick(dt) {
   if (state === 'playing') {
     elapsed += sdt;
     invuln = Math.max(0, invuln - sdt);
+    coilT = Math.max(0, coilT - sdt);                                     // Coil Spring window unwinds
+    if (sparkT > 0) { sparkT -= sdt; if (sparkT <= 0) sparkChain = 0; }   // Kindling chain fizzles when its window lapses
     difficulty = Math.min(1, elapsed / DIFF_RAMP);    // warm up over ~90s — a gentler early curve
     // Lean a touch more on the level term and less on raw difficulty, so the
     // first seconds aren't a compound spike and the pace keeps climbing past the
@@ -819,15 +910,15 @@ function moveObstacles(dt) {
       const safe = o.userData.duck ? (duckTimer > 0) : (groundY > (o.userData.clearH || 1.0));
       if (!safe && invuln <= 0) {
         if (shields > 0 && !mods.noShields) {
-          shields--; invuln = 1.1; updateShieldHud(); breakCombo(); flash('#8fd3ff'); buzz(30); sfxShield(shields === 0); shakeT = 0.25;
+          shields--; invuln = 1.1; updateShieldHud(); breakCombo(); forfeitBank(); flash('#8fd3ff'); buzz(30); sfxShield(shields === 0); shakeT = 0.25;
           hitStopT = reduceMotion ? 0 : HITSTOP_SHIELD;   // freeze the beat so the save reads as a real impact
           particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.6, 0)), { count: 14, color: hitColor(o), speed: 4, up: 3, life: .5, grav: 8 });
           scene.remove(o); obstacles.splice(i, 1); continue;
         }
         // A banked Phoenix cheats the fatal hit: invuln-dash clear instead of dying.
-        if (phoenix) { usePhoenix(); scene.remove(o); obstacles.splice(i, 1); continue; }
+        if (phoenix) { usePhoenix(); forfeitBank(); scene.remove(o); obstacles.splice(i, 1); continue; }
         particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.6, 0)), { count: 14, color: hitColor(o), speed: 4.5, up: 3, life: .6, grav: 10 });
-        gameOver(); return;
+        forfeitBank(true); gameOver(); return;
       }
     }
     // Near-miss / skim: cleared an obstacle the instant it passes without a hit.
@@ -858,6 +949,7 @@ function moveObstacles(dt) {
           if (m >= SLOWMO_MIN_MULT) slowmoT = Math.max(slowmoT, SLOWMO_TIME);
           else if (through && dx < halfW + SLOWMO_TIGHT_MARGIN) slowmoT = Math.max(slowmoT, SLOWMO_TIGHT_TIME);
         }
+        if (mods.kindling) sparkLink();   // Kindling: the close call feeds the spark chain
       }
     }
     const off = trackOffset(o.position.z, distance); o.position.x = lx + off.x; o.position.y = off.y;
@@ -895,7 +987,14 @@ function moveRolls(dt) {
       emote();
       // Magpie: each roll already banked this run makes this one worth more (capped).
       const greed = mods.greedScale ? (1 + Math.min(GREED_CAP, rollCount * mods.greedScale)) : 1;
-      const mult = cmult(combo) * (b?.scoreMult || 1) * mods.rollX, gained = Math.round(rollValue * mult * mods.rollMult * greed);
+      const mult = cmult(combo) * (b?.scoreMult || 1) * mods.rollX; let gained = Math.round(rollValue * mult * mods.rollMult * greed);
+      // Piggy Bank: divert a share of the roll into the run vault; each banked
+      // grab nudges the cash-out multiplier up (capped).
+      if (mods.bankShare > 0) {
+        const cut = Math.round(gained * mods.bankShare);
+        bank += cut; gained -= cut;
+        bankMult = Math.min(BANK_MULT_CAP, bankMult + BANK_MULT_STEP); updateBankHud();
+      }
       rollCount++; rollPoints += gained; popScore(gained, mult); buzz(18); sfxCoin(combo);   // pitch climbs with the streak
       if (mods.jumpOnRoll && !grounded) jumpsLeft = Math.min(jumpsLeft + 1, 2 + extraJumps + mods.extraJumpsBonus);
       particles.emit(o.position.clone(), { count: 12, color: 0xffd56b, speed: 3, up: 3, life: .5, grav: 9, size: 0.5 }); scene.remove(o); rolls.splice(i, 1); continue;
@@ -991,6 +1090,7 @@ function moveFinishLine(dt) {
   if (finishLine.userData.crowd) tickCheerCrowd(finishLine.userData.crowd, simTime);
   if (finishArmed && prevZ < player.position.z && finishLine.position.z >= player.position.z) {
     finishArmed = false;
+    if (bank > 0) cashBank();   // Piggy Bank: a clean stage clear pays the vault out
     level++; stageStart = distance; stageLen = stageLength(speed);
     onLevelUp();
   }
@@ -1021,6 +1121,8 @@ function updatePlayer(dt, t) {
       // run — intent-gated (not a height number), so extra-jump perks can't turn an
       // ordinary single hop into free points. Scaled by peak height and the combo.
       if (dbl && peak >= AIR_MIN_H && state === 'playing') awardAir(peak);
+      // Butt Slam resolves — and always disarms — on touchdown.
+      if (slamArmed) { slamArmed = false; if (state === 'playing') doSlam(); }
       if (jumpBufferT > 0) doJump();   // a jump pressed just before touchdown fires now
     }
   }
@@ -1189,7 +1291,7 @@ function runHighlights() {
 // passing scenario exercises real behaviour — it just removes the timing: set
 // state directly, step the sim with a fixed dt, read it back as JSON.
 function buildDebugApi() {
-  const refreshHud = () => { updateHud(); updateLevelHud(); updateShieldHud(); updateComboHud(false); updatePowerHud(); updatePhoenixHud(); };
+  const refreshHud = () => { updateHud(); updateLevelHud(); updateShieldHud(); updateComboHud(false); updatePowerHud(); updatePhoenixHud(); updateBankHud(); };
 
   // Curve/hill warp readout: near (at the player) is always 0 so collisions stay
   // fair; far (at the spawn line) shows how the road bends/rolls into the distance.
@@ -1212,6 +1314,7 @@ function buildDebugApi() {
       rollCount, rollPoints, combo, comboMult: cmult(combo), comboMax, comboTimer: +comboTimer.toFixed(2),
       shields, invuln: +invuln.toFixed(2), magnetR, rollValue, extraJumps, jumpsLeft,
       phoenix, phoenixUsed, ringT: +ringT.toFixed(3), camKick: +camKick.toFixed(2),
+      slamArmed, coilT: +coilT.toFixed(2), bank, bankMult: +bankMult.toFixed(2), sparkChain, sparkT: +sparkT.toFixed(2),
       dailyStreak: getDailyStreak(dailyKey()),
       jumpBufferT: +jumpBufferT.toFixed(3), hitStopT: +hitStopT.toFixed(3), slowmoT: +slowmoT.toFixed(3),
       safeHazards: safeHazardCount, musicIntensity: +getIntensity().toFixed(3), scoreHeat: +scoreHeat.toFixed(3),
@@ -1268,6 +1371,8 @@ function buildDebugApi() {
     phoenix: v => { phoenix = !!v; if (phoenix) phoenixUsed = false; }, phoenixUsed: v => { phoenixUsed = !!v; },
     power: v => { power = v; if (v && powerT <= 0) powerT = POWERUP_DURATION; if (v && boostById(v)?.invuln) invuln = Math.max(invuln, POWERUP_DURATION); },
     powerT: v => { powerT = v; }, safeLane: v => { safeLane = v; }, forcedGap: v => { forcedGap = v; },
+    bank: v => { bank = v; }, bankMult: v => { bankMult = v; },
+    sparkChain: v => { sparkChain = v; sparkT = v > 0 ? KINDLING_WINDOW : 0; }, coilT: v => { coilT = v; },
     perks: v => { perks = (v || []).map(x => typeof x === 'string' ? { id: x, stacks: 1 } : { id: x.id, stacks: x.stacks || 1 }); recomputeRunMods(); refreshGear(); },
     levelUps: v => { levelUps = v; },
     draftArm: v => { draftArm = v; if (!draftArm) $('draft').classList.remove('arming'); },
