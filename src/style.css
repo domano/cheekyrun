@@ -361,12 +361,17 @@ canvas{display:block}
 
 /* achievement badge grid */
 .achievements{margin-top:20px;border-top:3px dashed rgba(36,16,25,.25);padding-top:16px;text-align:left}
-.achgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.achgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
 .ach{display:flex;flex-direction:column;align-items:center;text-align:center;gap:3px;
-  background:#fff;border:3px solid var(--ink);border-radius:14px;padding:9px 5px;box-shadow:3px 3px 0 var(--ink);opacity:.45;filter:grayscale(1)}
+  background:#fff;border:3px solid var(--ink);border-radius:14px;padding:9px 7px;box-shadow:3px 3px 0 var(--ink);opacity:.55;filter:grayscale(.7)}
 .ach.on{opacity:1;filter:none;background:#fff7df}
 .ach .achi{font-size:24px;line-height:1}
-.ach .achn{font-size:10px;font-weight:800;line-height:1.15}
+.ach .achn{font-size:11px;font-weight:800;line-height:1.15}
+/* locked badge: spell out the goal + a live progress bar so it's clear what to do */
+.ach .achd{font-size:9px;font-weight:700;line-height:1.2;opacity:.75;margin-top:1px}
+.ach .achbar{width:100%;height:6px;margin-top:3px;background:rgba(36,16,25,.14);border-radius:999px;overflow:hidden}
+.ach .achbar i{display:block;height:100%;background:var(--pink);border-radius:999px}
+.ach .achp{font-size:9px;font-weight:800;letter-spacing:.2px;opacity:.8}
 /* freshly-earned badge: a gold glow + a sparkle ribbon, celebrated in place */
 .ach.justnew{position:relative;background:#fff2c2;border-color:var(--pink);box-shadow:3px 3px 0 var(--pink);
   animation:achpop .5s ease-out both}
@@ -376,6 +381,40 @@ canvas{display:block}
 @keyframes achpop{0%{transform:scale(.7) rotate(-6deg)}55%{transform:scale(1.12) rotate(2deg)}100%{transform:none}}
 @keyframes achspark{0%,100%{transform:scale(1) rotate(0)}50%{transform:scale(1.25) rotate(12deg)}}
 @media (prefers-reduced-motion:reduce){.ach.justnew{animation:none}.ach .newrib{animation:none}}
+
+/* post-run unlock fanfare — sits above the game-over card */
+#achUnlock{z-index:40;background:radial-gradient(circle at 50% 38%,rgba(255,209,102,.35),rgba(36,16,25,.72))}
+.unlockcard{position:relative;background:#fff7f1;border:4px solid var(--ink);border-radius:26px;
+  padding:26px 24px 24px;max-width:380px;width:100%;text-align:center;
+  box-shadow:8px 8px 0 var(--ink);animation:unlockin .42s cubic-bezier(.2,1.3,.5,1) both}
+/* a spinning medal that bursts in with a starry shine behind it */
+.unlockburst{font-size:66px;line-height:1;filter:drop-shadow(2px 2px 0 var(--ink));animation:unlockpop .6s ease-out both}
+.unlockburst::after{content:"";position:absolute;left:50%;top:56px;width:150px;height:150px;transform:translate(-50%,-50%);
+  background:radial-gradient(closest-side,rgba(255,209,102,.9),rgba(255,209,102,0) 70%);z-index:-1;
+  animation:unlockshine 1.4s ease-out infinite}
+.unlocktitle{font-weight:900;font-size:23px;color:var(--pink);-webkit-text-stroke:.6px var(--ink);margin:4px 0 14px}
+.unlocklist{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
+.ubadge{display:flex;align-items:center;gap:10px;text-align:left;background:#fff2c2;
+  border:3px solid var(--ink);border-radius:14px;padding:8px 11px;box-shadow:3px 3px 0 var(--ink);
+  animation:unlockrow .4s ease-out both}
+.ubadge .ubi{font-size:30px;line-height:1;flex:0 0 auto}
+.ubadge .ubtext{display:flex;flex-direction:column;flex:1 1 auto;min-width:0}
+.ubadge .ubn{font-size:14px;font-weight:900;line-height:1.15}
+.ubadge .ubd{font-size:10px;font-weight:700;opacity:.72;line-height:1.2}
+.ubadge .ubr{flex:0 0 auto;font-size:12px;font-weight:900;color:#ff5f93;background:#ffe9a8;
+  border:2px solid var(--ink);border-radius:999px;padding:2px 9px}
+.unlockrolls{font-size:15px;font-weight:800;color:var(--plum);margin-bottom:16px}
+.unlockrolls b{font-size:19px;color:#ffae00;-webkit-text-stroke:.6px var(--ink)}
+.unlockrolls .ubonus{display:inline-block;color:#ff5f93;background:#ffe9a8;border:2px solid var(--ink);
+  border-radius:999px;padding:1px 8px;margin-left:4px;font-size:12px}
+@keyframes unlockin{0%{opacity:0;transform:scale(.82) translateY(14px)}100%{opacity:1;transform:none}}
+@keyframes unlockpop{0%{transform:scale(0) rotate(-30deg)}60%{transform:scale(1.3) rotate(12deg)}100%{transform:scale(1) rotate(0)}}
+@keyframes unlockshine{0%{opacity:.9;transform:translate(-50%,-50%) scale(.7)}70%{opacity:.35}100%{opacity:0;transform:translate(-50%,-50%) scale(1.3)}}
+@keyframes unlockrow{0%{opacity:0;transform:translateX(-14px) scale(.9)}100%{opacity:1;transform:none}}
+/* reduced-motion: keep the popup, drop the springy animations */
+#achUnlock.rm .unlockcard,#achUnlock.rm .unlockburst,#achUnlock.rm .ubadge{animation:none}
+#achUnlock.rm .unlockburst::after{animation:none;opacity:.5}
+@media (prefers-reduced-motion:reduce){.unlockcard,.unlockburst,.ubadge{animation:none}.unlockburst::after{animation:none;opacity:.5}}
 
 .hide{display:none!important}
 .float{animation:bob 2.2s ease-in-out infinite;font-size:54px}

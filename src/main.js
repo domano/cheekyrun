@@ -11,7 +11,7 @@ import { PERKS, freshMods, applyPerks, perkById, draftChoices } from './perks.js
 import { save, getRerolls, useReroll, getBanishes, useBanish, getBoon, setBoon, banishPerk, poolHas } from './save.js';
 import { getBest, setBest, getStats, bumpStats, getHistory, pushHistory, resetSave, reload, requestPersistence, onExternalChange } from './save.js';
 import { hasAch, unlock } from './save.js';
-import { ACHIEVEMENTS, checkAchievements, rewardFor } from './achievements.js';
+import { ACHIEVEMENTS, checkAchievements, rewardFor, achContext, progressFor } from './achievements.js';
 import { selectedSkin, selectSkin, getDailyBest, setDailyBest, getDailyStreak } from './save.js';
 import { SKINS, skinById, skinUnlocked, buySkin, applySkin } from './cosmetics.js';
 import { installDebug } from './debug.js';
@@ -189,6 +189,7 @@ function init() {
   addEventListener('resize', onResize); bindControls();
   $('startBtn').onclick = () => startGame(false);
   $('againBtn').onclick = () => startGame(daily);     // "Again!" replays the same mode
+  $('unlockBtn').onclick = dismissAchUnlock;          // tap-to-continue past the unlock fanfare
   $('dailyBtn').onclick = () => startGame(true);
   $('muteBtn').onclick = toggleSound;
   bindResetSave();
@@ -446,7 +447,7 @@ function gameOver() {
   setTimeout(isBest ? sfxFanfare : sfxOver, 260);
   if (daily) { setDailyBest(dailyDay, sc); renderDaily(); }
   bumpStats({ runs: 1, dist: Math.floor(distance), rolls: rollCount, maxCombo: comboMax, maxLevel: level });
-  const unlocked = checkAchievements({ run: { level, score: sc, comboMax, rollCount, gotPower }, stats: getStats() });
+  const unlocked = checkAchievements({ level, score: sc, comboMax, rollCount, gotPower });
   const achBonus = rewardFor(unlocked);                            // one-time roll payout for badges earned this run
   addRolls(rollCount + achBonus);  // bank this run's rolls (+ any achievement bonus) into the shop wallet
   pushHistory({ day: dailyKey(), score: sc, level, dist: Math.floor(distance) });
@@ -471,6 +472,9 @@ function gameOver() {
   if (unlocked.length) { sfxLevel(); buzz([10, 30, 10]); }
   $('perktray').classList.add('hide');
   setTimeout(() => { $('hud').classList.add('hide'); $('gameover').classList.remove('hide'); }, 420);
+  // A flashy unlock fanfare over the card when new badges land — it names each
+  // badge + its roll reward and the rolls banked this run, then taps away.
+  if (unlocked.length) showAchUnlock(unlocked, rollCount, achBonus);
 }
 const score = () => Math.floor(distance) + rollPoints;
 function updateHud() { $('score').textContent = score(); $('rolls').textContent = rollCount; applyScoreHeat(); }
@@ -1135,11 +1139,22 @@ function bindResetSave() {
 // instead of via a floating toast that would cover the card.
 function renderAchievements(newIds = []) {
   const fresh = new Set(newIds);
+  const ctx = achContext();                       // lifetime metrics for the progress bars
   const got = ACHIEVEMENTS.filter(a => hasAch(a.id)).length;
   const grid = ACHIEVEMENTS.map(a => {
     const on = hasAch(a.id), isNew = fresh.has(a.id);
     const ribbon = isNew ? '<span class="newrib">✨</span>' : '';
-    return `<div class="ach${on ? ' on' : ''}${isNew ? ' justnew' : ''}" title="${a.desc}">${ribbon}<span class="achi">${on ? a.icon : '🔒'}</span><span class="achn">${a.name}</span></div>`;
+    // Locked badges spell out the goal (`desc`) and a live "cur / goal" bar so the
+    // player always sees exactly what to do and how close they are — no hovering.
+    const meter = on ? '' : (() => {
+      const p = progressFor(a, ctx);
+      const label = a.unit === '' ? '' : ` ${a.unit}`;
+      return `<span class="achd">${a.desc}</span>`
+        + `<span class="achbar"><i style="width:${(p.frac * 100).toFixed(0)}%"></i></span>`
+        + `<span class="achp">${fmtGoal(p.cur)} / ${fmtGoal(p.goal)}${label}</span>`;
+    })();
+    return `<div class="ach${on ? ' on' : ''}${isNew ? ' justnew' : ''}" title="${a.desc}">${ribbon}`
+      + `<span class="achi">${on ? a.icon : '🔒'}</span><span class="achn">${a.name}</span>${meter}</div>`;
   }).join('');
   const count = fresh.size
     ? `<span class="wallet pop">✨ ${fresh.size} new!</span>`
@@ -1148,6 +1163,31 @@ function renderAchievements(newIds = []) {
     root.innerHTML = `<div class="shophead"><span>🏅 Achievements</span>${count}</div><div class="achgrid">${grid}</div>`;
   });
 }
+// Compact big goal numbers so a progress label stays short: 2500 → 2.5k, 10000 → 10k.
+function fmtGoal(n) {
+  if (n < 1000) return `${n}`;
+  const k = n / 1000;
+  return `${k % 1 ? k.toFixed(1) : k}k`;
+}
+
+// The post-run unlock fanfare: a full-screen flashy popup listing each badge just
+// earned (icon, name, its +roll reward) plus the rolls banked this run — the
+// "you got X rolls" beat the player asked for. It sits above the game-over card
+// (higher z-index) and taps away to reveal it. Staggered pop-in per badge.
+function showAchUnlock(list, rollCount, achBonus) {
+  const rows = list.map((a, i) => `<div class="ubadge" style="animation-delay:${(i * 0.12).toFixed(2)}s">`
+    + `<span class="ubi">${a.icon}</span>`
+    + `<span class="ubtext"><span class="ubn">${a.name}</span><span class="ubd">${a.desc}</span></span>`
+    + `<span class="ubr">+${a.reward} 🧻</span></div>`).join('');
+  $('unlockList').innerHTML = rows;
+  $('unlockTitle') && ($('unlockTitle').textContent = list.length > 1 ? `${list.length} Achievements Unlocked!` : 'Achievement Unlocked!');
+  const bonus = achBonus ? ` <span class="ubonus">+${achBonus} 🏅 bonus</span>` : '';
+  $('unlockRolls').innerHTML = `🧻 <b>+${rollCount}</b> rolls banked this run${bonus}`;
+  const card = $('achUnlock');
+  card.classList.remove('hide');
+  card.classList.toggle('rm', reduceMotion);       // skip the burst animations when reduced-motion
+}
+function dismissAchUnlock() { $('achUnlock').classList.add('hide'); }
 
 // Skin swatch picker. Each swatch shows the skin's colour; click to select an
 // owned skin (applies live) or buy a roll-priced one. Achievement skins unlock
@@ -1252,7 +1292,7 @@ function buildDebugApi() {
     speed: v => { speed = v; }, difficulty: v => { difficulty = v; }, elapsed: v => { elapsed = v; },
     shields: v => { shields = v; }, invuln: v => { invuln = v; }, magnetR: v => { magnetR = v; },
     rollValue: v => { rollValue = v; }, extraJumps: v => { extraJumps = v; }, jumpsLeft: v => { jumpsLeft = v; },
-    combo: v => { combo = v; }, comboTimer: v => { comboTimer = v; }, rollCount: v => { rollCount = v; }, rollPoints: v => { rollPoints = v; },
+    combo: v => { combo = v; }, comboMax: v => { comboMax = v; }, comboTimer: v => { comboTimer = v; }, rollCount: v => { rollCount = v; }, rollPoints: v => { rollPoints = v; },
     phoenix: v => { phoenix = !!v; if (phoenix) phoenixUsed = false; }, phoenixUsed: v => { phoenixUsed = !!v; },
     power: v => { power = v; if (v && powerT <= 0) powerT = POWERUP_DURATION; if (v === 'ghost' || v === 'dash') invuln = Math.max(invuln, POWERUP_DURATION); },
     powerT: v => { powerT = v; }, safeLane: v => { safeLane = v; }, forcedGap: v => { forcedGap = v; },
