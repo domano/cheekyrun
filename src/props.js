@@ -224,6 +224,84 @@ export function makeFinishLine() {
   return g;
 }
 
+// Pastel skin tones for the roadside fans — variations on the player's own
+// peachy hue so the crowd reads as a gaggle of look-alike pals, not clones.
+const CHEER_SKINS = [0xffbfa8, 0xffd0b0, 0xffb0c2, 0xf7c8a0, 0xffc6d8, 0xe9bfff];
+
+// One pint-sized fan: a butt-with-ears like the hero, arms thrown up mid-cheer.
+// userData.arms are handed back so the crowd can wave them each frame.
+function makeCheerer() {
+  const g = new THREE.Group();
+  const skin = toon(CHEER_SKINS[(Math.random() * CHEER_SKINS.length) | 0]);
+  const inner = toon(0xff7ea6), blushM = toon(0xff8fa0, { emissive: 0xff5577 });
+  [-0.24, 0.24].forEach(x => {
+    const cheek = new THREE.Mesh(new THREE.SphereGeometry(0.4, 18, 18), skin);
+    cheek.position.set(x, 0.42, 0); cheek.scale.set(1, 1.06, 1.02); cheek.castShadow = true; ink(cheek, 1.07); g.add(cheek);
+    const blush = new THREE.Mesh(new THREE.CircleGeometry(0.1, 14), blushM);
+    blush.position.set(x * 1.1, 0.36, 0.38); g.add(blush);
+  });
+  [-0.22, 0.22].forEach((x, i) => {
+    const ear = new THREE.Group();
+    const o = new THREE.Mesh(new THREE.SphereGeometry(0.12, 14, 14), skin); o.scale.set(1, 2.3, 0.7); o.castShadow = true; ink(o, 1.1);
+    const n = new THREE.Mesh(new THREE.SphereGeometry(0.075, 12, 12), inner); n.scale.set(1, 2.1, 0.6); n.position.z = 0.05;
+    ear.add(o, n); ear.position.set(x, 0.82, -0.04); ear.rotation.z = i ? -0.22 : 0.22; g.add(ear);
+  });
+  // Two arms thrown up to cheer, each with a little round hand. They're stored so
+  // the crowd waves them; the resting pose already reads as a celebration.
+  const arms = [];
+  [-1, 1].forEach(s => {
+    const arm = new THREE.Group();
+    const limb = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.42, 8), skin); limb.position.y = 0.21; ink(limb, 1.1);
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.1, 12, 12), skin); hand.position.y = 0.45; ink(hand, 1.1);
+    arm.add(limb, hand); arm.position.set(s * 0.34, 0.5, 0.08); arm.rotation.z = s * 0.7;
+    g.add(arm); arms.push(arm);
+  });
+  [-0.18, 0.18].forEach(x => {
+    const f = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 12), skin);
+    f.scale.set(1, 0.55, 1.4); f.position.set(x, 0.06, 0.18); f.castShadow = true; ink(f, 1.12); g.add(f);
+  });
+  g.userData.arms = arms;
+  return g;
+}
+
+// A roadside crowd of fans cheering the runner across a finish line. Returns a
+// group of mini look-alikes lined up on both verges, beyond the banner posts.
+// Every call lays them out a little differently — count, spots, scale, lean and
+// their hop phase are all randomised — so no two stage-ends look the same.
+export function makeCheerCrowd() {
+  const g = new THREE.Group();
+  const fans = [];
+  [-1, 1].forEach(side => {
+    const n = 2 + (Math.random() * 3 | 0);                  // 2–4 fans per verge
+    for (let i = 0; i < n; i++) {
+      const f = makeCheerer();
+      f.position.set(side * (4.3 + Math.random() * 2.0), 0, -1.6 + Math.random() * 3.4);
+      f.rotation.y = -side * (0.4 + Math.random() * 0.5);   // angle in toward the track
+      const sc = 0.82 + Math.random() * 0.42;
+      f.scale.setScalar(sc);
+      f.userData.base = sc;
+      f.userData.phase = Math.random() * Math.PI * 2;
+      f.userData.hop = 0.14 + Math.random() * 0.14;
+      f.userData.rate = 7 + Math.random() * 4;
+      g.add(f); fans.push(f);
+    }
+  });
+  g.userData.fans = fans;
+  return g;
+}
+
+// Per-frame bounce + arm-wave for a crowd from makeCheerCrowd(). `t` is the
+// running sim time; each fan hops on its own phase so the crowd looks lively.
+export function tickCheerCrowd(crowd, t) {
+  for (const f of crowd.userData.fans) {
+    const u = f.userData, ph = t * u.rate + u.phase;
+    f.position.y = Math.max(0, Math.sin(ph)) * u.hop;       // little excited hops
+    const sq = 1 - Math.max(0, Math.sin(ph)) * 0.12;        // squash on the way up
+    f.scale.set(u.base / Math.sqrt(sq), u.base * sq, u.base / Math.sqrt(sq));
+    u.arms.forEach((arm, i) => { arm.rotation.z = (i ? -1 : 1) * (0.7 + Math.sin(ph * 1.6 + i) * 0.4); });
+  }
+}
+
 export function makeRoll() {
   const g = new THREE.Group();
   const paper = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.5, 22), toon(0xffffff, { emissive: 0x222222 }));

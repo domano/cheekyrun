@@ -82,6 +82,24 @@ const SCENARIOS = [
     },
   },
   {
+    name: 'stage-end-cheer-crowd',
+    fn: (c, assert) => {
+      c.start();
+      assert(c.state().counts.cheerers === 0, 'no roadside crowd mid-stage');
+      c.forceFinish();                            // drop the finish line + its crowd
+      const n = c.state().counts.cheerers;
+      assert(n >= 4 && n <= 8, `the finish line brings a roadside crowd (${n} fans)`);
+      c.step(2);                                  // the crowd hops/waves without erroring
+      assert(c.state().counts.cheerers === n, 'the crowd persists while the line is up');
+      let s; for (let i = 0; i < 40; i++) { s = c.step(6); if (s.level === 2) break; }
+      assert(s.level === 2, 'the runner crosses the line');
+      if (c.state().state === 'draft') { c.set({ draftArm: 0 }); c.pick(0); }   // crossing drafts a perk; resume the run
+      c.set({ stageLen: 1e6 });                   // hold the next stage open so only the old line clears
+      for (let i = 0; i < 80 && c.state().finishLine !== null; i++) c.step(6);
+      assert(c.state().counts.cheerers === 0, 'the crowd despawns with the finish line');
+    },
+  },
+  {
     name: 'stage-length-scales-with-speed',
     fn: (c, assert) => {
       c.start();
@@ -273,6 +291,31 @@ const SCENARIOS = [
       assert(c.effects().shields === 1, 'buying Cushion resolves to 1 shield');
       const s = c.start();
       assert(s.shields === 1, 'the run starts with the bought shield');
+    },
+  },
+  {
+    name: 'reset-save',
+    fn: (c, assert) => {
+      c.fund(500); c.buy('shield');
+      assert(c.wallet() > 0, 'wallet holds leftover rolls');
+      assert(c.effects().shields === 1, 'a shield upgrade is owned');
+      const dlg = document.getElementById('resetConfirm');
+      // Opening the confirm dialog doesn't touch the save.
+      document.getElementById('resetBtn').click();
+      assert(!dlg.classList.contains('hide'), 'reset button opens the confirm dialog');
+      assert(c.effects().shields === 1, 'owned upgrade is intact while the dialog is open');
+      // Cancelling leaves everything as it was.
+      document.getElementById('resetNo').click();
+      assert(dlg.classList.contains('hide'), 'Cancel closes the dialog');
+      assert(c.effects().shields === 1, 'Cancel keeps the save');
+      // Confirming wipes the save back to defaults and closes the dialog.
+      document.getElementById('resetBtn').click();
+      document.getElementById('resetYes').click();
+      assert(dlg.classList.contains('hide'), 'confirming closes the dialog');
+      assert(c.wallet() === 0, 'confirm empties the wallet');
+      assert(c.effects().shields === 0, 'confirm clears owned upgrades');
+      // The whole menu re-renders after the wipe (proves the refresh chain ran).
+      assert(/Best 0\b/.test(document.querySelector('.menu .stats').textContent), 'menu stats re-render to a fresh save');
     },
   },
   {
