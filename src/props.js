@@ -294,17 +294,23 @@ const SCENERY = {
   flower: makeFlower,
 
   // Sunset — warm desert.
+  // Tall enough to hold its saguaro silhouette at distance (thin scratches read
+  // as noise), chunky trunk + arms doing the shape; a third sprout a pink blossom.
   saguaro: () => {
-    const g = new THREE.Group(), m = toon(0x4f9d6b);
+    const g = new THREE.Group(), m = toon(0x5fc9a8);
     const body = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.32, 2.0, 12), m); body.position.y = 1.0; body.castShadow = true; ink(body, 1.06); g.add(body);
     [-1, 1].forEach(s => {
-      const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 0.5, 10), m); arm.position.set(s * 0.34, 1.0, 0); arm.rotation.z = -s * 1.1; ink(arm, 1.1); g.add(arm);
-      const up = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.7 + 0.3 * (s > 0 ? 1 : 0), 10), m); up.position.set(s * 0.6, 1.35, 0); ink(up, 1.1); g.add(up);
+      const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.15, 0.55, 10), m); arm.position.set(s * 0.32, 1.05, 0); arm.rotation.z = -s * 1.1; ink(arm, 1.1); g.add(arm);
+      const up = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, s > 0 ? 1.0 : 0.7, 10), m); up.position.set(s * 0.58, s > 0 ? 1.5 : 1.35, 0); ink(up, 1.1); g.add(up);
     });
+    if (Math.random() < 0.34) {
+      const bl = toon(0xff8fb0);
+      [[0, 2.02], [0.58, 2.0]].forEach(([x, y]) => { const f = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 8), bl); f.position.set(x, y, 0.1); ink(f, 1.12); g.add(f); });
+    }
     return g;
   },
   deadbush: () => {
-    const g = new THREE.Group(), m = toon(0xb89758);
+    const g = new THREE.Group(), m = toon(0xb5895c);   // dry tan, not grey
     for (let i = 0; i < 6; i++) {
       const b = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.03, 0.7, 5), m);
       b.position.set((Math.random() - 0.5) * 0.4, 0.34, (Math.random() - 0.5) * 0.4); b.rotation.set((Math.random() - 0.5) * 1.3, 0, (Math.random() - 0.5) * 1.3); ink(b, 1.12); g.add(b);
@@ -313,23 +319,25 @@ const SCENERY = {
   },
   desertrock: () => {
     const g = new THREE.Group();
-    const r = new THREE.Mesh(new THREE.DodecahedronGeometry(0.5, 0), toon(0xcaa46a, { flat: true })); r.position.y = 0.38; r.scale.set(1.3, 0.78, 1.1); r.castShadow = true; ink(r, 1.07); g.add(r); return g;
+    const r = new THREE.Mesh(new THREE.DodecahedronGeometry(0.5, 0), toon(0xc88f6e, { flat: true })); r.position.y = 0.38; r.scale.set(1.3, 0.78, 1.1); r.castShadow = true; ink(r, 1.07); g.add(r); return g;   // warm to sit in the sand
   },
 
   // Twilight — spooky night.
+  // Chunky stump + stubby cone branches so it doesn't read as a grey scratch;
+  // desaturated purple-grey keeps it in the biome (crystals own the violet pop).
   deadtree: () => {
-    const g = new THREE.Group(), m = toon(0x4a3a52);
-    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.2, 1.7, 8), m); trunk.position.y = 0.85; trunk.castShadow = true; ink(trunk, 1.08); g.add(trunk);
-    [[-0.38, 1.45, 0.7], [0.42, 1.65, -0.7], [0, 2.0, 0.25]].forEach(([x, y, rz]) => {
-      const b = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.08, 0.7, 6), m); b.position.set(x, y, 0); b.rotation.z = rz; ink(b, 1.1); g.add(b);
+    const g = new THREE.Group(), m = toon(0x4a4368);
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.16, 1.7, 8), m); trunk.position.y = 0.85; trunk.castShadow = true; ink(trunk, 1.07); g.add(trunk);
+    [[-0.32, 1.3, 0.9], [0.34, 1.55, -0.9]].forEach(([x, y, rz]) => {
+      const b = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.5, 6), m); b.position.set(x, y, 0); b.rotation.z = rz; b.castShadow = true; ink(b, 1.1); g.add(b);
     });
     return g;
   },
-  mushroom: () => {
+  mushroom: () => {   // mint-glow cap on a pale stem pops off the dusky blue ground
     const g = new THREE.Group();
-    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.13, 0.5, 8), toon(0xe6dcc8)); stem.position.y = 0.25; ink(stem, 1.1); g.add(stem);
-    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.32, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), toon(0x9a7bff, { emissive: 0x3a1a6a })); cap.position.y = 0.5; cap.scale.y = 0.8; cap.castShadow = true; ink(cap, 1.08); g.add(cap);
-    const spotM = toon(0xe6dcff, { emissive: 0xc9a7ff });
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.13, 0.5, 8), toon(0xede6ff)); stem.position.y = 0.25; ink(stem, 1.1); g.add(stem);
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.32, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), toon(0x8fe6d0, { emissive: 0x2a6a5a })); cap.position.y = 0.5; cap.scale.y = 0.8; cap.castShadow = true; ink(cap, 1.08); g.add(cap);
+    const spotM = toon(0xf0fbf6, { emissive: 0xbfeee2 });
     [[-0.14, 0.56, 0.2], [0.16, 0.6, 0.16], [0, 0.66, -0.18]].forEach(([x, y, z]) => { const sp = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), spotM); sp.position.set(x, y, z); g.add(sp); });
     return g;
   },
@@ -342,24 +350,27 @@ const SCENERY = {
   },
 
   // Candyland — bright sweets.
+  // Pink-on-pink washes out here, so every candy prop leans on a saturated
+  // (non-pastel) hue or a dark ink edge to separate from the pink road.
   lollipop: () => {
     const g = new THREE.Group();
-    const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.0, 8), toon(0xffffff)); stick.position.y = 0.5; ink(stick, 1.08); g.add(stick);
-    const candy = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.12, 20), toon(0xff5fa6, { emissive: 0x3a0022 })); candy.position.y = 1.05; candy.rotation.x = Math.PI / 2; candy.castShadow = true; ink(candy, 1.06); g.add(candy);
+    const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.0, 8), toon(0xffffff)); stick.position.y = 0.5; ink(stick, 1.08); g.add(stick);
+    const candy = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.12, 20), toon(0xff5ca8, { emissive: 0x3a0022 })); candy.position.y = 1.05; candy.rotation.x = Math.PI / 2; candy.castShadow = true; ink(candy, 1.06); g.add(candy);
+    const swirl = new THREE.Mesh(new THREE.CircleGeometry(0.24, 20), toon(0xffffff)); swirl.position.set(0, 1.05, 0.075); g.add(swirl);   // fakes a candy swirl, breaks the flat disc
     return g;
   },
   candybush: () => {
-    const g = new THREE.Group(), cols = [0xff8ad0, 0x8ad0ff, 0xffd23f];
+    const g = new THREE.Group(), cols = [0x7fd8c4, 0xb69cff];   // mint + lilac, off the pink ground
     for (let i = 0; i < 3; i++) {
-      const d = new THREE.Mesh(new THREE.SphereGeometry(0.3, 12, 12), toon(cols[i], { emissive: 0x220011 }));
-      d.position.set((i - 1) * 0.34, 0.3, (Math.random() - 0.5) * 0.3); d.castShadow = true; ink(d, 1.08); g.add(d);
+      const d = new THREE.Mesh(new THREE.SphereGeometry(0.36, 12, 12, 0, Math.PI * 2, 0, Math.PI / 2), toon(cols[i % 2], { emissive: 0x1a1030 }));
+      d.position.set((i - 1) * 0.34, 0.02, (Math.random() - 0.5) * 0.3); d.castShadow = true; ink(d, 1.08); g.add(d);
     }
     return g;
   },
-  peppermint: () => {
+  peppermint: () => {   // the one prop that already read here — make it the anchor
     const g = new THREE.Group();
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.26, 0.12, 10, 18), toon(0xff5151)); ring.position.y = 0.28; ring.castShadow = true; ink(ring, 1.07); g.add(ring);
-    const mid = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 12), toon(0xffffff)); mid.position.y = 0.28; g.add(mid);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.13, 10, 18), toon(0xf0324b)); ring.position.y = 0.3; ring.castShadow = true; ink(ring, 1.07); g.add(ring);
+    const mid = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 12), toon(0xffffff)); mid.position.y = 0.3; g.add(mid);
     return g;
   },
 
@@ -375,29 +386,31 @@ const SCENERY = {
     return g;
   },
   snowmound: () => {
-    const g = new THREE.Group(), m = toon(0xeaf6ff);
+    const g = new THREE.Group(), m = toon(0xdceaf5);   // faint blue shadow-side so it isn't a pure-white blob
     for (let i = 0; i < 3; i++) {
       const s = new THREE.Mesh(new THREE.SphereGeometry(0.4 + Math.random() * 0.2, 12, 10), m);
       s.position.set((Math.random() - 0.5) * 0.7, 0.2, (Math.random() - 0.5) * 0.4); s.scale.y = 0.6; s.castShadow = true; ink(s, 1.06, 0x9fbcd0); g.add(s);
     }
     return g;
   },
-  iceshard: () => {
-    const g = new THREE.Group(), m = toon(0xbfe6ff, { emissive: 0x2a5a7a, flat: true });
+  iceshard: () => {   // cool tint + strong blue ink so it doesn't vanish into the snow
+    const g = new THREE.Group(), m = toon(0x9fd4e8, { emissive: 0x2a5a7a, flat: true });
     [[0, 0.7, 0.18], [-0.22, 0.45, 0.12], [0.24, 0.5, 0.13]].forEach(([x, h, w]) => {
-      const c = new THREE.Mesh(new THREE.ConeGeometry(w, h * 2, 6), m); c.position.set(x, h, 0); c.castShadow = true; ink(c, 1.1, 0x3a4a5a); g.add(c);
+      const c = new THREE.Mesh(new THREE.ConeGeometry(w, h * 2, 6), m); c.position.set(x, h, 0); c.castShadow = true; ink(c, 1.12, 0x4a90b8); g.add(c);
     });
     return g;
   },
 
   // Ember — volcanic ashlands. Dark props on dark ground take a light ink edge.
+  // Chunky charred stump (not a wire), warm charcoal with a soft light ink edge
+  // so it reads charred rather than inked-black on the dark ashland floor.
   charredtree: () => {
-    const g = new THREE.Group(), m = toon(0x2a201e);
-    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.2, 1.5, 8), m); trunk.position.y = 0.75; trunk.castShadow = true; ink(trunk, 1.08, 0x6a4a3a); g.add(trunk);
-    [[-0.38, 1.3, 0.8], [0.42, 1.5, -0.8]].forEach(([x, y, rz]) => {
-      const b = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.08, 0.6, 6), m); b.position.set(x, y, 0); b.rotation.z = rz; ink(b, 1.1, 0x6a4a3a); g.add(b);
+    const g = new THREE.Group(), m = toon(0x3a2e2e);
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.18, 1.5, 8), m); trunk.position.y = 0.75; trunk.castShadow = true; ink(trunk, 1.06, 0x5a4a46); g.add(trunk);
+    [[-0.32, 1.15, 0.9], [0.36, 1.45, -0.9], [0.05, 1.7, 0.2]].forEach(([x, y, rz]) => {
+      const b = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.5, 6), m); b.position.set(x, y, 0); b.rotation.z = rz; b.castShadow = true; ink(b, 1.08, 0x5a4a46); g.add(b);
     });
-    const glow = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), toon(0xff6a2a, { emissive: 0xff5a10 })); glow.position.set(0.1, 0.13, 0.22); g.add(glow);
+    const glow = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 8), toon(0xff6a2a, { emissive: 0xff5a10 })); glow.position.set(0.1, 0.14, 0.22); g.add(glow);
     return g;
   },
   basaltrock: () => {
@@ -406,37 +419,44 @@ const SCENERY = {
     const crack = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.08, 0.05), toon(0xff6a2a, { emissive: 0xff6a2a, flat: true })); crack.position.set(0, 0.45, 0.42); crack.rotation.z = 0.4; g.add(crack);
     return g;
   },
-  cinder: () => {
+  cinder: () => {   // the best Ember prop — a glowing core peeks through the dark mound
     const g = new THREE.Group();
-    const r = new THREE.Mesh(new THREE.IcosahedronGeometry(0.3, 0), toon(0x4a2620, { flat: true })); r.position.y = 0.2; r.scale.y = 0.6; ink(r, 1.08, 0x7a5a4a); g.add(r);
-    const glow = new THREE.Mesh(new THREE.IcosahedronGeometry(0.16, 0), toon(0xff7a2a, { emissive: 0xff7a2a, flat: true })); glow.position.y = 0.3; g.add(glow);
+    const r = new THREE.Mesh(new THREE.IcosahedronGeometry(0.32, 0), toon(0x2e2422, { flat: true })); r.position.y = 0.2; r.scale.y = 0.6; r.castShadow = true; ink(r, 1.08, 0x7a5a4a); g.add(r);
+    const core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.19, 0), toon(0xff6a2b, { emissive: 0xff6a2b, flat: true })); core.position.set(0, 0.26, 0.05); g.add(core);
     return g;
   },
 
   // Reef — sunlit coral seabed.
+  // Two-segment blades with a bent tip read as soft plants, not glass shards.
   seaweed: () => {
-    const g = new THREE.Group(), m = toon(0x2f9f6a, { emissive: 0x0a3a22 });
-    [-0.18, 0, 0.2].forEach((x, i) => {
-      const h = 1.2 + i * 0.2;
-      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.16, h, 0.06), m); blade.position.set(x, h / 2, 0); blade.rotation.z = (i - 1) * 0.18; blade.castShadow = true; ink(blade, 1.08); g.add(blade);
+    const g = new THREE.Group(), m = toon(0x3dbe8c, { emissive: 0x0a3a22 });
+    [[-0.2, 1.2, 0.28], [0, 1.5, -0.22], [0.22, 1.3, 0.3]].forEach(([x, h, bend], i) => {
+      const b = new THREE.Group(); b.position.set(x, 0, 0); b.rotation.y = (i - 1) * 0.26;
+      const lh = h * 0.6;
+      const lower = new THREE.Mesh(new THREE.BoxGeometry(0.13, lh, 0.06), m); lower.position.y = lh / 2; lower.castShadow = true; ink(lower, 1.08); b.add(lower);
+      const pivot = new THREE.Group(); pivot.position.y = lh; pivot.rotation.z = bend; b.add(pivot);   // bends the tip at the joint
+      const uh = h * 0.5;
+      const upper = new THREE.Mesh(new THREE.BoxGeometry(0.1, uh, 0.06), m); upper.position.y = uh / 2; upper.castShadow = true; ink(upper, 1.08); pivot.add(upper);
+      g.add(b);
     });
     return g;
   },
   coralnub: () => {
-    const g = new THREE.Group(), m = toon(0xff7aa8, { emissive: 0x3a0a18 });
-    [[0, 0.5, 0], [-0.22, 0.4, 0.4], [0.24, 0.34, -0.4]].forEach(([x, h, rz]) => {
-      const b = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.14, h, 8), m); b.position.set(x, h / 2, 0); b.rotation.z = rz; b.castShadow = true; ink(b, 1.1); g.add(b);
+    const g = new THREE.Group(), m = toon(0xff7eb6, { emissive: 0x3a0a18 }), tipM = toon(0xffb3d9);
+    [[0, 0.7, 0], [-0.3, 0.55, 0.4], [0.32, 0.48, -0.4]].forEach(([x, h, rz]) => {
+      const b = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.18, h, 8), m); b.position.set(x, h / 2, 0); b.rotation.z = rz; b.castShadow = true; ink(b, 1.1); g.add(b);
+      const nub = new THREE.Mesh(new THREE.SphereGeometry(0.15, 10, 10), tipM); nub.position.set(x - Math.sin(rz) * h / 2, h / 2 + Math.cos(rz) * h / 2, 0); ink(nub, 1.1); g.add(nub);   // lighter tip caps each finger
     });
     return g;
   },
   anemone: () => {
     const g = new THREE.Group();
-    const base = new THREE.Mesh(new THREE.SphereGeometry(0.3, 12, 10, 0, Math.PI * 2, 0, Math.PI / 2), toon(0xb85aa8, { emissive: 0x2a0a22 })); base.scale.y = 0.8; base.castShadow = true; ink(base, 1.07); g.add(base);
-    const tip = toon(0xffc2da);
-    for (let i = 0; i < 7; i++) {
-      const a = (i / 7) * Math.PI * 2;
-      const t = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.045, 0.42, 6), tip);
-      t.position.set(Math.cos(a) * 0.16, 0.3, Math.sin(a) * 0.16); t.rotation.z = Math.cos(a) * 0.6; t.rotation.x = -Math.sin(a) * 0.6; ink(t, 1.12); g.add(t);
+    const base = new THREE.Mesh(new THREE.SphereGeometry(0.34, 12, 10, 0, Math.PI * 2, 0, Math.PI / 2), toon(0xff6fa5, { emissive: 0x2a0a22 })); base.scale.y = 0.85; base.castShadow = true; ink(base, 1.07); g.add(base);
+    const tip = toon(0xffc2dd);
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      const t = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.06, 0.5, 6), tip);
+      t.position.set(Math.cos(a) * 0.18, 0.34, Math.sin(a) * 0.18); t.rotation.z = Math.cos(a) * 0.5; t.rotation.x = -Math.sin(a) * 0.5; ink(t, 1.12); g.add(t);
     }
     return g;
   },
