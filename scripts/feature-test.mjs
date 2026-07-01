@@ -618,6 +618,19 @@ const SCENARIOS = [
     },
   },
   {
+    // The spawner draws from eligibleBoosts(level) (src/boosts.js): each boost
+    // file's minLevel gates when it can appear. The core four are minLevel 1,
+    // so all of them are on offer from the first level. Extend this when
+    // level-gated boosts land.
+    name: 'boost-folder-gating',
+    fn: (c, assert) => {
+      const s = c.start();
+      assert(Array.isArray(s.boostKinds), 'the snapshot exposes the eligible boost kinds');
+      ['magnet', 'x2', 'ghost', 'dash'].forEach(k =>
+        assert(s.boostKinds.includes(k), `core boost "${k}" is eligible at level 1 (minLevel 1)`));
+    },
+  },
+  {
     name: 'emote-and-cheer',
     fn: (c, assert) => {
       c.start({ magnetR: 0 }); c.clearField();

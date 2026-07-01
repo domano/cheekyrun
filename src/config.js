@@ -130,20 +130,13 @@ export const AIR_POINTS = 14;         // extra air bonus per unit of peak height
 export const AIR_PEAK_CAP = 0.8;      // height (above AIR_MIN_H) past which the bonus stops climbing
 
 // In-run power-ups: a rare floating gem that grants a brief effect. Spaced out
-// by a row cooldown so grabbing one feels like an event, not a given.
+// by a row cooldown so grabbing one feels like an event, not a given. These are
+// the shared pacing knobs only — the boost catalog itself (icons, colours,
+// effects, gating) lives one-file-per-boost under src/boosts/ (see boosts.js).
 export const POWERUP_DURATION = 6;     // seconds an effect lasts
 export const POWERUP_CHANCE = 0.06;    // chance on an eligible (off-cooldown) row
 export const POWERUP_MIN_DIFF = 0.12;  // only after a short warm-up
 export const POWERUP_COOLDOWN = 14;    // rows guaranteed between power-up spawns
-export const POWERUPS = {
-  magnet: { icon: '🧲', color: 0x4fd0ff, label: 'Magnet' },
-  x2:     { icon: '✨', color: 0xffd23f, label: '2× Score' },
-  ghost:  { icon: '👻', color: 0xb488ff, label: 'Ghost' },
-  dash:   { icon: '🚀', color: 0xff7a3a, label: 'Boost' },
-};
-// How much faster the run rips while a Boost is active.
-export const DASH_SPEED_MULT = 1.5;
-export const POWERUP_KINDS = Object.keys(POWERUPS);
 
 // Roguelite draft: a level-up offers a choice of perks. Drafts fire on every
 // DRAFT_EVERY-th level-up (so they feel like an event, not every biome change),

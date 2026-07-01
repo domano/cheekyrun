@@ -1,7 +1,8 @@
 import * as THREE from 'three';
-import { LANES, SPAWN_Z, DESPAWN_Z, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE_RAMP, GATE_COOLDOWN, COMBO_WINDOW, comboMult, NEARMISS_MARGIN, NEARMISS_BONUS, SKIM_MARGIN, SKIM_BONUS, SKIM_WINDOW, SAFE_HAZARD_MIN_DIFF, SAFE_HAZARD_CHANCE, TALL_CLEAR_H, TALL_CLEAR_PER_JUMP, TALL_MIN_DIFF, TALL_CHANCE, ROLL_GRAB_H, AIR_ARC_MIN_DIFF, AIR_ARC_CHANCE, AIR_ARC_TALL_CHANCE, AIR_ARC_TALL_PEAK, AIR_MIN_H, AIR_BASE, AIR_POINTS, AIR_PEAK_CAP, JUMP_BUFFER, HITSTOP_SHIELD, HITSTOP_DEATH, SLOWMO_FACTOR, SLOWMO_TIME, SLOWMO_MIN_MULT, SLOWMO_TIGHT_MARGIN, SLOWMO_TIGHT_TIME, DIFF_RAMP, ROW_MIN_GAP, COMBO_DECAY_STEP, COMBO_STEP, SCORE_FLOW_RATE, HEAT_PER_LEVEL, HEAT_LEVEL_CAP, HEAT_MAX, PHOENIX_COMBO, PHOENIX_INVULN, GREED_CAP, RING_TIME, POWERUP_DURATION, POWERUP_CHANCE, POWERUP_MIN_DIFF, POWERUP_COOLDOWN, POWERUPS, POWERUP_KINDS, DASH_SPEED_MULT, DRAFT_EVERY, DRAFT_CHOICES, DRAFT_ARM, DRAFT_GRACE, mulberry32, dailyKey, dailySeed, $, buzz, shuffle } from './config.js';
+import { LANES, SPAWN_Z, DESPAWN_Z, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE_RAMP, GATE_COOLDOWN, COMBO_WINDOW, comboMult, NEARMISS_MARGIN, NEARMISS_BONUS, SKIM_MARGIN, SKIM_BONUS, SKIM_WINDOW, SAFE_HAZARD_MIN_DIFF, SAFE_HAZARD_CHANCE, TALL_CLEAR_H, TALL_CLEAR_PER_JUMP, TALL_MIN_DIFF, TALL_CHANCE, ROLL_GRAB_H, AIR_ARC_MIN_DIFF, AIR_ARC_CHANCE, AIR_ARC_TALL_CHANCE, AIR_ARC_TALL_PEAK, AIR_MIN_H, AIR_BASE, AIR_POINTS, AIR_PEAK_CAP, JUMP_BUFFER, HITSTOP_SHIELD, HITSTOP_DEATH, SLOWMO_FACTOR, SLOWMO_TIME, SLOWMO_MIN_MULT, SLOWMO_TIGHT_MARGIN, SLOWMO_TIGHT_TIME, DIFF_RAMP, ROW_MIN_GAP, COMBO_DECAY_STEP, COMBO_STEP, SCORE_FLOW_RATE, HEAT_PER_LEVEL, HEAT_LEVEL_CAP, HEAT_MAX, PHOENIX_COMBO, PHOENIX_INVULN, GREED_CAP, RING_TIME, POWERUP_DURATION, POWERUP_CHANCE, POWERUP_MIN_DIFF, POWERUP_COOLDOWN, DRAFT_EVERY, DRAFT_CHOICES, DRAFT_ARM, DRAFT_GRACE, mulberry32, dailyKey, dailySeed, $, buzz, shuffle } from './config.js';
 import { makeGradient, toon, glow, rampShadow } from './materials.js';
-import { makeObstacle, makeHurdle, makeGate, makeRoll, makePowerup, makeScenery, makeCloud, makeFinishLine, makeCheerCrowd, tickCheerCrowd, OBSTACLE_KINDS } from './props.js';
+import { makeObstacle, makeHurdle, makeGate, makeRoll, makePowerup, makeBoostPickup, makeScenery, makeCloud, makeFinishLine, makeCheerCrowd, tickCheerCrowd, OBSTACLE_KINDS } from './props.js';
+import { BOOSTS, boostById, eligibleBoosts, drawBoost } from './boosts.js';
 import { createParticles } from './particles.js';
 import { buildPlayer, applyGear, tickGear } from './player.js';
 import { STAGE_BASE, STAGE_LEAD, stageLength, biomeOf, obstacleSet, scenerySet, biomePlay, biomeAir } from './levels.js';
@@ -58,6 +59,9 @@ let skipRender = false;
 // hit-stop) the way the CSS already does for DOM animations.
 let reduceMotion = false;
 let power, powerT, powerCD, gotPower;   // active power-up kind, remaining time, spawn cooldown (rows), grabbed-any flag
+// The active boost's catalog entry (src/boosts/<id>.js) — every effect below
+// reads its declarative fields (speedMult/magnetFloor/scoreMult/invuln/...).
+const curBoost = () => (power ? boostById(power) : null);
 let auraSparkT = 0;                      // throttle for the active-power-up sparkle drift
 let rng = Math.random, daily = false, dailyDay = '';   // daily challenge: seeded RNG + today's key
 const speedLines = $('speedlines');
@@ -325,13 +329,17 @@ function spawnRow() {
     if (lanes.length) spawnAirArc(lanes[(rng() * lanes.length) | 0]);
   }
 
-  // a rare power-up gem, spaced out by a cooldown so it feels like a treat
+  // a rare power-up gem, spaced out by a cooldown so it feels like a treat —
+  // drawn from the boost catalog (src/boosts/), gated by each boost's minLevel
+  // and weighted by its weight (all default 1 today: the old uniform pick).
   if (powerCD > 0) powerCD--;
   else if (difficulty > POWERUP_MIN_DIFF && rng() < POWERUP_CHANCE) {
     const li = open[(rng() * open.length) | 0];
-    const kind = POWERUP_KINDS[(rng() * POWERUP_KINDS.length) | 0];
-    const p = makePowerup(POWERUPS[kind].color); p.position.set(LANES[li], 1.0, SPAWN_Z); p.userData.kind = kind; p.userData.lx = LANES[li];
-    scene.add(p); pickups.push(p); powerCD = POWERUP_COOLDOWN;
+    const def = drawBoost(level, rng);
+    if (def) {
+      const p = makeBoostPickup(def); p.position.set(LANES[li], 1.0, SPAWN_Z); p.userData.kind = def.id; p.userData.lx = LANES[li];
+      scene.add(p); pickups.push(p); powerCD = POWERUP_COOLDOWN;
+    }
   }
 
   safeLane = nextSafe;
@@ -745,7 +753,8 @@ function tick(dt) {
     // first seconds aren't a compound spike and the pace keeps climbing past the
     // difficulty plateau instead of flatlining.
     speed = (12.5 + 11 * difficulty) * (1 + 0.055 * (level - 1)) * mods.speedMult;  // levels + perks nudge the pace
-    if (power === 'dash') speed *= DASH_SPEED_MULT;                  // Boost: a brief speed surge (you're invuln while it lasts)
+    const boost = curBoost();
+    if (boost?.speedMult) speed *= boost.speedMult;                  // e.g. dash: a brief speed surge (you're invuln while it lasts)
     if (speed > peakSpeed) peakSpeed = speed;                        // remember the run's top speed for the highlight strip
     distance += speed * sdt;
     // Stage flow: once past the stage body, drop the finish line at the horizon;
@@ -764,7 +773,12 @@ function tick(dt) {
     // the finish line and the upgrade screen land on empty road.
     rowTimer -= sdt; if (rowTimer <= 0) { if (into < stageLen - STAGE_LEAD) spawnRow(); rowTimer = T; }
     sceneAcc += speed * sdt; if (sceneAcc >= 5) { sceneAcc = 0; spawnScenery(); }
-    if (power) { powerT -= sdt; if (powerT <= 0) { power = null; updatePowerVisual(); sfxPowerEnd(); } updatePowerHud(); }
+    if (power) {
+      boost?.onTick?.(boostCtx(), sdt);     // lifecycle hook for mechanic-boosts (core four: no-op)
+      powerT -= sdt;
+      if (powerT <= 0) { power = null; boost?.onEnd?.(boostCtx()); updatePowerVisual(); sfxPowerEnd(); }
+      updatePowerHud();
+    }
     moveObstacles(sdt); moveRolls(sdt); movePickups(sdt); moveFinishLine(sdt);
     if (grounded) {
       dustAcc += sdt; if (dustAcc > 0.11) {
@@ -851,13 +865,14 @@ function moveObstacles(dt) {
   }
 }
 function moveRolls(dt) {
+  const b = curBoost();   // active boost — magnet floor / score mult read generically
   for (let i = rolls.length - 1; i >= 0; i--) {
     const o = rolls[i]; const prevZ = o.position.z; o.position.z += speed * dt; o.rotation.y += dt * 4;
     const h = o.userData.h || 0;   // elevated rolls float at a height; grabbing needs matching air
     // Magnet: tug nearby rolls toward the player so they're easier to grab. Acts
     // on the logical lane X (lx), not the curved render X, so it pulls true. Skips
     // elevated rolls — an air ribbon is earned by jumping to it, not vacuumed up.
-    const baseMr = magnetR + mods.magnetBonus, mr = power === 'magnet' ? Math.max(baseMr, 9) : baseMr;
+    const baseMr = magnetR + mods.magnetBonus, mr = b?.magnetFloor ? Math.max(baseMr, b.magnetFloor) : baseMr;
     if (mr > 0 && !h) {
       const mdx = player.position.x - o.userData.lx, mdz = player.position.z - o.position.z, md = Math.hypot(mdx, mdz);
       if (md < mr && md > 0.001) {
@@ -880,7 +895,7 @@ function moveRolls(dt) {
       emote();
       // Magpie: each roll already banked this run makes this one worth more (capped).
       const greed = mods.greedScale ? (1 + Math.min(GREED_CAP, rollCount * mods.greedScale)) : 1;
-      const mult = cmult(combo) * (power === 'x2' ? 2 : 1) * mods.rollX, gained = Math.round(rollValue * mult * mods.rollMult * greed);
+      const mult = cmult(combo) * (b?.scoreMult || 1) * mods.rollX, gained = Math.round(rollValue * mult * mods.rollMult * greed);
       rollCount++; rollPoints += gained; popScore(gained, mult); buzz(18); sfxCoin(combo);   // pitch climbs with the streak
       if (mods.jumpOnRoll && !grounded) jumpsLeft = Math.min(jumpsLeft + 1, 2 + extraJumps + mods.extraJumpsBonus);
       particles.emit(o.position.clone(), { count: 12, color: 0xffd56b, speed: 3, up: 3, life: .5, grav: 9, size: 0.5 }); scene.remove(o); rolls.splice(i, 1); continue;
@@ -904,18 +919,37 @@ function movePickups(dt) {
   }
 }
 function activatePower(kind, pos) {
+  const b = boostById(kind); if (!b) return;
   power = kind; powerT = POWERUP_DURATION; gotPower = true;
-  if (kind === 'ghost' || kind === 'dash') invuln = POWERUP_DURATION;   // ghost & boost both phase through everything
-  const p = POWERUPS[kind];
-  flash('#fff7c0'); buzz([12, 20, 12]); sfxLevel(); showBanner(`${p.icon} ${p.label}!`);
-  particles.emit(pos.add(new THREE.Vector3(0, 0.3, 0)), { count: 18, color: p.color, speed: 4, up: 4, life: .6, grav: 6 });
+  if (b.invuln) invuln = POWERUP_DURATION;   // e.g. ghost & dash both phase through everything
+  flash('#fff7c0'); buzz([12, 20, 12]); sfxLevel(); showBanner(`${b.icon} ${b.label}!`);
+  particles.emit(pos.add(new THREE.Vector3(0, 0.3, 0)), { count: 18, color: b.color, speed: 4, up: 4, life: .6, grav: 6 });
+  b.onActivate?.(boostCtx());               // lifecycle hook for mechanic-boosts (core four: no-op)
   updatePowerHud(); updatePowerVisual();
 }
+// The ctx handed to a boost's lifecycle hooks (onActivate/onTick/onEnd): the
+// slice of the loop a mechanic-boost plausibly needs, without exposing the
+// rest. Rebuilt per call so the scalar readouts are live. Documented in
+// src/boosts/_example.js — keep the two in sync.
+function boostCtx() {
+  return {
+    player, scene, particles,
+    level, speed, distance,
+    lanes: LANES, laneIdx: () => laneIdx,
+    obstacles, rolls, pickups,
+    addPoints: (n) => { rollPoints += n | 0; updateHud(); },
+    grantInvuln: (t) => { invuln = Math.max(invuln, t); },
+    addShield: (n = 1) => { shields += n; updateShieldHud(); },
+    emit: (pos, opts) => particles.emit(pos, opts),
+    banner: showBanner, flash, buzz,
+  };
+}
 // Mirror the active power-up onto the character: a glowing ground ring in the
-// power's colour, plus a translucent body while Ghost is up.
+// boost's colour, plus a translucent body while a ghostBody boost is up.
 function updatePowerVisual() {
-  if (aura) { aura.visible = !!power; if (power) { aura.material.color.setHex(POWERUPS[power].color); aura.userData.edge.material.color.setHex(POWERUPS[power].color); } }
-  const ghost = power === 'ghost';
+  const b = curBoost();
+  if (aura) { aura.visible = !!b; if (b) { aura.material.color.setHex(b.color); aura.userData.edge.material.color.setHex(b.color); } }
+  const ghost = !!b?.ghostBody;
   [playerMats.skin, playerMats.inner, playerMats.blush, playerMats.tail].forEach(m => {
     m.transparent = ghost; m.opacity = ghost ? 0.45 : 1; m.depthWrite = !ghost;
   });
@@ -923,7 +957,7 @@ function updatePowerVisual() {
 function updatePowerHud() {
   const box = $('powerHud');
   if (power) {
-    box.classList.remove('hide'); $('powerIcon').textContent = POWERUPS[power].icon;
+    box.classList.remove('hide'); $('powerIcon').textContent = boostById(power).icon;
     $('powerFill').style.width = Math.max(0, powerT / POWERUP_DURATION * 100) + '%';
   } else box.classList.add('hide');
 }
@@ -1022,7 +1056,7 @@ function updatePlayer(dt, t) {
     if (auraSparkT <= 0 && state === 'playing') {                    // drift cosy sparkles up around the body
       auraSparkT = 0.22;
       const a = Math.random() * Math.PI * 2, r = 0.7 + Math.random() * 0.4;
-      particles.emit(new THREE.Vector3(player.position.x + Math.cos(a) * r, 0.1, player.position.z + Math.sin(a) * r), { count: 1, color: POWERUPS[power].color, speed: 0.3, up: 2.4, life: .7, grav: -1.5, size: 0.4 });
+      particles.emit(new THREE.Vector3(player.position.x + Math.cos(a) * r, 0.1, player.position.z + Math.sin(a) * r), { count: 1, color: curBoost()?.color ?? 0xffffff, speed: 0.3, up: 2.4, life: .7, grav: -1.5, size: 0.4 });
     }
   }
   if (gear) tickGear(gear, t, dt);   // animate the worn props that opt into tick() (incl. Cushion pips + rocket flame)
@@ -1184,7 +1218,7 @@ function buildDebugApi() {
       perks: perks.map(p => ({ id: p.id, stacks: p.stacks })), mods, levelUps,
       draft: draftCards.map(p => p.id), draftArm: +draftArm.toFixed(2),
       meta: { rerolls: getRerolls(), banishes: getBanishes(), eligible: eligiblePool() },
-      power, powerT: +powerT.toFixed(2), lastRun, rowGap: +lastRowGap.toFixed(3),
+      power, powerT: +powerT.toFixed(2), boostKinds: eligibleBoosts(level).map(b => b.id), lastRun, rowGap: +lastRowGap.toFixed(3),
       emote: +emoteT.toFixed(2), spin: +spin.toFixed(2),
       laneIdx, targetX,
       track: trackSnapshot(),
@@ -1213,8 +1247,8 @@ function buildDebugApi() {
       o = kind === 'gate' ? makeGate() : makeHurdle();
       o.position.set(0, 0, z); o.userData.halfW = 3.3; o.userData.lx = 0; arr = obstacles;
     } else if (kind.startsWith('powerup')) {
-      const pk = kind.split(':')[1] || POWERUP_KINDS[0];
-      o = makePowerup(POWERUPS[pk].color); o.position.set(LANES[lane], 1.0, z); o.userData.kind = pk; o.userData.lx = LANES[lane]; arr = pickups;
+      const pk = kind.split(':')[1] || BOOSTS[0].id;
+      o = makeBoostPickup(boostById(pk)); o.position.set(LANES[lane], 1.0, z); o.userData.kind = pk; o.userData.lx = LANES[lane]; arr = pickups;
     } else {                                       // cactus | rock | bar (arg4 = tall)
       o = makeObstacle(kind, !!arg4); if (o.userData.tall) o.userData.clearH += extraJumps * TALL_CLEAR_PER_JUMP;
       o.position.set(LANES[lane], 0, z); o.userData.lane = lane; o.userData.lx = LANES[lane]; arr = obstacles;
@@ -1232,7 +1266,7 @@ function buildDebugApi() {
     rollValue: v => { rollValue = v; }, extraJumps: v => { extraJumps = v; }, jumpsLeft: v => { jumpsLeft = v; },
     combo: v => { combo = v; }, comboMax: v => { comboMax = v; }, comboTimer: v => { comboTimer = v; }, rollCount: v => { rollCount = v; }, rollPoints: v => { rollPoints = v; },
     phoenix: v => { phoenix = !!v; if (phoenix) phoenixUsed = false; }, phoenixUsed: v => { phoenixUsed = !!v; },
-    power: v => { power = v; if (v && powerT <= 0) powerT = POWERUP_DURATION; if (v === 'ghost' || v === 'dash') invuln = Math.max(invuln, POWERUP_DURATION); },
+    power: v => { power = v; if (v && powerT <= 0) powerT = POWERUP_DURATION; if (v && boostById(v)?.invuln) invuln = Math.max(invuln, POWERUP_DURATION); },
     powerT: v => { powerT = v; }, safeLane: v => { safeLane = v; }, forcedGap: v => { forcedGap = v; },
     perks: v => { perks = (v || []).map(x => typeof x === 'string' ? { id: x, stacks: 1 } : { id: x.id, stacks: x.stacks || 1 }); recomputeRunMods(); refreshGear(); },
     levelUps: v => { levelUps = v; },
@@ -1272,7 +1306,7 @@ function buildDebugApi() {
       lifecycle: ['start(overrides?)', 'reset()', 'fresh()', 'over()'],
       time: ['pauseGame()', 'resumeGame()', 'togglePause()', 'pause()', 'resume()', 'step(frames=1, dt=1/60)', 'seed(n)'],
       teleport: ['set({level,speed,shields,power,...})', `keys: ${Object.keys(SETTERS).join(', ')}`],
-      world: ['spawn(kind, lane?, z?, arg4?)', 'arg4: roll→height, obstacle→tall', 'clearField()', 'forceFinish(z?)', `kinds: ${OBSTACLE_KINDS.join('|')}|gate|hurdle|roll|powerup[:magnet|x2|ghost]`],
+      world: ['spawn(kind, lane?, z?, arg4?)', 'arg4: roll→height, obstacle→tall', 'clearField()', 'forceFinish(z?)', `kinds: ${OBSTACLE_KINDS.join('|')}|gate|hurdle|roll|powerup[:${BOOSTS.map(b => b.id).join('|')}]`],
       input: ['left()', 'right()', 'lane(i)', 'jump()', 'duck()'],
       shop: ['wallet()', 'fund(n)', 'buy(id)', 'own(id, tier)', 'effects()', 'migrate(legacyOwned?)'],
       perks: ['perk(id)', 'draft()', 'openDraft()', 'pick(i)', 'reroll()', 'banish(i)', `ids: ${PERKS.map(p => p.id).join('|')}`],

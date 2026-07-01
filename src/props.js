@@ -365,6 +365,15 @@ export function makePowerup(color) {
   return g;
 }
 
+// Build a boost's pickup: the standard gem in the boost's colour, optionally
+// passed through the def's dress(group, THREE, helpers) so a boost file can
+// customize/extend its own mesh (the core four don't — zero visual change).
+export function makeBoostPickup(def) {
+  const g = makePowerup(def.color);
+  if (typeof def.dress === 'function') def.dress(g, THREE, { toon, ink, glow });
+  return g;
+}
+
 export function makeTree() {
   const g = new THREE.Group();
   const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.24, 1.1, 8), toon(0x9c6b43)); trunk.position.y = 0.55; trunk.castShadow = true; ink(trunk, 1.08);
