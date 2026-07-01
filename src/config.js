@@ -112,9 +112,14 @@ export const TALL_CHANCE = 0.3;       // base chance a heat-eligible blocked jum
 // an open lane. Reaching real height (double-jump / pad) also pays an air bonus,
 // scaled by peak height and the live combo — so going up is worth points, not
 // just survival.
-export const ROLL_GRAB_H = 0.6;       // vertical reach: how close in height you must be to grab an elevated roll
+export const ROLL_GRAB_H = 0.7;       // vertical reach: how close in height you must be to grab an elevated roll
 export const AIR_ARC_MIN_DIFF = 0.25; // air ribbons only phase in past this much heat
-export const AIR_ARC_CHANCE = 0.12;   // chance of an air ribbon on an eligible row
+export const AIR_ARC_CHANCE = 0.12;   // chance of a (low, single-hop) air ribbon on an eligible open lane
+// A tall wall can carry its own air ribbon arcing right over it, peaking above a
+// single hop's apex — so the reward rides the same risky double-jump you'd use to
+// clear the wall, instead of always sitting in the safe open lane.
+export const AIR_ARC_TALL_CHANCE = 0.6;   // chance a tall obstacle also gets an air ribbon over it
+export const AIR_ARC_TALL_PEAK = TALL_CLEAR_H + 0.5;   // peak float height of a tall-wall ribbon (double-jump territory)
 // The air bonus only pays when a double-jump was actually spent (see usedDouble),
 // so it can't be farmed by rhythm-hopping and doesn't inflate with extra jumps.
 // AIR_MIN_H filters a wasted immediate double (too low to count). The height term
