@@ -16,6 +16,7 @@ import { selectedSkin, selectSkin, getDailyBest, setDailyBest, getDailyStreak } 
 import { skinById, skinUnlocked, applySkin } from './cosmetics.js';
 import { installDebug } from './debug.js';
 import { configureHud, renderShop, renderStats, renderDaily, renderAchievements, renderCosmetics, renderHighlights, showAchUnlock, dismissAchUnlock, bindResetSave } from './hud.js';
+import { bindControls } from './controls.js';
 import {
   initAudio, ensureAudio, toggleSound, setIntensity, getIntensity,
   sfxLane, sfxJump, sfxDuck, sfxCoin, sfxCrash, sfxStart, sfxOver, sfxLevel, sfxShield, sfxComboBreak, sfxWhoosh, sfxFanfare, sfxFart, sfxPowerEnd,
@@ -188,7 +189,11 @@ function init() {
   fxRing.rotation.x = -Math.PI / 2; fxRing.position.y = 0.04; fxRing.visible = false; scene.add(fxRing);
 
   clock = new THREE.Clock(); resetGame();
-  addEventListener('resize', onResize); bindControls();
+  addEventListener('resize', onResize);
+  bindControls({
+    canvas: renderer.domElement, getState: () => state, ensureAudio,
+    moveLane, jump, duck, startGame, togglePause, pickDraft, rerollDraft,
+  });
   $('startBtn').onclick = () => startGame(false);
   $('againBtn').onclick = () => startGame(daily);     // "Again!" replays the same mode
   $('unlockBtn').onclick = dismissAchUnlock;          // tap-to-continue past the unlock fanfare
@@ -639,31 +644,8 @@ function awardAir(peak) {
   particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.2, 0)),
     { count: 8, color: 0xbfe0ff, speed: 2.5, up: 1.5, life: .45, grav: 5, size: 0.4 });
 }
-function bindControls() {
-  addEventListener('keydown', e => {
-    // Esc / P toggles the in-run pause; only meaningful while playing or paused.
-    if ((e.code === 'Escape' || e.code === 'KeyP') && (state === 'playing' || state === 'paused')) { togglePause(); return; }
-    if (state === 'paused') return;   // swallow all other input while paused (no stray start/jump)
-    if (state === 'draft') {
-      if (e.code === 'Digit1' || e.code === 'ArrowLeft') pickDraft(0);
-      else if (e.code === 'Digit2' || e.code === 'ArrowUp' || e.code === 'Space' || e.code === 'Enter') pickDraft(1);
-      else if (e.code === 'Digit3' || e.code === 'ArrowRight') pickDraft(2);
-      else if (e.code === 'KeyR') rerollDraft();
-      return;
-    }
-    if (state !== 'playing') { if (e.code === 'Space' || e.code === 'Enter') startGame(); return; }
-    if (e.code === 'ArrowLeft') moveLane(-1); else if (e.code === 'ArrowRight') moveLane(1);
-    else if (e.code === 'ArrowUp' || e.code === 'Space') jump(); else if (e.code === 'ArrowDown') duck();
-  });
-  let sx = 0, sy = 0, fired = false; const TH = 24, el = renderer.domElement;
-  const act = (dx, dy) => { if (Math.abs(dx) > Math.abs(dy)) moveLane(dx > 0 ? 1 : -1); else if (dy < 0) jump(); else duck(); };
-  el.addEventListener('touchstart', e => { ensureAudio(); const t = e.changedTouches[0]; sx = t.clientX; sy = t.clientY; fired = false; }, { passive: true });
-  el.addEventListener('touchmove', e => {
-    if (state !== 'playing' || fired) return; const t = e.changedTouches[0], dx = t.clientX - sx, dy = t.clientY - sy;
-    if (Math.abs(dx) > TH || Math.abs(dy) > TH) { act(dx, dy); fired = true; }
-  }, { passive: true });
-  el.addEventListener('touchend', () => { if (state === 'playing' && !fired) jump(); }, { passive: true });
-}
+// bindControls (keyboard + touch/swipe wiring) lives in src/controls.js; init()
+// hands it the live state getter and the action callbacks it dispatches to.
 
 /* ---------------- pause ---------------- */
 // A real in-run pause — a game STATE, distinct from the debug `paused` flag
