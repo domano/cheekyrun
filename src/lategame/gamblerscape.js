@@ -46,34 +46,34 @@ export default {
     ];
     const panels = panelDefs.map((d) => {
       const panel = new THREE.Mesh(new THREE.BoxGeometry(d.w, d.h, 0.02), capeM);
-      panel.position.set(d.x, -d.h / 2 + 0.06, -0.05);
+      panel.position.set(d.x, -d.h / 2 + 0.06, 0);
       panel.rotation.z = d.rz;
-      panel.rotation.x = -0.18; // billow backward off the body
+      panel.rotation.x = 0.3; // drape down over the camera-facing back
       ink(panel, 1.08);
       g.add(panel);
       return panel;
     });
 
     // gold clasp at the neck, small torus sitting above the panels
-    const clasp = new THREE.Mesh(new THREE.TorusGeometry(0.09, 0.03, 8, 18), goldM);
-    clasp.position.set(0, 0.22, 0.02);
+    const clasp = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.035, 8, 18), goldM);
+    clasp.position.set(0, 0.24, 0.06);
     clasp.rotation.x = Math.PI / 2;
     ink(clasp, 1.1);
     g.add(clasp);
 
     g.userData.panels = panels;
 
-    // anchor behind/above the cheeks, draping down the back
-    g.position.set(0, 0.9, -0.35);
+    // anchor high on the camera-facing back (+z), draping down the visible side
+    g.position.set(0, 1.06, 0.32);
     return g;
   },
-  scale: (tier) => 0.92 + 0.06 * tier,
+  scale: (tier) => 0.96 + 0.07 * tier,
   tick(g, t) {
     const panels = g.userData.panels;
     if (!panels) return;
     panels.forEach((p, i) => {
-      p.rotation.x = -0.18 + Math.sin(t * 1.8 + i * 0.7) * 0.1;
-      p.rotation.z = (i - 1) * -0.12 * 0 + Math.sin(t * 1.3 + i) * 0.05 + [0.12, 0, -0.12][i];
+      p.rotation.x = 0.3 + Math.sin(t * 1.8 + i * 0.7) * 0.1;
+      p.rotation.z = [0.12, 0, -0.12][i] + Math.sin(t * 1.3 + i) * 0.05;
     });
   },
 };

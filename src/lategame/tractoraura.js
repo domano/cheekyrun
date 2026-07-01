@@ -41,12 +41,13 @@ export default {
     g.add(outer);
     g.userData.outer = outer;
 
-    // thin bright inner edge so the field still reads on pale biomes
+    // thin bright inner edge — NORMAL-blended (not additive) so it still reads
+    // on pale biomes where an additive glow alone washes out (mirrors buildAura).
     const edge = new THREE.Mesh(
       new THREE.RingGeometry(1.0, 1.08, 40),
       new THREE.MeshBasicMaterial({
-        color: FIELD, transparent: true, opacity: 0.65, depthWrite: false,
-        side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
+        color: FIELD, transparent: true, opacity: 0.85, depthWrite: false,
+        side: THREE.DoubleSide,
       }),
     );
     edge.rotation.x = -Math.PI / 2;

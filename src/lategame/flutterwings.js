@@ -11,9 +11,9 @@ function makeWing(mirror) {
   const fanAngles = [-0.3, 0, 0.3];
   fanAngles.forEach((a, i) => {
     const cone = new THREE.Mesh(
-      new THREE.ConeGeometry(0.16, 0.34, 10),
+      new THREE.ConeGeometry(0.19, 0.4, 10),
       new THREE.MeshBasicMaterial({
-        color: WING, transparent: true, opacity: 0.55,
+        color: WING, transparent: true, opacity: 0.72,
         depthWrite: false, side: THREE.DoubleSide,
       }),
     );
@@ -50,13 +50,13 @@ export default {
     const g = new THREE.Group();
 
     const left = makeWing(1);
-    left.position.set(-0.5, 0.75, -0.15);
-    left.rotation.y = THREE.MathUtils.degToRad(20);
+    left.position.set(-0.52, 0.9, 0.18);
+    left.rotation.y = THREE.MathUtils.degToRad(38);
     g.add(left);
 
     const right = makeWing(-1);
-    right.position.set(0.5, 0.75, -0.15);
-    right.rotation.y = THREE.MathUtils.degToRad(-20);
+    right.position.set(0.52, 0.9, 0.18);
+    right.rotation.y = THREE.MathUtils.degToRad(-38);
     right.scale.x = -1; // mirror the fan
     g.add(right);
 
