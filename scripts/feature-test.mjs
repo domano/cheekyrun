@@ -344,6 +344,34 @@ const SCENARIOS = [
     },
   },
   {
+    name: 'shop-modal',
+    fn: (c, assert) => {
+      const modal = document.getElementById('shopModal');
+      assert(modal.classList.contains('hide'), 'shop modal starts hidden on the menu');
+      const menuBtn = document.querySelector('.menu .shopOpenBtn');
+      assert(!!menuBtn, 'menu has a shop-open button instead of inline upgrade/skin panels');
+      assert(!document.querySelector('.menu .shop, .menu .cosmetics'), 'upgrades and skins are not inlined in the menu');
+      menuBtn.click();
+      assert(!modal.classList.contains('hide'), 'clicking the menu shop button opens the modal');
+      assert(modal.querySelectorAll('.shop, .cosmetics').length === 2, 'the modal holds the upgrade shop and the skin picker');
+      document.getElementById('shopClose').click();
+      assert(modal.classList.contains('hide'), 'the close button hides the modal again');
+      // The scrim itself (tapping outside the card) also dismisses it.
+      menuBtn.click();
+      modal.click();
+      assert(modal.classList.contains('hide'), 'tapping the scrim dismisses the modal');
+      // The game-over card reuses the same modal via its own shop button.
+      document.getElementById('overlay').classList.add('hide');
+      document.getElementById('gameover').classList.remove('hide');
+      const goBtn = document.querySelector('#gameover .shopOpenBtn');
+      assert(!!goBtn, 'the game-over card also has a shop-open button');
+      assert(!document.querySelector('#gameover .shop, #gameover .cosmetics'), 'upgrades and skins are not inlined on the game-over card either');
+      goBtn.click();
+      assert(!modal.classList.contains('hide'), 'the game-over shop button opens the same modal');
+      document.getElementById('shopClose').click();
+    },
+  },
+  {
     name: 'upgrade-headstart',
     fn: (c, assert) => {
       c.fund(1000); c.buy('headstart');

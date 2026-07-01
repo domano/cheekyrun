@@ -229,6 +229,13 @@ function init() {
   $('pauseBtn').onclick = () => { ensureAudio(); togglePause(); };
   $('pauseResume').onclick = resumeGame;
   $('pause').onclick = (e) => { if (e.target === $('pause')) resumeGame(); };   // tap the scrim to resume
+  // Upgrades + skins live behind one flashy shop button (menu and game-over both
+  // open the same modal) instead of cluttering the cards with two more panels.
+  document.querySelectorAll('.shopOpenBtn').forEach(b => {
+    b.onclick = () => { ensureAudio(); sfxLane(); buzz(12); $('shopModal').classList.remove('hide'); };
+  });
+  $('shopClose').onclick = () => { buzz(8); $('shopModal').classList.add('hide'); };
+  $('shopModal').onclick = (e) => { if (e.target === $('shopModal')) $('shopModal').classList.add('hide'); };
   // Auto-pause when the tab is hidden or the window loses focus, so a run never
   // keeps ticking (or dumps you back mid-hazard) while you're looking elsewhere.
   addEventListener('visibilitychange', () => { if (document.hidden) pauseGame(); });
