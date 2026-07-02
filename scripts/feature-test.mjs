@@ -393,7 +393,7 @@ const SCENARIOS = [
       assert(s.gearVisible.shield === true, 'the shield bubble is worn');
       assert(s.gearVisible.headstart === true, 'the rocket is worn');
       // the reframed upgrades are perks now: their props stay off until drafted.
-      assert(s.gearVisible.magnet === false && s.gearVisible.spring === false && s.gearVisible.fortune === false, 'undrafted perk gear is hidden');
+      assert(s.gearVisible.vacuum === false && s.gearVisible.hops === false && s.gearVisible.lucky === false, 'undrafted perk gear is hidden');
       // ...and the shield's tier shows as orbiting pips, one per tier, not bulk.
       assert(s.gearVisible.shieldPips === 2, 'a tier-2 Cushion shows two tier pips');
     },
@@ -421,40 +421,37 @@ const SCENARIOS = [
     name: 'perk-gear',
     fn: (c, assert) => {
       c.start();
-      assert(c.state().gearVisible.magnet === false, 'no magnet before drafting Vacuum');
+      assert(c.state().gearVisible.vacuum === false, 'no magnet before drafting Vacuum');
       let s = c.perk('vacuum');                    // 🧲 Vacuum → magnet prop
-      assert(s.gearVisible.magnet === true, 'drafting Vacuum wears the magnet');
+      assert(s.gearVisible.vacuum === true, 'drafting Vacuum wears the magnet');
       s = c.perk('hops');                          // 🦿 Hops → springs prop
-      assert(s.gearVisible.spring === true, 'drafting Hops wears the springs');
+      assert(s.gearVisible.hops === true, 'drafting Hops wears the springs');
       s = c.perk('lucky');                         // 🍀 Lucky → clover prop
-      assert(s.gearVisible.fortune === true, 'drafting Lucky wears the clover');
+      assert(s.gearVisible.lucky === true, 'drafting Lucky wears the clover');
       // a fresh run drops the worn perk gear (perks are per-run, not banked).
       const f = c.start();
-      assert(f.gearVisible.magnet === false && f.gearVisible.spring === false && f.gearVisible.fortune === false, 'perk gear resets each run');
+      assert(f.gearVisible.vacuum === false && f.gearVisible.hops === false && f.gearVisible.lucky === false, 'perk gear resets each run');
     },
   },
   {
-    // Completeness gate: every perk wears a visible 3D prop. The legacy three map
-    // onto magnet/spring/clover; every other perk keys onto a prop in its own
-    // file (src/perkgear/<id>.js). Goes fully green once each perk has a model.
+    // Completeness gate: every perk wears a visible 3D prop keyed by its own id
+    // (its file in src/perks/<id>.js). Goes fully green once each perk has a model.
     name: 'perk-gear-models',
     fn: (c, assert) => {
-      const MAP = {
-        vacuum: 'magnet', hops: 'spring', lucky: 'fortune',
-        tailwind: 'tailwind', memory: 'memory', pillow: 'pillow', daredevil: 'daredevil',
-        doubledown: 'doubledown', glasscannon: 'glasscannon', greedygut: 'greedygut',
-        featherfall: 'featherfall', secondwind: 'secondwind', overdrive: 'overdrive',
-        hotstreak: 'hotstreak', featherweight: 'featherweight', perfectionist: 'perfectionist',
-        magpie: 'magpie', allin: 'allin',
-      };
+      const IDS = [
+        'tailwind', 'vacuum', 'lucky', 'hops', 'memory', 'pillow', 'daredevil',
+        'doubledown', 'glasscannon', 'greedygut', 'featherfall', 'secondwind',
+        'overdrive', 'hotstreak', 'featherweight', 'perfectionist', 'magpie', 'allin',
+        'buttslam', 'coilspring', 'piggybank', 'blinkstep', 'kindling',
+      ];
       c.start();
-      for (const id in MAP) {
+      for (const id of IDS) {
         const s = c.perk(id);
-        assert(s.gearVisible[MAP[id]] === true, `drafting ${id} wears its ${MAP[id]} prop`);
+        assert(s.gearVisible[id] === true, `drafting ${id} wears its prop`);
       }
       const f = c.start();   // perks are per-run: a fresh run strips every prop off
-      for (const id in MAP) {
-        assert(f.gearVisible[MAP[id]] === false, `${id}'s prop is gone on a fresh run`);
+      for (const id of IDS) {
+        assert(f.gearVisible[id] === false, `${id}'s prop is gone on a fresh run`);
       }
     },
   },
@@ -619,6 +616,135 @@ const SCENARIOS = [
       c.spawn('cactus', 1, -4);                  // dead ahead — would normally crash
       s = c.step(40);
       assert(s.state === 'playing', 'Boost phases straight through obstacles');
+    },
+  },
+  {
+    // The spawner draws from eligibleBoosts(level) (src/boosts.js): each boost
+    // file's minLevel gates when it can appear. The core four are minLevel 1,
+    // so all of them are on offer from the first level; the late-game relics
+    // (pogo 5, chrono 6, rampage 8, twin 10) phase in per their minLevels.
+    name: 'boost-folder-gating',
+    fn: (c, assert) => {
+      const s = c.start();
+      assert(Array.isArray(s.boostKinds), 'the snapshot exposes the eligible boost kinds');
+      ['magnet', 'x2', 'ghost', 'dash'].forEach(k =>
+        assert(s.boostKinds.includes(k), `core boost "${k}" is eligible at level 1 (minLevel 1)`));
+      ['pogo', 'chrono', 'rampage', 'twin'].forEach(k =>
+        assert(!s.boostKinds.includes(k), `relic "${k}" is NOT in the pool at level 1`));
+      let s2 = c.set({ level: 5 });
+      assert(s2.boostKinds.includes('pogo'), 'Sky Dance (minLevel 5) joins the pool at level 5');
+      ['chrono', 'rampage', 'twin'].forEach(k =>
+        assert(!s2.boostKinds.includes(k), `deeper relic "${k}" stays gated at level 5`));
+      s2 = c.set({ level: 12 });
+      ['pogo', 'chrono', 'rampage', 'twin'].forEach(k =>
+        assert(s2.boostKinds.includes(k), `relic "${k}" is eligible by level 12`));
+    },
+  },
+  {
+    // Bullet Time (chrono relic): the world advances at ~timeScale of a
+    // no-boost run while the player keeps full-speed physics. NOT invulnerable.
+    name: 'boost-chrono',
+    fn: (c, assert) => {
+      c.start(); c.clearField();
+      const base = c.step(60).distance;             // no-boost baseline over 1s
+      c.start(); c.clearField();
+      let s = c.set({ power: 'chrono' });
+      assert(s.power === 'chrono' && s.powerT > 0, 'Bullet Time is active');
+      assert(s.invuln === 0, 'Bullet Time grants NO invulnerability');
+      const ratio = c.step(60).distance / base;
+      assert(Math.abs(ratio - 0.55) < 0.03, `the world runs at ~timeScale 0.55 (measured ${ratio.toFixed(3)})`);
+      c.spawn('cactus', 1, -4);
+      s = c.step(120);                              // the slowed hazard still arrives
+      assert(s.state === 'over', 'a hazard still kills in Bullet Time — slower, not safer');
+    },
+  },
+  {
+    // Rampage (relic): a single-lane jump-hazard is demolished on contact for
+    // RAMPAGE_BONUS × combo mult — no death, no combo break. Duck bars keep
+    // their normal rules and still end a mis-played run.
+    name: 'boost-rampage',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.clearField();
+      c.set({ power: 'rampage' });
+      c.spawn('rock', 1, -4);                       // dead ahead in the player's lane
+      let s = c.step(40);                           // charge straight into it
+      assert(s.state === 'playing', 'smashing through a rock does not end the run');
+      assert(s.counts.obstacles === 0, 'the smashed obstacle is removed from the road');
+      assert(s.rollPoints === 14, 'the smash pays RAMPAGE_BONUS 14 × combo mult 1');
+      assert(s.invuln === 0, 'Rampage is a demolition, not blanket invulnerability');
+      c.spawn('bar', 1, -4);                        // a duck bar, not ducked
+      s = c.step(40);
+      assert(s.state === 'over', 'a duck bar still ends the run if not ducked');
+    },
+  },
+  {
+    // Sky Dance (pogo relic): touchdowns auto-relaunch at the bounce vy with
+    // air jumps refunded; the air bonus stays double-jump gated so the
+    // auto-bounces never pay it. Expiry settles the landing normally.
+    name: 'boost-pogo',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.clearField();
+      c.set({ power: 'pogo' });
+      c.jump();
+      let s = c.step(55);                           // past where the hop would land (~45 frames)
+      assert(!s.player.grounded, 'the landing relaunches instead of settling');
+      assert(s.player.vy > 0, 'the bounce is rising at the boost vy');
+      assert(s.jumpsLeft === 2, 'air jumps are refunded on the bounce');
+      assert(s.rollPoints === 0, 'an auto-bounce pays no air-time bonus (double-jump gated)');
+      c.set({ powerT: 0.05 });                      // let the boost expire mid-bounce
+      s = c.step(120);
+      assert(s.power === null, 'the boost has expired');
+      assert(s.player.grounded && s.player.vy === 0, 'after expiry the next landing settles normally');
+      assert(s.rollPoints === 0, 'no air bonus accrued across all the bounces');
+    },
+  },
+  {
+    // Echo Twins (relic): rolls in ANY lane auto-collect and side-lane
+    // jump-hazards are smashed for TWIN_BONUS × combo mult when they draw
+    // level — but the player's OWN lane keeps normal rules, and side lanes go
+    // cold again the moment the boost ends.
+    name: 'boost-twin',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.clearField();
+      c.set({ power: 'twin' });
+      c.spawn('roll', 0, -4); c.spawn('roll', 2, -4);   // both NON-player lanes
+      let s = c.step(30);
+      assert(s.laneIdx === 1, 'the player never left the centre lane');
+      assert(s.rollCount === 2, 'rolls in BOTH side lanes auto-collect');
+      assert(s.counts.rolls === 0, 'no side roll is left behind');
+      const rp = s.rollPoints;
+      c.spawn('rock', 0, -4);                       // a side-lane hazard
+      s = c.step(30);
+      assert(s.state === 'playing', 'a side-lane rock never threatens the player');
+      assert(s.counts.obstacles === 0, 'the twins smash the side-lane rock as it draws level');
+      assert(s.rollPoints === rp + 6, 'the side smash pays TWIN_BONUS 6 × combo mult 1');
+      c.set({ power: null });                       // relic over — side lanes go cold
+      c.spawn('roll', 0, -4); c.spawn('roll', 2, -4);
+      s = c.step(30);
+      assert(s.rollCount === 2, 'side rolls are NOT collected once the boost ends');
+      assert(s.counts.rolls === 2, 'both side rolls sail past ungathered');
+      c.set({ power: 'twin' });
+      c.spawn('rock', 1, -4);                       // the player's OWN lane
+      s = c.step(30);
+      assert(s.state === 'over', 'a rock in the player\'s own lane still kills — twins never cover it');
+    },
+  },
+  {
+    // Relic pickups share the special treatment (relicDress: ×1.25 scale, the
+    // gold halo crown + orbiting stars, then a per-relic topper) so they read
+    // as clearly MORE special than the core gems — asserted via deterministic
+    // mesh fingerprints, not screenshots.
+    name: 'boost-relic-dress',
+    fn: (c, assert) => {
+      const g = c.gfx();
+      assert(g.powerupMeshes > 0, 'the base gem probe reports its mesh count');
+      ['chrono', 'rampage', 'pogo', 'twin'].forEach(k => {
+        const r = g.relicDress[k];
+        assert(!!r, `relic "${k}" dresses its pickup`);
+        assert(r.scale === 1.25, `"${k}" pickup is scaled up ×1.25`);
+        assert(r.meshes > g.powerupMeshes + 2, `"${k}" carries the halo crown + stars + its own topper (${r.meshes} meshes vs base ${g.powerupMeshes})`);
+        assert(r.spins >= 2, `"${k}" registers the crown/star idle spinners`);
+      });
     },
   },
   {
@@ -973,6 +1099,128 @@ const SCENARIOS = [
       s = c.start();
       s = c.perk('pillow');
       assert(s.shields === 2, 'Pillow adds its cushion on top of the bought Cushion');
+    },
+  },
+  {
+    name: 'perk-buttslam',
+    fn: (c, assert) => {
+      // Air-duck to arm, land by a cactus → it's smashed, pays out, grants invuln.
+      c.start({ magnetR: 0 }); c.clearField();
+      assert(c.perk('buttslam').mods.slam === true, 'Butt Slam arms the slam mod');
+      assert(c.state().gearVisible.buttslam === true, 'drafting wears the impact-star badge');
+      c.spawn('cactus', 1, -6);
+      c.jump(); c.step(10); c.duck();              // the air-duck arms the slam (and still fast-falls)
+      assert(c.state().slamArmed === true, 'an airborne duck arms the slam');
+      let s = c.step(12);                          // fall + touch down: the slam fires on landing
+      assert(s.player.grounded, 'back on the ground');
+      assert(s.slamArmed === false, 'the slam disarms on landing');
+      assert(s.counts.obstacles === 0, 'the hazard by the landing spot is smashed');
+      assert(s.rollPoints > 0, 'the slam pays a bonus');
+      assert(s.invuln > 0, 'the slam grants a beat of invuln');
+      // negative control: a duck-bar is slam-proof (and pays nothing).
+      c.start({ magnetR: 0 }); c.clearField(); c.perk('buttslam');
+      c.spawn('bar', 1, -6);
+      c.jump(); c.step(10); c.duck();
+      s = c.step(12);
+      assert(s.player.grounded && s.slamArmed === false, 'the armed landing still disarms');
+      assert(s.counts.obstacles === 1, 'a duck-bar is not smashed by a slam');
+      assert(s.rollPoints === 0, 'no slam bonus without a smashable target');
+    },
+  },
+  {
+    name: 'perk-coilspring',
+    fn: (c, assert) => {
+      // Duck, then jump inside the window → a mega-hop that peaks over tall walls.
+      c.start({ magnetR: 0 }); c.clearField();
+      assert(c.perk('coilspring').mods.coil === true, 'Coil Spring arms the coil mod');
+      c.duck();
+      assert(c.state().coilT > 0, 'a grounded duck compresses the coil');
+      c.step(6); c.jump();                         // ~0.1s later — inside the 0.4s window
+      assert(c.state().coilT === 0, 'the coiled jump consumes the window');
+      let peak = 0;
+      for (let i = 0; i < 26; i++) peak = Math.max(peak, c.step(2).player.groundY);   // sample across the whole arc
+      assert(peak > 2.8, `a coiled hop peaks over tall walls (peak ${peak})`);
+      // negative control: the window lapses — a late jump is a normal hop.
+      c.start({ magnetR: 0 }); c.clearField(); c.perk('coilspring');
+      c.duck(); c.step(28);                        // ~0.47s — past the window
+      assert(c.state().coilT === 0, 'the coil window lapses');
+      c.jump();
+      let peak2 = 0;
+      for (let i = 0; i < 26; i++) peak2 = Math.max(peak2, c.step(2).player.groundY);
+      assert(peak2 < 2.2, `a jump after the window is a normal hop (peak ${peak2})`);
+    },
+  },
+  {
+    name: 'perk-piggybank',
+    fn: (c, assert) => {
+      // A share of every roll feeds the vault; the finish line cashes it out.
+      c.start({ magnetR: 0 }); c.clearField();
+      assert(c.perk('piggybank').mods.bankShare === 0.6, 'Piggy Bank diverts a 0.6 share of rolls');
+      c.spawn('roll', 1, -4);
+      let s = c.step(40);
+      assert(s.rollCount === 1, 'the roll is grabbed');
+      assert(s.bank === Math.round(15 * 0.6), 'the share lands in the vault, not the score');
+      assert(s.rollPoints === 15 - s.bank, 'the rest still pays out live');
+      assert(s.bankMult > 1, 'each banked grab nudges the vault multiplier');
+      const kept = s.rollPoints, payout = Math.round(s.bank * s.bankMult);
+      c.forceFinish();
+      for (let i = 0; i < 40; i++) { s = c.step(6); if (s.level === 2) break; }
+      assert(s.level === 2, 'crossed the finish line');
+      assert(s.bank === 0 && s.bankMult === 1, 'the vault cashes and resets at the line');
+      assert(s.rollPoints === kept + payout, 'the multiplied payout lands in roll points');
+      // any hit — even a cushioned one — forfeits the vault.
+      c.start({ magnetR: 0 }); c.clearField(); c.perk('piggybank'); c.set({ shields: 1 });
+      c.spawn('roll', 1, -4);
+      s = c.step(40);
+      assert(s.bank > 0, 'the vault is stocked again');
+      c.spawn('cactus', 1, -4);
+      s = c.step(40);
+      assert(s.state === 'playing' && s.shields === 0, 'the cushion absorbed the hit');
+      assert(s.bank === 0 && s.bankMult === 1, 'a shielded hit still forfeits the vault');
+    },
+  },
+  {
+    name: 'perk-blinkstep',
+    fn: (c, assert) => {
+      // Airborne swipes teleport with a flash of invuln; grounded ones still ease.
+      c.start({ magnetR: 0 }); c.clearField();
+      assert(c.perk('blinkstep').mods.airDash === true, 'Blink Step arms the air-dash mod');
+      c.jump(); c.step(3); c.left();
+      let s = c.state();
+      assert(s.player.x === -2.2, 'an airborne swipe teleports straight to the lane');
+      assert(s.invuln > 0, 'the blink grants a flash of invuln');
+      // negative control: a grounded swipe is the normal eased slide, no invuln.
+      c.start({ magnetR: 0 }); c.clearField(); c.perk('blinkstep');
+      c.right(); s = c.state();
+      assert(s.player.x < 2.2, 'a grounded swipe does not teleport');
+      assert(s.invuln === 0, 'no invuln on a grounded swipe');
+      s = c.step(60);
+      assert(s.player.x === 2.2, 'the grounded slide still settles normally');
+    },
+  },
+  {
+    name: 'perk-kindling',
+    fn: (c, assert) => {
+      // Every 3rd chained near-miss sparks a bonus roll onto the road ahead.
+      c.start({ magnetR: 0 }); c.set({ stageStart: -1e9, stageLen: 1e9 }); c.clearField();   // breather: no auto-spawns
+      assert(c.perk('kindling').mods.kindling === 1, 'Kindling arms the spark chain');
+      // one link: hop a close-in cactus (near-miss at ~0.25s), land by 1s
+      const link = () => { c.spawn('cactus', 1, -3); c.jump(); c.step(60); };
+      link(); link();
+      let s = c.state();
+      assert(s.sparkChain === 2, 'two near-misses build the chain');
+      assert(s.counts.rolls === 0, 'no spark before the 3rd link');
+      link();
+      s = c.state();
+      assert(s.sparkChain === 3, 'the chain keeps counting');
+      assert(s.counts.rolls === 1, 'the 3rd link sparks a bonus roll onto the road');
+      // negative control: the window lapses and the chain fizzles.
+      c.clearField(); c.step(150);                 // 2.5s idle — past the 2.2s window
+      assert(c.state().sparkChain === 0, 'the chain resets when the window lapses');
+      // stacking: a 2nd stack needs one fewer link per spark.
+      assert(c.perk('kindling').mods.kindling === 2, 'a second stack deepens the kindling');
+      link(); link();
+      assert(c.state().counts.rolls === 1, 'with 2 stacks every 2nd link sparks');
     },
   },
   {
@@ -1734,86 +1982,18 @@ const SCENARIOS = [
       assert(g.sceneryContact === true, 'roadside scenery drops a contact shadow too');
     },
   },
-  // ---- late-game shop unlocks (src/upgrades/*.js) ----
-  // Each owns its upgrade via the debug own() helper (bypassing cost + gate),
-  // starts a run, and asserts the effect folded into mods AND its worn prop
-  // reveals + scales by owned tier.
-  {
-    name: 'gamblers-cape',
-    fn: (c, assert) => {
-      c.fresh();
-      c.own('gamblerscape', 3);
-      const s = c.start();
-      assert(s.mods.rollX > 1.4 && s.mods.rollX < 1.5, `rollX ~1.45, got ${s.mods.rollX}`);
-      assert(s.mods.obstacleMult > 1, 'more hazards at tier 3');
-      assert(s.mods.noShields === true, 'tier 3 runs with no cushions');
-      assert(s.gearVisible.gamblerscape === true, 'cape prop visible when owned');
-      assert(s.gearTiers.gamblerscape === 3, 'owned tier reported as 3');
-    },
-  },
-  {
-    name: 'tractor-aura',
-    fn: (c, assert) => {
-      c.fresh();
-      c.own('tractoraura', 4);
-      const s = c.start();
-      assert(s.mods.magnetBonus >= 5.9, 'tier 4 grants ~+6 magnet range');
-      assert(s.gearVisible.tractoraura === true, 'ground-ring prop visible when owned');
-      assert(s.gearTiers.tractoraura === 4, 'owned tier reported as 4');
-    },
-  },
-  {
-    name: 'flutterbutt-wings',
-    fn: (c, assert) => {
-      c.fresh();
-      c.own('flutterwings', 4);
-      const s = c.start();
-      assert(s.mods.floatMult < 0.85, 'tier 4 floats longer (floatMult < 0.85)');
-      assert(s.gearVisible.flutterwings === true, 'wings prop visible when owned');
-      assert(s.gearTiers.flutterwings === 4, 'owned tier reported as 4');
-    },
-  },
-  {
-    name: 'midas-streak',
-    fn: (c, assert) => {
-      c.fresh();
-      c.own('midasstreak', 4);
-      const s = c.start();
-      assert(s.mods.greedScale >= 0.0099, 'greed floor set at max tier');
-      assert(s.gearVisible.midasstreak === true, 'sash prop visible when owned');
-      assert(s.gearTiers.midasstreak === 4, 'owned tier reported as 4');
-    },
-  },
-  {
-    name: 'comet-trail',
-    fn: (c, assert) => {
-      c.fresh();
-      c.own('comettrail', 3);
-      const s = c.start();
-      assert(s.mods.speedMult > 1.08, 'faster pace at tier 3');
-      assert(s.gearVisible.comettrail === true, 'tail-wake prop visible when owned');
-      assert(s.gearTiers.comettrail === 3, 'owned tier reported as 3');
-    },
-  },
-  // A daily run is meta-free: owned upgrades — late-game unlocks AND the core
-  // floor (shields/headstart) — neither affect its mods/effects nor show gear
-  // (mirrors how effects() is zeroed for a daily).
+  // A daily run is meta-free: owned upgrades neither affect its mods/effects
+  // nor show gear (mirrors how effects() is zeroed for a daily).
   {
     name: 'upgrades-off-in-daily',
     fn: (c, assert) => {
       c.fresh();
-      c.own('comettrail', 3);
-      c.own('gamblerscape', 3);
       c.own('shield', 3);
       c.own('headstart', 2);
       const s = c.startDaily();
       assert(s.daily === true, 'a daily run is active');
-      assert(Math.abs(s.mods.speedMult - 1) < 1e-9, 'no late-game speed boost in a daily');
-      assert(s.mods.noShields === false, 'no late-game curse in a daily');
       assert(s.shields === 0, 'no owned Cushion carries into a daily');
       assert(s.level === 1, 'no Head Start levels in a daily');
-      assert(s.gearVisible.comettrail === false, 'late-game gear hidden in a daily');
-      assert(s.gearVisible.gamblerscape === false, 'late-game gear hidden in a daily');
       assert(s.gearVisible.headstart === false, 'core upgrade gear hidden in a daily');
       assert(s.gearVisible.shield === false, 'Cushion bubble hidden in a daily');
     },

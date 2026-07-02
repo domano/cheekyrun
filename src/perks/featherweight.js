@@ -1,6 +1,6 @@
 // 🎈 Featherweight — a pastel helium balloon tied to the upper body, lazily
 // bobbing as if it's the thing keeping the character aloft.
-// Reference template: src/perkgear/overdrive.js
+// Reference template: src/perks/overdrive.js
 import * as THREE from 'three';
 import { toon, ink } from '../materials.js';
 
@@ -10,6 +10,9 @@ const STRING = 0xfff4ef;   // warm off-white
 
 export default {
   id: 'featherweight',
+  icon: '🎈', name: 'Featherweight', desc: 'Hang way longer, but one fewer jump.',
+  rarity: 'curse', weight: 26, stack: 1, order: 150,
+  apply: (m) => { m.floatMult *= 0.45; m.extraJumpsBonus -= 1; },
   build() {
     const g = new THREE.Group();
 

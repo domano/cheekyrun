@@ -1,6 +1,6 @@
 // 💰 Double Down — a shiny gold coin medallion worn on a strap, rolls pay 2×.
-// Reference template for a perk-gear prop: default-export an object with
-//   id     — the perk id (must match perks.js); also its key in PERK_GEAR.
+// Worn-gear members (the full perk-file template is ./_example.js):
+//   id     — the perk id; also the key for its worn prop (see player.js).
 //   build()        → a THREE.Object3D, already positioned/oriented on the body.
 //                    Built once, hidden; the game shows it when the perk is drafted.
 //   scale(stacks)  → optional scalar so more stacks read a touch bigger. Keep it
@@ -19,6 +19,9 @@ const WOBBLE = THREE.MathUtils.degToRad(3); // ±3° coin-catching-light wobble
 
 export default {
   id: 'doubledown',
+  icon: '💰', name: 'Double Down', desc: 'Rolls are worth 2× always.',
+  rarity: 'epic', weight: 30, stack: 1, order: 80,
+  apply: (m) => { m.rollX *= 2; },
   build() {
     const g = new THREE.Group();
     const goldM = toon(GOLD), rimM = toon(RIM), strapM = toon(STRAP);

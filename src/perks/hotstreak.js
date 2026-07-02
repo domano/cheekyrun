@@ -1,6 +1,6 @@
 // 🌟 Hot Streak — glowy flame tufts fanned around the base of the white tail.
-// Reference template for a perk-gear prop: default-export an object with
-//   id     — the perk id (must match perks.js); also its key in PERK_GEAR.
+// Worn-gear members (the full perk-file template is ./_example.js):
+//   id     — the perk id; also the key for its worn prop (see player.js).
 //   build()        → a THREE.Object3D, already positioned/oriented on the body.
 //                    Built once, hidden; the game shows it when the perk is drafted.
 //   scale(stacks)  → optional scalar so more stacks read a touch bigger. Keep it
@@ -17,6 +17,9 @@ const OUTER = 0xff7a2e; // outer flame colour
 
 export default {
   id: 'hotstreak',
+  icon: '🌟', name: 'Hot Streak', desc: 'Combo cap +2.',
+  rarity: 'epic', weight: 22, stack: 1, order: 140,
+  apply: (m) => { m.comboCeil += 2; },
   build() {
     const g = new THREE.Group();
     g.userData.flames = [];

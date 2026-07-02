@@ -1,6 +1,6 @@
 // ⚡ Tailwind — twin swept speed-wings on the upper back, fluttering as you fly.
-// Reference template for a perk-gear prop: default-export an object with
-//   id     — the perk id (must match perks.js); also its key in PERK_GEAR.
+// Worn-gear members (the full perk-file template is ./_example.js):
+//   id     — the perk id; also the key for its worn prop (see player.js).
 //   build()        → a THREE.Object3D, already positioned/oriented on the body.
 //                    Built once, hidden; the game shows it when the perk is drafted.
 //   scale(stacks)  → optional scalar so more stacks read a touch bigger. Keep it
@@ -16,6 +16,9 @@ const TIP = 0xffffff;    // white leading tip
 
 export default {
   id: 'tailwind',
+  icon: '⚡', name: 'Tailwind', desc: 'Faster pace, richer rolls.',
+  rarity: 'common', weight: 100, stack: 3, order: 10,
+  apply: (m) => { m.speedMult *= 1.08; m.rollMult *= 1.10; },
   build() {
     const g = new THREE.Group();
     const wingM = toon(WING), tipM = toon(TIP, { flat: true });

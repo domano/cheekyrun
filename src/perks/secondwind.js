@@ -9,6 +9,9 @@ const CYAN = 0xaee6ff;
 
 export default {
   id: 'secondwind',
+  icon: '🌬️', name: 'Second Wind', desc: 'Grab a roll mid-air, regain a jump.',
+  rarity: 'epic', weight: 22, stack: 1, order: 120,
+  apply: (m) => { m.jumpOnRoll = true; },
   build() {
     const g = new THREE.Group();
 

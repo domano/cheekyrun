@@ -22,8 +22,8 @@ export { getWallet, addRolls };
 //   • effect(tier, eff) — set base run values (shields/headstart/magnet/... —
 //     see effects() below). Used by the core floor upgrades.
 //   • mods(tier, m)     — fold into the run mods accumulator (perks.js shape).
-//     Used by the late-game unlocks; a permanent, milder echo of a perk, so it
-//     rides the exact same consumption points in main.js with no new wiring.
+//     For upgrades that act as a permanent, milder echo of a perk, so they
+//     ride the exact same consumption points in main.js with no new wiring.
 //   • build()/scale()/tick() — the worn prop (read by player.js).
 // Files prefixed `_` are templates and skipped. See ./upgrades/_example.js.
 // renderShop() paints them all the same way (tiers/cost/gate), so dropping a
@@ -91,7 +91,7 @@ export function effects() {
 
 // Fold every owned upgrade's mods(tier, m) contribution into a run `mods`
 // accumulator (the same shape perks use — see perks.js freshMods). Called once
-// at run start after applyPerks, so the late-game unlocks are permanent, milder
+// at run start after applyPerks, so mods-based upgrades are permanent, milder
 // echoes of perks that ride the exact same consumption points in main.js — no
 // per-upgrade gameplay wiring. Only owned tiers (tier >= 1) contribute, and
 // daily runs skip this entirely.

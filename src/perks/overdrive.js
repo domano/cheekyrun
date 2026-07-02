@@ -1,6 +1,6 @@
 // 🏎️ Overdrive — twin chrome exhaust pipes low on the back, puffing as you rip.
-// Reference template for a perk-gear prop: default-export an object with
-//   id     — the perk id (must match perks.js); also its key in PERK_GEAR.
+// Worn-gear members (the full perk-file template is ./_example.js):
+//   id     — the perk id; also the key for its worn prop (see player.js).
 //   build()        → a THREE.Object3D, already positioned/oriented on the body.
 //                    Built once, hidden; the game shows it when the perk is drafted.
 //   scale(stacks)  → optional scalar so more stacks read a touch bigger. Keep it
@@ -17,6 +17,9 @@ const CAP = 0x3a3a42;    // dark exhaust opening so each pipe's mouth reads
 
 export default {
   id: 'overdrive',
+  icon: '🏎️', name: 'Overdrive', desc: '+18% speed — pure distance.',
+  rarity: 'rare', weight: 45, stack: 2, order: 130,
+  apply: (m) => { m.speedMult *= 1.18; },
   build() {
     const g = new THREE.Group();
     const pipeM = toon(PIPE), tipM = toon(TIP, { flat: true }), capM = toon(CAP, { flat: true });
