@@ -138,6 +138,11 @@ export const POWERUP_CHANCE = 0.06;    // chance on an eligible (off-cooldown) r
 export const POWERUP_MIN_DIFF = 0.12;  // only after a short warm-up
 export const POWERUP_COOLDOWN = 14;    // rows guaranteed between power-up spawns
 
+// Late-game "relic" boosts (src/boosts/: chrono/rampage/pogo/twin) — the shared
+// payout knobs for the two demolition mechanics live here like every other bonus.
+export const RAMPAGE_BONUS = 14;   // base points per hazard smashed head-on while Rampage runs (× combo mult)
+export const TWIN_BONUS = 6;       // base points per side-lane hazard the Echo Twins clear (× combo mult)
+
 // Butt Slam perk: an air-duck arms a slam; landing armed smashes the nearest
 // ground jump-hazard ahead in your lane (duck bars and full-width gates resist).
 export const SLAM_RANGE = 7;        // z-window ahead of the player a slam can reach

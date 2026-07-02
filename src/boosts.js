@@ -4,7 +4,8 @@
 // and ./upgrades/ — there's no hardcoded list). Each file default-exports its
 // identity (id/icon/color/label/order), availability (minLevel/weight),
 // declarative effect fields consumed generically in main.js (speedMult,
-// magnetFloor, scoreMult, invuln, ghostBody), an optional dress() to customize
+// magnetFloor, scoreMult, invuln, ghostBody — plus the relic mechanics:
+// timeScale, smash, bounce, allLanes, sideSmash), an optional dress() to customize
 // its pickup gem, and optional lifecycle hooks (onActivate/onTick/onEnd) for
 // brand-new mechanics. Files prefixed `_` are templates and skipped — see
 // ./boosts/_example.js for the full contract. Dropping a new file into the

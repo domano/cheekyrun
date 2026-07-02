@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { LANES, SPAWN_Z, DESPAWN_Z, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE_RAMP, GATE_COOLDOWN, COMBO_WINDOW, comboMult, NEARMISS_MARGIN, NEARMISS_BONUS, SKIM_MARGIN, SKIM_BONUS, SKIM_WINDOW, SAFE_HAZARD_MIN_DIFF, SAFE_HAZARD_CHANCE, TALL_CLEAR_H, TALL_CLEAR_PER_JUMP, TALL_MIN_DIFF, TALL_CHANCE, ROLL_GRAB_H, AIR_ARC_MIN_DIFF, AIR_ARC_CHANCE, AIR_ARC_TALL_CHANCE, AIR_ARC_TALL_PEAK, AIR_MIN_H, AIR_BASE, AIR_POINTS, AIR_PEAK_CAP, JUMP_BUFFER, HITSTOP_SHIELD, HITSTOP_DEATH, SLOWMO_FACTOR, SLOWMO_TIME, SLOWMO_MIN_MULT, SLOWMO_TIGHT_MARGIN, SLOWMO_TIGHT_TIME, DIFF_RAMP, ROW_MIN_GAP, COMBO_DECAY_STEP, COMBO_STEP, SCORE_FLOW_RATE, HEAT_PER_LEVEL, HEAT_LEVEL_CAP, HEAT_MAX, PHOENIX_COMBO, PHOENIX_INVULN, GREED_CAP, RING_TIME, POWERUP_DURATION, POWERUP_CHANCE, POWERUP_MIN_DIFF, POWERUP_COOLDOWN, DRAFT_EVERY, DRAFT_CHOICES, DRAFT_ARM, DRAFT_GRACE, SLAM_RANGE, SLAM_BONUS, SLAM_INVULN, COIL_WINDOW, COIL_VY, BANK_MULT_STEP, BANK_MULT_CAP, BLINK_INVULN, KINDLING_WINDOW, KINDLING_LINKS, mulberry32, dailyKey, dailySeed, $, buzz, shuffle } from './config.js';
+import { LANES, SPAWN_Z, DESPAWN_Z, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE_RAMP, GATE_COOLDOWN, COMBO_WINDOW, comboMult, NEARMISS_MARGIN, NEARMISS_BONUS, SKIM_MARGIN, SKIM_BONUS, SKIM_WINDOW, SAFE_HAZARD_MIN_DIFF, SAFE_HAZARD_CHANCE, TALL_CLEAR_H, TALL_CLEAR_PER_JUMP, TALL_MIN_DIFF, TALL_CHANCE, ROLL_GRAB_H, AIR_ARC_MIN_DIFF, AIR_ARC_CHANCE, AIR_ARC_TALL_CHANCE, AIR_ARC_TALL_PEAK, AIR_MIN_H, AIR_BASE, AIR_POINTS, AIR_PEAK_CAP, JUMP_BUFFER, HITSTOP_SHIELD, HITSTOP_DEATH, SLOWMO_FACTOR, SLOWMO_TIME, SLOWMO_MIN_MULT, SLOWMO_TIGHT_MARGIN, SLOWMO_TIGHT_TIME, DIFF_RAMP, ROW_MIN_GAP, COMBO_DECAY_STEP, COMBO_STEP, SCORE_FLOW_RATE, HEAT_PER_LEVEL, HEAT_LEVEL_CAP, HEAT_MAX, PHOENIX_COMBO, PHOENIX_INVULN, GREED_CAP, RING_TIME, POWERUP_DURATION, POWERUP_CHANCE, POWERUP_MIN_DIFF, POWERUP_COOLDOWN, DRAFT_EVERY, DRAFT_CHOICES, DRAFT_ARM, DRAFT_GRACE, SLAM_RANGE, SLAM_BONUS, SLAM_INVULN, RAMPAGE_BONUS, TWIN_BONUS, COIL_WINDOW, COIL_VY, BANK_MULT_STEP, BANK_MULT_CAP, BLINK_INVULN, KINDLING_WINDOW, KINDLING_LINKS, mulberry32, dailyKey, dailySeed, $, buzz, shuffle } from './config.js';
 import { makeGradient, toon, glow, rampShadow } from './materials.js';
 import { makeObstacle, makeHurdle, makeGate, makeRoll, makePowerup, makeBoostPickup, makeScenery, makeCloud, makeFinishLine, makeCheerCrowd, tickCheerCrowd, OBSTACLE_KINDS } from './props.js';
 import { BOOSTS, boostById, eligibleBoosts, drawBoost } from './boosts.js';
@@ -493,6 +493,9 @@ function renderDraft() {
 
 /* ---------------- flow ---------------- */
 function resetGame() {
+  // Close out a boost still live from the previous run so lifecycle boosts
+  // (e.g. the Echo Twins' ghost clones) never leak scene objects between runs.
+  if (power) { curBoost()?.onEnd?.(boostCtx()); power = null; }
   [...obstacles, ...rolls, ...pickups, ...scenery].forEach(o => scene.remove(o));
   obstacles = []; rolls = []; pickups = []; scenery = [];
   if (finishLine) { scene.remove(finishLine); finishLine = null; } finishArmed = false;
@@ -529,6 +532,8 @@ function startGame(isDaily = false) {
 }
 function gameOver() {
   $('pause').classList.add('hide'); $('pauseBtn').classList.add('hide');
+  // End the active boost cleanly (lifecycle boosts remove their props here).
+  if (power) { curBoost()?.onEnd?.(boostCtx()); power = null; powerT = 0; updatePowerVisual(); updatePowerHud(); }
   state = 'over'; shakeT = 0.45; hitStopT = reduceMotion ? 0 : HITSTOP_DEATH; flash('#ff5a6a'); buzz([40, 40, 80]); sfxCrash();
   camKick = reduceMotion ? 0 : Math.max(camKick, 7);   // a zoom-punch so the wipe-out lands
   particles.emit(player.position.clone().add(new THREE.Vector3(0, 0.6, 0)), { count: 16, color: 0xff8a6a, speed: 4, up: 4, life: .7, grav: 12, dir: new THREE.Vector3(0, 0, 1) });
@@ -831,7 +836,13 @@ function tick(dt) {
   // the player rig) keep running on real dt so the freeze reads as a snap, not a
   // stall. `worldScale` lets the scenery/stripes/clouds share the same scaling.
   worldScale = 1;
+  // A timeScale boost (Bullet Time) owns the world clock while it runs: the
+  // scale below feeds sdt, so the world crawls while the player's own physics
+  // (updatePlayer, on raw dt) stay full-speed. It DOMINATES the near-miss
+  // slow-mo (drains it, never multiplies with it); hit-stop still freezes.
+  const chronoScale = state === 'playing' ? curBoost()?.timeScale : 0;
   if (hitStopT > 0) { hitStopT = Math.max(0, hitStopT - dt); worldScale = 0; }
+  else if (chronoScale) { slowmoT = Math.max(0, slowmoT - dt); worldScale = chronoScale; }
   else if (slowmoT > 0) { slowmoT = Math.max(0, slowmoT - dt); worldScale = SLOWMO_FACTOR; }
   const sdt = dt * worldScale;
   if (state === 'playing') {
@@ -896,7 +907,21 @@ function tick(dt) {
   if (!skipRender) renderer.render(scene, camera);
 }
 const hitColor = (o) => o.userData.color || 0xff8a6a;
+// Shared demolition beat for the smash-boosts: pay a combo-scaled bonus, throw
+// debris, and remove the hazard. `heavy` scales the juice (head-on vs side).
+function smashObstacle(o, i, base, heavy) {
+  const m = cmult(combo), bonus = Math.round(base * m);
+  rollPoints += bonus; popScore(bonus, m, false);
+  buzz(heavy ? [12, 25, 12] : 10); if (heavy) { sfxCrash(); shakeT = Math.max(shakeT, 0.15); } else sfxWhoosh();
+  particles.emit(o.position.clone().add(new THREE.Vector3(0, 0.6, 0)),
+    { count: heavy ? 14 : 10, color: hitColor(o), speed: heavy ? 5 : 4, up: heavy ? 4 : 3, life: .6, grav: 10 });
+  scene.remove(o); obstacles.splice(i, 1);
+}
+// A hazard the smash-boosts may demolish: single-lane, jump-type only — duck
+// bars and full-width gates keep their normal (lethal) rules.
+const smashable = (o, halfW) => !o.userData.duck && halfW <= 1.2;
 function moveObstacles(dt) {
+  const b = curBoost();   // active boost — smash/sideSmash consumed generically
   for (let i = obstacles.length - 1; i >= 0; i--) {
     const o = obstacles[i]; const prevZ = o.position.z; o.position.z += speed * dt;
     const lx = o.userData.lx, halfW = o.userData.halfW || 0.95;
@@ -909,6 +934,9 @@ function moveObstacles(dt) {
     if (sz > -0.8 && sz < 0.5 && dx < halfW - 0.06) {
       const safe = o.userData.duck ? (duckTimer > 0) : (groundY > (o.userData.clearH || 1.0));
       if (!safe && invuln <= 0) {
+        // Rampage: while a smash boost runs, ploughing into a smashable hazard
+        // demolishes it for a bonus instead of killing — no combo break.
+        if (b?.smash && smashable(o, halfW)) { smashObstacle(o, i, RAMPAGE_BONUS, true); continue; }
         if (shields > 0 && !mods.noShields) {
           shields--; invuln = 1.1; updateShieldHud(); breakCombo(); forfeitBank(); flash('#8fd3ff'); buzz(30); sfxShield(shields === 0); shakeT = 0.25;
           hitStopT = reduceMotion ? 0 : HITSTOP_SHIELD;   // freeze the beat so the save reads as a real impact
@@ -921,6 +949,11 @@ function moveObstacles(dt) {
         forfeitBank(true); gameOver(); return;
       }
     }
+    // Echo Twins: the ghost doubles riding the two NON-player lanes demolish a
+    // smashable hazard there as it draws level with the player — a small bonus
+    // for holding the formation. The player's own lane keeps normal rules.
+    if (b?.sideSmash && prevZ < player.position.z && o.position.z >= player.position.z
+        && dx > halfW && smashable(o, halfW)) { smashObstacle(o, i, TWIN_BONUS, false); continue; }
     // Near-miss / skim: cleared an obstacle the instant it passes without a hit.
     // A "near-miss" is a clean jump/duck *through* its lane (dx ~ 0); a "skim" is
     // a tight lateral dodge — lane-changing past an adjacent-lane hazard right as
@@ -982,7 +1015,9 @@ function moveRolls(dt) {
     // Height gate: a ground roll (h === 0) grabs as it always has (from anywhere,
     // including mid-hop); an elevated roll only pops when you're airborne at its level.
     const yOk = !h || Math.abs(groundY - h) < ROLL_GRAB_H;
-    if (zOk && dx < 0.95 && yOk) {
+    // Echo Twins: an allLanes boost relaxes the lateral gate — the doubles
+    // gather rolls from every lane (elevated rolls still demand the air).
+    if (zOk && (dx < 0.95 || b?.allLanes) && yOk) {
       if (!mods.rollsNoCombo) bumpCombo();   // Perfectionist: rolls no longer feed the streak
       emote();
       // Magpie: each roll already banked this run makes this one worth more (capped).
@@ -1009,6 +1044,7 @@ function movePickups(dt) {
     const o = pickups[i]; o.position.z += speed * dt; o.rotation.y += dt * 2.5;
     if (o.userData.gem) o.userData.gem.rotation.y += dt * 4;
     if (o.userData.sparkle) { o.userData.sparkle.rotation.y -= dt * 2.5; o.userData.sparkle.rotation.z += dt * 1.2; }   // hold facing the camera, twinkle slowly
+    if (o.userData.spins) for (const s of o.userData.spins) s.m.rotation[s.a] += dt * s.r;   // dress()-registered idle spinners (relic crown/stars)
     const lx = o.userData.lx;
     const dz = Math.abs(o.position.z - player.position.z), dx = Math.abs(lx - player.position.x);
     if (dz < 0.95 && dx < 1.0) { activatePower(o.userData.kind, o.position.clone()); scene.remove(o); pickups.splice(i, 1); continue; }
@@ -1019,6 +1055,7 @@ function movePickups(dt) {
 }
 function activatePower(kind, pos) {
   const b = boostById(kind); if (!b) return;
+  if (power && power !== kind) curBoost()?.onEnd?.(boostCtx());   // swapping boosts closes the old one out cleanly
   power = kind; powerT = POWERUP_DURATION; gotPower = true;
   if (b.invuln) invuln = POWERUP_DURATION;   // e.g. ghost & dash both phase through everything
   flash('#fff7c0'); buzz([12, 20, 12]); sfxLevel(); showBanner(`${b.icon} ${b.label}!`);
@@ -1123,7 +1160,16 @@ function updatePlayer(dt, t) {
       if (dbl && peak >= AIR_MIN_H && state === 'playing') awardAir(peak);
       // Butt Slam resolves — and always disarms — on touchdown.
       if (slamArmed) { slamArmed = false; if (state === 'playing') doSlam(); }
-      if (jumpBufferT > 0) doJump();   // a jump pressed just before touchdown fires now
+      // Sky Dance: a bounce boost relaunches the touchdown instead of settling.
+      // Air jumps were already refunded above, so every bounce starts with a
+      // full double-jump; the air bonus stays gated on a SPENT double (dbl),
+      // so auto-bounces never farm it.
+      const bounceVy = state === 'playing' ? curBoost()?.bounce : 0;
+      if (bounceVy) {
+        grounded = false; vy = bounceVy; squash = -0.32; sfxJump(false);
+        particles.emit(new THREE.Vector3(player.position.x, 0.05, player.position.z + 0.2), { count: 4, color: 0xbaf5cf, speed: 1.8, up: 1.5, life: .4, grav: 6, size: 0.45 });
+      }
+      else if (jumpBufferT > 0) doJump();   // a jump pressed just before touchdown fires now
     }
   }
   duckTimer = Math.max(0, duckTimer - dt); duckAmt += ((duckTimer > 0 ? 1 : 0) - duckAmt) * Math.min(1, dt * 16);
@@ -1369,7 +1415,17 @@ function buildDebugApi() {
     rollValue: v => { rollValue = v; }, extraJumps: v => { extraJumps = v; }, jumpsLeft: v => { jumpsLeft = v; },
     combo: v => { combo = v; }, comboMax: v => { comboMax = v; }, comboTimer: v => { comboTimer = v; }, rollCount: v => { rollCount = v; }, rollPoints: v => { rollPoints = v; },
     phoenix: v => { phoenix = !!v; if (phoenix) phoenixUsed = false; }, phoenixUsed: v => { phoenixUsed = !!v; },
-    power: v => { power = v; if (v && powerT <= 0) powerT = POWERUP_DURATION; if (v && boostById(v)?.invuln) invuln = Math.max(invuln, POWERUP_DURATION); },
+    // Setting a power runs the real lifecycle hooks (onEnd on the outgoing
+    // boost, onActivate on the incoming) so mechanic-boosts behave identically
+    // whether grabbed in-world or teleported in by a test.
+    power: v => {
+      const prev = power;
+      if (prev && prev !== v) boostById(prev)?.onEnd?.(boostCtx());
+      power = v || null;
+      if (power && powerT <= 0) powerT = POWERUP_DURATION;
+      if (power && boostById(power)?.invuln) invuln = Math.max(invuln, POWERUP_DURATION);
+      if (power && power !== prev) boostById(power)?.onActivate?.(boostCtx());
+    },
     powerT: v => { powerT = v; }, safeLane: v => { safeLane = v; }, forcedGap: v => { forcedGap = v; },
     bank: v => { bank = v; }, bankMult: v => { bankMult = v; },
     sparkChain: v => { sparkChain = v; sparkT = v > 0 ? KINDLING_WINDOW : 0; }, coilT: v => { coilT = v; },
@@ -1389,7 +1445,16 @@ function buildDebugApi() {
     const lights = scene.children.filter(o => o.isLight);
     const countGlow = (g) => { let n = 0; g.traverse(o => o.userData && o.userData.glow && n++); return n; };
     const hasContact = (g) => { let f = false; g.traverse(o => { if (o.userData && o.userData.contact) f = true; }); return f; };
+    const countMesh = (g) => { let n = 0; g.traverse(o => o.isMesh && n++); return n; };
     return {
+      // Relic pickups vs the base gem: dress() fingerprints (mesh count, the
+      // registered idle spinners, the ×1.25 scale-up) — deterministic proof the
+      // relics read as MORE special without a screenshot.
+      powerupMeshes: countMesh(makePowerup(0x66ccff)),
+      relicDress: Object.fromEntries(BOOSTS.filter(bb => bb.dress).map(bb => {
+        const p = makeBoostPickup(bb);
+        return [bb.id, { meshes: countMesh(p), spins: (p.userData.spins || []).length, scale: +p.scale.x.toFixed(2) }];
+      })),
       directionalLights: lights.filter(o => o.isDirectionalLight).length,
       hemiLights: lights.filter(o => o.isHemisphereLight).length,
       rampShadow: rampShadow(),

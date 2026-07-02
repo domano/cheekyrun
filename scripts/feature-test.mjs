@@ -621,14 +621,130 @@ const SCENARIOS = [
   {
     // The spawner draws from eligibleBoosts(level) (src/boosts.js): each boost
     // file's minLevel gates when it can appear. The core four are minLevel 1,
-    // so all of them are on offer from the first level. Extend this when
-    // level-gated boosts land.
+    // so all of them are on offer from the first level; the late-game relics
+    // (pogo 5, chrono 6, rampage 8, twin 10) phase in per their minLevels.
     name: 'boost-folder-gating',
     fn: (c, assert) => {
       const s = c.start();
       assert(Array.isArray(s.boostKinds), 'the snapshot exposes the eligible boost kinds');
       ['magnet', 'x2', 'ghost', 'dash'].forEach(k =>
         assert(s.boostKinds.includes(k), `core boost "${k}" is eligible at level 1 (minLevel 1)`));
+      ['pogo', 'chrono', 'rampage', 'twin'].forEach(k =>
+        assert(!s.boostKinds.includes(k), `relic "${k}" is NOT in the pool at level 1`));
+      let s2 = c.set({ level: 5 });
+      assert(s2.boostKinds.includes('pogo'), 'Sky Dance (minLevel 5) joins the pool at level 5');
+      ['chrono', 'rampage', 'twin'].forEach(k =>
+        assert(!s2.boostKinds.includes(k), `deeper relic "${k}" stays gated at level 5`));
+      s2 = c.set({ level: 12 });
+      ['pogo', 'chrono', 'rampage', 'twin'].forEach(k =>
+        assert(s2.boostKinds.includes(k), `relic "${k}" is eligible by level 12`));
+    },
+  },
+  {
+    // Bullet Time (chrono relic): the world advances at ~timeScale of a
+    // no-boost run while the player keeps full-speed physics. NOT invulnerable.
+    name: 'boost-chrono',
+    fn: (c, assert) => {
+      c.start(); c.clearField();
+      const base = c.step(60).distance;             // no-boost baseline over 1s
+      c.start(); c.clearField();
+      let s = c.set({ power: 'chrono' });
+      assert(s.power === 'chrono' && s.powerT > 0, 'Bullet Time is active');
+      assert(s.invuln === 0, 'Bullet Time grants NO invulnerability');
+      const ratio = c.step(60).distance / base;
+      assert(Math.abs(ratio - 0.55) < 0.03, `the world runs at ~timeScale 0.55 (measured ${ratio.toFixed(3)})`);
+      c.spawn('cactus', 1, -4);
+      s = c.step(120);                              // the slowed hazard still arrives
+      assert(s.state === 'over', 'a hazard still kills in Bullet Time — slower, not safer');
+    },
+  },
+  {
+    // Rampage (relic): a single-lane jump-hazard is demolished on contact for
+    // RAMPAGE_BONUS × combo mult — no death, no combo break. Duck bars keep
+    // their normal rules and still end a mis-played run.
+    name: 'boost-rampage',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.clearField();
+      c.set({ power: 'rampage' });
+      c.spawn('rock', 1, -4);                       // dead ahead in the player's lane
+      let s = c.step(40);                           // charge straight into it
+      assert(s.state === 'playing', 'smashing through a rock does not end the run');
+      assert(s.counts.obstacles === 0, 'the smashed obstacle is removed from the road');
+      assert(s.rollPoints === 14, 'the smash pays RAMPAGE_BONUS 14 × combo mult 1');
+      assert(s.invuln === 0, 'Rampage is a demolition, not blanket invulnerability');
+      c.spawn('bar', 1, -4);                        // a duck bar, not ducked
+      s = c.step(40);
+      assert(s.state === 'over', 'a duck bar still ends the run if not ducked');
+    },
+  },
+  {
+    // Sky Dance (pogo relic): touchdowns auto-relaunch at the bounce vy with
+    // air jumps refunded; the air bonus stays double-jump gated so the
+    // auto-bounces never pay it. Expiry settles the landing normally.
+    name: 'boost-pogo',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.clearField();
+      c.set({ power: 'pogo' });
+      c.jump();
+      let s = c.step(55);                           // past where the hop would land (~45 frames)
+      assert(!s.player.grounded, 'the landing relaunches instead of settling');
+      assert(s.player.vy > 0, 'the bounce is rising at the boost vy');
+      assert(s.jumpsLeft === 2, 'air jumps are refunded on the bounce');
+      assert(s.rollPoints === 0, 'an auto-bounce pays no air-time bonus (double-jump gated)');
+      c.set({ powerT: 0.05 });                      // let the boost expire mid-bounce
+      s = c.step(120);
+      assert(s.power === null, 'the boost has expired');
+      assert(s.player.grounded && s.player.vy === 0, 'after expiry the next landing settles normally');
+      assert(s.rollPoints === 0, 'no air bonus accrued across all the bounces');
+    },
+  },
+  {
+    // Echo Twins (relic): rolls in ANY lane auto-collect and side-lane
+    // jump-hazards are smashed for TWIN_BONUS × combo mult when they draw
+    // level — but the player's OWN lane keeps normal rules, and side lanes go
+    // cold again the moment the boost ends.
+    name: 'boost-twin',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.clearField();
+      c.set({ power: 'twin' });
+      c.spawn('roll', 0, -4); c.spawn('roll', 2, -4);   // both NON-player lanes
+      let s = c.step(30);
+      assert(s.laneIdx === 1, 'the player never left the centre lane');
+      assert(s.rollCount === 2, 'rolls in BOTH side lanes auto-collect');
+      assert(s.counts.rolls === 0, 'no side roll is left behind');
+      const rp = s.rollPoints;
+      c.spawn('rock', 0, -4);                       // a side-lane hazard
+      s = c.step(30);
+      assert(s.state === 'playing', 'a side-lane rock never threatens the player');
+      assert(s.counts.obstacles === 0, 'the twins smash the side-lane rock as it draws level');
+      assert(s.rollPoints === rp + 6, 'the side smash pays TWIN_BONUS 6 × combo mult 1');
+      c.set({ power: null });                       // relic over — side lanes go cold
+      c.spawn('roll', 0, -4); c.spawn('roll', 2, -4);
+      s = c.step(30);
+      assert(s.rollCount === 2, 'side rolls are NOT collected once the boost ends');
+      assert(s.counts.rolls === 2, 'both side rolls sail past ungathered');
+      c.set({ power: 'twin' });
+      c.spawn('rock', 1, -4);                       // the player's OWN lane
+      s = c.step(30);
+      assert(s.state === 'over', 'a rock in the player\'s own lane still kills — twins never cover it');
+    },
+  },
+  {
+    // Relic pickups share the special treatment (relicDress: ×1.25 scale, the
+    // gold halo crown + orbiting stars, then a per-relic topper) so they read
+    // as clearly MORE special than the core gems — asserted via deterministic
+    // mesh fingerprints, not screenshots.
+    name: 'boost-relic-dress',
+    fn: (c, assert) => {
+      const g = c.gfx();
+      assert(g.powerupMeshes > 0, 'the base gem probe reports its mesh count');
+      ['chrono', 'rampage', 'pogo', 'twin'].forEach(k => {
+        const r = g.relicDress[k];
+        assert(!!r, `relic "${k}" dresses its pickup`);
+        assert(r.scale === 1.25, `"${k}" pickup is scaled up ×1.25`);
+        assert(r.meshes > g.powerupMeshes + 2, `"${k}" carries the halo crown + stars + its own topper (${r.meshes} meshes vs base ${g.powerupMeshes})`);
+        assert(r.spins >= 2, `"${k}" registers the crown/star idle spinners`);
+      });
     },
   },
   {

@@ -20,16 +20,39 @@
 //       - scoreMult:   multiply roll payouts (x2 uses 2).
 //       - invuln: true    — invulnerable for the boost's duration (ghost, dash).
 //       - ghostBody: true — the character renders translucent (ghost).
+//       - timeScale: <k>  — the WORLD runs at this fraction of real time while
+//         active (chrono: 0.55); the player's own physics/inputs stay
+//         full-speed. Dominates the near-miss slow-mo (never stacks with it);
+//         hit-stop still freezes outright. Not invulnerability.
+//       - smash: true — contacting a single-lane, non-duck hazard demolishes
+//         it for RAMPAGE_BONUS × combo mult instead of killing (rampage).
+//         Duck bars and full-width gates keep their normal lethal rules.
+//       - bounce: <vy>— landings auto-relaunch at this vy with air jumps
+//         refunded (pogo). Ground hazards still kill a low pass, and the
+//         air-time bonus stays gated on a spent double-jump.
+//       - allLanes: true  — rolls in ANY lane auto-collect (twin); elevated
+//         rolls still demand matching air.
+//       - sideSmash: true — single-lane, non-duck hazards in the two
+//         NON-player lanes are demolished for TWIN_BONUS × combo mult as they
+//         reach the player's z (twin); the player's own lane keeps normal rules.
 //   • pickup look — optional dress(group, THREE, helpers): the default pickup
 //     is the standard gem (makePowerup(color) in props.js); dress() may add to
 //     or restyle that group after construction. helpers = { toon, ink, glow }
 //     from materials.js. The core four don't use it — zero visual change.
+//     Late-game RELICS share a fancier base treatment: call
+//     relicDress(group, THREE, helpers) from ./_relic.js first (×1.25 gem, a
+//     spinning gold halo crown, orbiting stars), then add the boost's own
+//     identifying topper. dress() may register extra idle spinners via
+//     group.userData.spins = [{ m: mesh, a: 'x'|'y'|'z', r: rad/s }] —
+//     movePickups steps them every frame.
 //   • lifecycle hooks — optional, for genuinely NEW mechanics the declarative
 //     fields can't express. Each receives a ctx (below); onTick also gets the
 //     scaled sim dt:
 //       - onActivate(ctx)  — the moment the gem is grabbed.
 //       - onTick(ctx, dt)  — every active sim frame while the timer runs.
-//       - onEnd(ctx)       — when the timer expires.
+//       - onEnd(ctx)       — when the timer expires — and ALSO when the boost
+//         is swapped for another, on game over and on reset, so a hook that
+//         adds scene objects can never leak them. Keep onEnd idempotent.
 //     ctx (built fresh per call by boostCtx() in main.js — lean but useful):
 //       { player, scene, particles,             // live three.js objects
 //         level, speed, distance,               // run readouts (numbers)
