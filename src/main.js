@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { LANES, SPAWN_Z, DESPAWN_Z, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE_RAMP, GATE_COOLDOWN, COMBO_WINDOW, comboMult, NEARMISS_MARGIN, NEARMISS_BONUS, SKIM_MARGIN, SKIM_BONUS, SKIM_WINDOW, SAFE_HAZARD_MIN_DIFF, SAFE_HAZARD_CHANCE, TALL_CLEAR_H, TALL_CLEAR_PER_JUMP, TALL_MIN_DIFF, TALL_CHANCE, ROLL_GRAB_H, AIR_ARC_MIN_DIFF, AIR_ARC_CHANCE, AIR_ARC_TALL_CHANCE, AIR_ARC_TALL_PEAK, AIR_MIN_H, AIR_BASE, AIR_POINTS, AIR_PEAK_CAP, JUMP_BUFFER, HITSTOP_SHIELD, HITSTOP_DEATH, SLOWMO_FACTOR, SLOWMO_TIME, SLOWMO_MIN_MULT, SLOWMO_TIGHT_MARGIN, SLOWMO_TIGHT_TIME, DIFF_RAMP, ROW_MIN_GAP, COMBO_DECAY_STEP, COMBO_STEP, SCORE_FLOW_RATE, HEAT_PER_LEVEL, HEAT_LEVEL_CAP, HEAT_MAX, PHOENIX_COMBO, PHOENIX_INVULN, GREED_CAP, RING_TIME, POWERUP_DURATION, POWERUP_CHANCE, POWERUP_MIN_DIFF, POWERUP_COOLDOWN, DRAFT_EVERY, DRAFT_CHOICES, DRAFT_ARM, DRAFT_GRACE, SLAM_RANGE, SLAM_BONUS, SLAM_INVULN, RAMPAGE_BONUS, TWIN_BONUS, COIL_WINDOW, COIL_VY, BANK_MULT_STEP, BANK_MULT_CAP, BLINK_INVULN, KINDLING_WINDOW, KINDLING_LINKS, mulberry32, dailyKey, dailySeed, $, buzz, shuffle } from './config.js';
+import { LANES, SPAWN_Z, DESPAWN_Z, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE_RAMP, GATE_COOLDOWN, COMBO_WINDOW, comboMult, NEARMISS_MARGIN, NEARMISS_BONUS, SKIM_MARGIN, SKIM_BONUS, SKIM_WINDOW, SAFE_HAZARD_MIN_DIFF, SAFE_HAZARD_CHANCE, TALL_CLEAR_H, TALL_CLEAR_PER_JUMP, TALL_MIN_DIFF, TALL_CHANCE, ROLL_GRAB_H, ROLL_PACK_SPEED, ROLL_PACK_COUNT, ROLL_PACK_GRAB_H, AIR_ARC_MIN_DIFF, AIR_ARC_CHANCE, AIR_ARC_TALL_CHANCE, AIR_ARC_TALL_PEAK, AIR_MIN_H, AIR_BASE, AIR_POINTS, AIR_PEAK_CAP, JUMP_BUFFER, HITSTOP_SHIELD, HITSTOP_DEATH, SLOWMO_FACTOR, SLOWMO_TIME, SLOWMO_MIN_MULT, SLOWMO_TIGHT_MARGIN, SLOWMO_TIGHT_TIME, DIFF_RAMP, ROW_MIN_GAP, COMBO_DECAY_STEP, COMBO_STEP, SCORE_FLOW_RATE, HEAT_PER_LEVEL, HEAT_LEVEL_CAP, HEAT_MAX, PHOENIX_COMBO, PHOENIX_INVULN, GREED_CAP, RING_TIME, POWERUP_DURATION, POWERUP_CHANCE, POWERUP_MIN_DIFF, POWERUP_COOLDOWN, DRAFT_EVERY, DRAFT_CHOICES, DRAFT_ARM, DRAFT_GRACE, SLAM_RANGE, SLAM_BONUS, SLAM_INVULN, RAMPAGE_BONUS, TWIN_BONUS, COIL_WINDOW, COIL_VY, BANK_MULT_STEP, BANK_MULT_CAP, BLINK_INVULN, KINDLING_WINDOW, KINDLING_LINKS, mulberry32, dailyKey, dailySeed, $, buzz, shuffle } from './config.js';
 import { makeGradient, toon, glow, rampShadow } from './materials.js';
-import { makeObstacle, makeHurdle, makeGate, makeRoll, makePowerup, makeBoostPickup, makeScenery, makeCloud, makeFinishLine, makeCheerCrowd, tickCheerCrowd, OBSTACLE_KINDS } from './props.js';
+import { makeObstacle, makeHurdle, makeGate, makeRoll, makeRollPack, makePowerup, makeBoostPickup, makeScenery, makeCloud, makeFinishLine, makeCheerCrowd, tickCheerCrowd, OBSTACLE_KINDS } from './props.js';
 import { BOOSTS, boostById, eligibleBoosts, drawBoost } from './boosts.js';
 import { createParticles } from './particles.js';
 import { buildPlayer, applyGear, tickGear } from './player.js';
@@ -361,6 +361,11 @@ function spawnGate() {
 // it's a reason to jump. `peak` sets the top float height: a low arc rides a
 // single hop, a high one (over a tall wall) demands the same risky double-jump.
 function spawnAirArc(lane, peak = 1.7) {
+  // At pace the ribbon stops being readable — five split-second grabs flash by
+  // faster than the arc can be ridden. Past ROLL_PACK_SPEED the whole arc
+  // collapses into ONE bundled pack at the apex, worth the same rolls: a single
+  // clean jump-and-touch instead of five misses.
+  if (speed >= ROLL_PACK_SPEED) { spawnRollPack(lane, peak); return; }
   const arc = [0.47, 0.82, 1, 0.82, 0.47];   // normalized arch, scaled to `peak`
   arc.forEach((s, i) => {
     const r = makeRoll();
@@ -368,6 +373,17 @@ function spawnAirArc(lane, peak = 1.7) {
     r.position.set(LANES[lane], 0.95 + r.userData.h, SPAWN_Z - (i - 2) * 1.6);   // centre the arch on the spawn horizon
     scene.add(r); rolls.push(r);
   });
+}
+// One pack pickup floating where the arc would have peaked. It lives in rolls[]
+// so movement/grab/despawn all reuse the roll path; userData.pack is the flag
+// the grab reads to bank the whole bundle.
+function spawnRollPack(lane, peak) {
+  const p = makeRollPack(peak);
+  p.userData.pack = true; p.userData.h = peak; p.userData.lx = LANES[lane];
+  // A tall-wall pack (double-jump peak) sits a touch toward the player so its
+  // silhouette never overlaps the wall's crown at the critical read moment.
+  p.position.set(LANES[lane], 0.95 + peak, SPAWN_Z + (peak > 2 ? 1.5 : 0));
+  scene.add(p); rolls.push(p);
 }
 function spawnScenery() {
   const x = (Math.random() < 0.5 ? -1 : 1) * (4.4 + Math.random() * 3.5);
@@ -992,7 +1008,11 @@ function moveObstacles(dt) {
 function moveRolls(dt) {
   const b = curBoost();   // active boost — magnet floor / score mult read generically
   for (let i = rolls.length - 1; i >= 0; i--) {
-    const o = rolls[i]; const prevZ = o.position.z; o.position.z += speed * dt; o.rotation.y += dt * 4;
+    const o = rolls[i]; const prevZ = o.position.z; o.position.z += speed * dt;
+    // A pack turns lazily (360°/6s — rotation is the universal "pickup" verb)
+    // and pulses its gold aura; single rolls keep their quick spin.
+    o.rotation.y += dt * (o.userData.pack ? 1.05 : 4);
+    if (o.userData.halo) o.userData.halo.material.opacity = 0.35 + 0.07 * Math.sin(simTime * 7);
     const h = o.userData.h || 0;   // elevated rolls float at a height; grabbing needs matching air
     // Magnet: tug nearby rolls toward the player so they're easier to grab. Acts
     // on the logical lane X (lx), not the curved render X, so it pulls true. Skips
@@ -1013,29 +1033,39 @@ function moveRolls(dt) {
     // pass through — especially airborne ones — going uncollected.
     const zOk = o.position.z >= player.position.z - 0.9 && prevZ <= player.position.z + 0.9;
     // Height gate: a ground roll (h === 0) grabs as it always has (from anywhere,
-    // including mid-hop); an elevated roll only pops when you're airborne at its level.
-    const yOk = !h || Math.abs(groundY - h) < ROLL_GRAB_H;
+    // including mid-hop); an elevated roll only pops when you're airborne at its
+    // level. A pack gets the wider window — it's the whole arc in one shot.
+    const yOk = !h || Math.abs(groundY - h) < (o.userData.pack ? ROLL_PACK_GRAB_H : ROLL_GRAB_H);
     // Echo Twins: an allLanes boost relaxes the lateral gate — the doubles
     // gather rolls from every lane (elevated rolls still demand the air).
     if (zOk && (dx < 0.95 || b?.allLanes) && yOk) {
-      if (!mods.rollsNoCombo) bumpCombo();   // Perfectionist: rolls no longer feed the streak
-      emote();
-      // Magpie: each roll already banked this run makes this one worth more (capped).
-      const greed = mods.greedScale ? (1 + Math.min(GREED_CAP, rollCount * mods.greedScale)) : 1;
-      const mult = cmult(combo) * (b?.scoreMult || 1) * mods.rollX; let gained = Math.round(rollValue * mult * mods.rollMult * greed);
-      // Piggy Bank: divert a share of the roll into the run vault; each banked
-      // grab nudges the cash-out multiplier up (capped).
-      if (mods.bankShare > 0) {
-        const cut = Math.round(gained * mods.bankShare);
-        bank += cut; gained -= cut;
-        bankMult = Math.min(BANK_MULT_CAP, bankMult + BANK_MULT_STEP); updateBankHud();
+      // A pack banks the whole ribbon's worth: run the per-roll payout (combo
+      // feed, greed/vault escalation) once per bundled roll so the pack pays
+      // exactly what scooping the full arc would have.
+      const n = o.userData.pack ? ROLL_PACK_COUNT : 1;
+      let gained = 0, mult;
+      for (let k = 0; k < n; k++) {
+        if (!mods.rollsNoCombo) bumpCombo();   // Perfectionist: rolls no longer feed the streak
+        // Magpie: each roll already banked this run makes this one worth more (capped).
+        const greed = mods.greedScale ? (1 + Math.min(GREED_CAP, rollCount * mods.greedScale)) : 1;
+        mult = cmult(combo) * (b?.scoreMult || 1) * mods.rollX; let one = Math.round(rollValue * mult * mods.rollMult * greed);
+        // Piggy Bank: divert a share of the roll into the run vault; each banked
+        // grab nudges the cash-out multiplier up (capped).
+        if (mods.bankShare > 0) {
+          const cut = Math.round(one * mods.bankShare);
+          bank += cut; one -= cut;
+          bankMult = Math.min(BANK_MULT_CAP, bankMult + BANK_MULT_STEP);
+        }
+        rollCount++; gained += one;
       }
-      rollCount++; rollPoints += gained; popScore(gained, mult); buzz(18); sfxCoin(combo);   // pitch climbs with the streak
+      if (mods.bankShare > 0) updateBankHud();
+      emote();
+      rollPoints += gained; popScore(gained, mult); buzz(18); sfxCoin(combo);   // pitch climbs with the streak
       if (mods.jumpOnRoll && !grounded) jumpsLeft = Math.min(jumpsLeft + 1, 2 + extraJumps + mods.extraJumpsBonus);
-      particles.emit(o.position.clone(), { count: 12, color: 0xffd56b, speed: 3, up: 3, life: .5, grav: 9, size: 0.5 }); scene.remove(o); rolls.splice(i, 1); continue;
+      particles.emit(o.position.clone(), { count: n > 1 ? 26 : 12, color: 0xffd56b, speed: 3, up: 3, life: .5, grav: 9, size: 0.5 }); scene.remove(o); rolls.splice(i, 1); continue;
     }
     const off = trackOffset(o.position.z, distance);
-    o.position.x = lx + off.x; o.position.y = 0.95 + h + Math.sin(o.position.z * 0.6) * 0.06 + off.y;
+    o.position.x = lx + off.x; o.position.y = 0.95 + h + Math.sin(o.position.z * 0.6) * (o.userData.pack ? 0.13 : 0.06) + off.y;   // a pack bobs bigger — it's beckoning
     if (o.position.z > DESPAWN_Z) { scene.remove(o); rolls.splice(i, 1); }
   }
 }
@@ -1378,7 +1408,7 @@ function buildDebugApi() {
       // the _defs spread. shieldPips reports the live pip count on the Cushion bubble.
       gearVisible: gear ? { shieldPips: gear.shield.userData.pips.filter(p => p.visible).length,
         ...Object.fromEntries((gear._defs || []).map(d => [d.id, gear[d.id].visible])) } : {},
-      counts: { obstacles: obstacles.length, rolls: rolls.length, airRolls: rolls.filter(r => r.userData.h).length, airRollMaxH: +rolls.reduce((m, r) => Math.max(m, r.userData.h || 0), 0).toFixed(2), tallObstacles: obstacles.filter(o => o.userData.tall).length, pickups: pickups.length, scenery: scenery.length, finish: finishLine ? 1 : 0,
+      counts: { obstacles: obstacles.length, rolls: rolls.length, airRolls: rolls.filter(r => r.userData.h).length, airRollMaxH: +rolls.reduce((m, r) => Math.max(m, r.userData.h || 0), 0).toFixed(2), rollPacks: rolls.filter(r => r.userData.pack).length, tallObstacles: obstacles.filter(o => o.userData.tall).length, pickups: pickups.length, scenery: scenery.length, finish: finishLine ? 1 : 0,
         cheerers: finishLine && finishLine.userData.crowd ? finishLine.userData.crowd.userData.fans.length : 0 },
       wallet: getWallet(), daily,
       stats: getStats(), history: getHistory(),
@@ -1392,6 +1422,7 @@ function buildDebugApi() {
   function spawn(kind = 'cactus', lane = laneIdx, z = -8, arg4) {
     let o, arr;
     if (kind === 'roll') { const h = +arg4 || 0; o = makeRoll(); o.userData.h = h; o.position.set(LANES[lane], 0.95 + h, z); o.userData.lx = LANES[lane]; arr = rolls; }
+    else if (kind === 'rollpack') { const h = +arg4 || 0; o = makeRollPack(h); o.userData.pack = true; o.userData.h = h; o.position.set(LANES[lane], 0.95 + h, z); o.userData.lx = LANES[lane]; arr = rolls; }
     else if (kind === 'gate' || kind === 'hurdle') {
       o = kind === 'gate' ? makeGate() : makeHurdle();
       o.position.set(0, 0, z); o.userData.halfW = 3.3; o.userData.lx = 0; arr = obstacles;
@@ -1476,7 +1507,7 @@ function buildDebugApi() {
       lifecycle: ['start(overrides?)', 'reset()', 'fresh()', 'over()'],
       time: ['pauseGame()', 'resumeGame()', 'togglePause()', 'pause()', 'resume()', 'step(frames=1, dt=1/60)', 'seed(n)'],
       teleport: ['set({level,speed,shields,power,...})', `keys: ${Object.keys(SETTERS).join(', ')}`],
-      world: ['spawn(kind, lane?, z?, arg4?)', 'arg4: roll→height, obstacle→tall', 'clearField()', 'forceFinish(z?)', `kinds: ${OBSTACLE_KINDS.join('|')}|gate|hurdle|roll|powerup[:${BOOSTS.map(b => b.id).join('|')}]`],
+      world: ['spawn(kind, lane?, z?, arg4?)', 'arg4: roll/rollpack→height, obstacle→tall', 'spawnArc(lane?, peak?)', 'tallModels()', 'clearField()', 'forceFinish(z?)', `kinds: ${OBSTACLE_KINDS.join('|')}|gate|hurdle|roll|rollpack|powerup[:${BOOSTS.map(b => b.id).join('|')}]`],
       input: ['left()', 'right()', 'lane(i)', 'jump()', 'duck()'],
       shop: ['wallet()', 'fund(n)', 'buy(id)', 'own(id, tier)', 'effects()', 'migrate(legacyOwned?)'],
       perks: ['perk(id)', 'draft()', 'openDraft()', 'pick(i)', 'reroll()', 'banish(i)', `ids: ${PERKS.map(p => p.id).join('|')}`],
@@ -1550,6 +1581,25 @@ function buildDebugApi() {
     reroll: () => { rerollDraft(); return snapshot(); },
     banish: (i) => { banishCard(i); return snapshot(); },
     spawnRow: () => { spawnRow(); return snapshot(); },   // force one obstacle/roll row (no render — cheap for tests)
+    // Force one air ribbon (or, past ROLL_PACK_SPEED, its pack) — exercises the
+    // arc-vs-pack decision deterministically after a set({speed}).
+    spawnArc: (lane = laneIdx, peak) => { peak === undefined ? spawnAirArc(lane) : spawnAirArc(lane, peak); return snapshot(); },
+    // Deterministic probe of every kind's TALL build: max mesh height (glows and
+    // contact shadows excluded) + whether it fell back to the stretched base.
+    // Duck kinds report null (they never grow).
+    tallModels: () => Object.fromEntries(OBSTACLE_KINDS.map(k => {
+      const o = makeObstacle(k, true);
+      if (!o.userData.tall) return [k, null];
+      o.updateMatrixWorld(true);
+      const box = new THREE.Box3();
+      o.traverse(n => {
+        if (n.isMesh && !n.userData.glow && !n.userData.contact) {
+          n.geometry.computeBoundingBox();
+          box.union(n.geometry.boundingBox.clone().applyMatrix4(n.matrixWorld));
+        }
+      });
+      return [k, { h: +box.max.y.toFixed(2), stretched: o.scale.y !== 1 }];
+    })),
     // ---- meta (roguelite lab) ----
     buyMeta: (id) => { const ok = buyMeta(id); renderShop(); return ok; },
     startDaily: () => { startGame(true); return snapshot(); },

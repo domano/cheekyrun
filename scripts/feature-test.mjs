@@ -1903,6 +1903,62 @@ const SCENARIOS = [
     },
   },
   {
+    // TALL obstacles are bespoke models now, not stretched bases: every jump kind
+    // builds a distinct double-height variant (scale.y stays 1) that still tops
+    // out above the single-hop apex, so the "needs a double-jump" read holds.
+    name: 'tall-obstacles-are-distinct-models',
+    fn: (c, assert) => {
+      c.start();
+      const m = c.tallModels();
+      const talls = Object.entries(m).filter(([, v]) => v);
+      assert(talls.length >= 14, `every jump kind grows a tall variant (${talls.length})`);
+      talls.forEach(([k, v]) => {
+        assert(v.stretched === false, `${k}: tall variant is a bespoke model, not a stretched base`);
+        assert(v.h >= 2.1, `${k}: tall variant tops out in double-jump territory (${v.h})`);
+      });
+      assert(m.branch === null && m.bar === null && m.kelp === null, 'duck kinds never grow a tall variant');
+    },
+  },
+  {
+    // Roll packs — past ROLL_PACK_SPEED an air ribbon stops spawning as five
+    // split-second grabs and collapses into ONE pack pickup at the arc's apex.
+    name: 'roll-pack-replaces-arc-at-speed',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.clearField(); c.set({ speed: 18 });
+      let s = c.spawnArc(1, 2.6);
+      assert(s.counts.rolls === 5 && s.counts.rollPacks === 0, 'below the pace threshold the ribbon is still five rolls');
+      c.clearField(); c.set({ speed: 30 });
+      s = c.spawnArc(1, 2.6);
+      assert(s.counts.rollPacks === 1 && s.counts.rolls === 1, 'past the threshold the whole arc is one pack');
+      assert(s.counts.airRollMaxH === 2.6, 'the pack floats at the apex the arc would have peaked at');
+    },
+  },
+  {
+    // Roll packs — one touch banks the whole ribbon's worth: rolls, combo feed
+    // and value all pay as if the full five-roll arc had been scooped, and an
+    // apex-height pack still demands the same double-jump the arc did.
+    name: 'roll-pack-grab-pays-full-arc',
+    fn: (c, assert) => {
+      c.start({ magnetR: 0 }); c.clearField();
+      c.spawn('rollpack', 1, -5, 0);                   // ground-level pack grabs like a ground roll
+      let s = c.step(60);
+      assert(s.rollCount === 5, `one pack banks the full bundle (${s.rollCount} rolls)`);
+      assert(s.combo === 5, 'the pack feeds the combo once per bundled roll');
+      assert(s.counts.rollPacks === 0, 'the grabbed pack leaves the field');
+
+      c.start({ magnetR: 0 }); c.clearField();
+      c.spawn('rollpack', 1, -6, 2.4);                 // apex-height pack
+      s = c.step(60);
+      assert(s.rollCount === 0, 'a grounded run passes clean under an apex pack');
+
+      c.start({ magnetR: 0 }); c.clearField();
+      c.spawn('rollpack', 1, -6, 2.4);
+      c.jump(); c.step(8); c.jump();                   // the same risky double-jump the arc demanded
+      s = c.step(60);
+      assert(s.rollCount === 5, 'a well-timed double-jump scoops the whole pack');
+    },
+  },
+  {
     // Regression — "you hit it but didn't collect it": a fast roll can leap the
     // whole ±0.9 grab window in a single frame. The swept z-check grabs any roll
     // whose path crossed the player this frame, so a visible pass-through banks.

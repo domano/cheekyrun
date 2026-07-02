@@ -120,6 +120,14 @@ export const AIR_ARC_CHANCE = 0.12;   // chance of a (low, single-hop) air ribbo
 // clear the wall, instead of always sitting in the safe open lane.
 export const AIR_ARC_TALL_CHANCE = 0.6;   // chance a tall obstacle also gets an air ribbon over it
 export const AIR_ARC_TALL_PEAK = TALL_CLEAR_H + 0.5;   // peak float height of a tall-wall ribbon (double-jump territory)
+// Roll PACKS: past this speed an air ribbon's five rolls flash by too fast to
+// ride one-by-one, so the whole arc collapses into a SINGLE bundled pickup at
+// the apex the arc would have peaked at, worth the same ROLL_PACK_COUNT rolls.
+// One clean jump-and-touch replaces five split-second grabs; a slightly taller
+// grab window keeps the one-shot fair at pace.
+export const ROLL_PACK_SPEED = 26;    // live speed past which arcs spawn as packs (≈ level 3+ at full ramp)
+export const ROLL_PACK_COUNT = 5;     // rolls banked by one pack — the whole ribbon's worth
+export const ROLL_PACK_GRAB_H = 1.0;  // vertical grab window for a pack (wider than ROLL_GRAB_H)
 // The air bonus only pays when a double-jump was actually spent (see usedDouble),
 // so it can't be farmed by rhythm-hopping and doesn't inflate with extra jumps.
 // AIR_MIN_H filters a wasted immediate double (too low to count). The height term

@@ -34,6 +34,10 @@ function duckBar(barM, postM, barGeo = [1.7, 0.3, 0.3]) {
   g.add(bar); return g;
 }
 
+// Each jump kind also carries a bespoke `tall` build — a DISTINCT double-height
+// model (top ~2.3–2.7, above the single-hop apex), not a stretched base. Same
+// footprint as the base kind so lane collision (halfW 0.95) is unchanged; the
+// loop's clearH stamp is what actually gates the jump.
 const OBSTACLES = {
   // Meadow — green & woodsy.
   cactus: { action: 'jump', color: 0x44b566, build: () => {
@@ -42,10 +46,38 @@ const OBSTACLES = {
     const aL = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.17, 0.6, 10), m); aL.position.set(-0.36, 0.95, 0); aL.rotation.z = 0.5; aL.castShadow = true; ink(aL, 1.12);
     const aR = aL.clone(); aR.position.x = 0.36; aR.rotation.z = -0.5;
     g.add(body, aL, aR); return g;
+  }, tall: () => {
+    // Saguaro tower: one tall trunk, two chunky elbowed arms reaching up, a pink
+    // desert bloom (petal ring, not an anonymous blip) crowning it.
+    const g = new THREE.Group(), m = toon(0x44b566);
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.45, 2.5, 14), m); body.position.y = 1.25; body.castShadow = true; ink(body, 1.06); g.add(body);
+    [-1, 1].forEach(s => {
+      const y0 = s > 0 ? 1.5 : 1.15;
+      const out = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.19, 0.5, 10), m); out.position.set(s * 0.48, y0, 0); out.rotation.z = Math.PI / 2; out.castShadow = true; ink(out, 1.12); g.add(out);
+      const up = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.18, 0.8, 10), m); up.position.set(s * 0.68, y0 + 0.38, 0); up.castShadow = true; ink(up, 1.1); g.add(up);
+    });
+    const bloom = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 10), toon(0xff7fb0, { emissive: 0x2a141e })); bloom.position.y = 2.55; bloom.scale.set(2, 1.27, 2); ink(bloom, 1.12); g.add(bloom);   // authored hot — fog eats ~30% saturation
+    const petalM = toon(0xffd7e8);
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2;
+      const p = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), petalM);
+      p.position.set(Math.cos(a) * 0.2, 2.56, Math.sin(a) * 0.2); g.add(p);
+    }
+    return g;
   } },
   rock: { action: 'jump', color: 0x99a3ad, build: () => {
     const g = new THREE.Group();
     const r = new THREE.Mesh(new THREE.IcosahedronGeometry(0.6, 0), toon(0x99a3ad, { flat: true })); r.position.y = 0.5; r.scale.set(1.3, 0.9, 1.1); r.castShadow = true; ink(r, 1.08); g.add(r); return g;
+  }, tall: () => {
+    // Cairn: stacked stones, big to small, warm-tinted in alternating bands so
+    // the stack reads at distance, crowned by a tilted round pebble + tiny nose.
+    const g = new THREE.Group(), mA = toon(0xc9bfb4, { flat: true }), mB = toon(0xded5cc, { flat: true });
+    [[0.62, 0.5, 1.3, 0.85, 0], [0.5, 1.25, 1.15, 0.8, 0.7], [0.4, 1.85, 1.05, 0.8, 1.6]].forEach(([r, y, sx, sy, ry], i) => {
+      const s = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 0), i % 2 ? mB : mA); s.position.y = y; s.scale.set(sx, sy, 1.05); s.rotation.y = ry; s.castShadow = true; ink(s, 1.07); g.add(s);
+    });
+    const crown = new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 10), mB); crown.position.y = 2.3; crown.rotation.z = 0.21; crown.castShadow = true; ink(crown, 1.08); g.add(crown);
+    const nose = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), toon(0xf5ede4, { flat: true })); nose.position.y = 2.62; ink(nose, 1.14); g.add(nose);
+    return g;
   } },
   branch: { action: 'duck', color: 0x8a5a33, build: () => {
     const g = duckBar(toon(0x8a5a33), toon(0x9c6b43));
@@ -61,10 +93,28 @@ const OBSTACLES = {
     const bandM = toon(0x6a4a2a);
     [0.25, 0.95].forEach(y => { const b = new THREE.Mesh(new THREE.CylinderGeometry(0.54, 0.54, 0.12, 16), bandM); b.position.y = y; g.add(b); });
     g.add(body); return g;
+  }, tall: () => {
+    // Barrel stack: a second, slimmer keg casually perched off-centre on the
+    // first; proud torus hoops are what make each cylinder read "keg".
+    const g = new THREE.Group(), bandM = toon(0x8a5a33);
+    const lo = new THREE.Mesh(new THREE.CylinderGeometry(0.52, 0.52, 1.2, 16), toon(0xc8743a)); lo.position.y = 0.6; lo.castShadow = true; ink(lo, 1.06); g.add(lo);
+    const hi = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.44, 1.05, 16), toon(0xd8854a)); hi.position.set(0.12, 1.72, 0); hi.rotation.y = 0.35; hi.castShadow = true; ink(hi, 1.07); g.add(hi);
+    [[0.52, 0.3, 0], [0.52, 0.9, 0], [0.44, 1.46, 0.12], [0.44, 1.98, 0.12]].forEach(([r, y, x]) => {
+      const b = new THREE.Mesh(new THREE.TorusGeometry(r, 0.035, 6, 18), bandM); b.position.set(x, y, 0); b.rotation.x = Math.PI / 2; g.add(b);
+    });
+    return g;
   } },
   boulder: { action: 'jump', color: 0xb89a6a, build: () => {
     const g = new THREE.Group();
     const r = new THREE.Mesh(new THREE.DodecahedronGeometry(0.7, 0), toon(0xb89a6a, { flat: true })); r.position.y = 0.6; r.scale.set(1.2, 1.0, 1.0); r.castShadow = true; ink(r, 1.06); g.add(r); return g;
+  }, tall: () => {
+    // Hoodoo: a CHUNKY wind-carved column (near-pole tapers read as a lamppost)
+    // under a rounded overhanging boulder cap, with one stratum groove.
+    const g = new THREE.Group();
+    const col = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.45, 1.8, 9), toon(0xe8b98f, { flat: true })); col.position.y = 0.9; col.castShadow = true; ink(col, 1.06); g.add(col);
+    const groove = new THREE.Mesh(new THREE.TorusGeometry(0.37, 0.03, 6, 14), toon(0xd99f72)); groove.position.y = 1.0; groove.rotation.x = Math.PI / 2; g.add(groove);
+    const cap = new THREE.Mesh(new THREE.IcosahedronGeometry(0.5, 1), toon(0xd99f72, { flat: true })); cap.position.y = 2.1; cap.scale.set(1.0, 0.65, 1.0); cap.castShadow = true; ink(cap, 1.06); g.add(cap);
+    return g;
   } },
   bar: { action: 'duck', color: 0xff5151, build: () => duckBar(toon(0xff5151), toon(0xe0d3c0), [1.7, 0.34, 0.34]) },
 
@@ -75,12 +125,34 @@ const OBSTACLES = {
     [[-0.42, 0.5, 0.45], [0.42, 0.42, -0.4]].forEach(([x, h, z]) => { const c = new THREE.Mesh(new THREE.ConeGeometry(0.18, h * 2, 5), m); c.position.set(x, h, z); c.castShadow = true; ink(c, 1.1); g.add(c); });
     const halo = glow(0xb59bff, 1.9, 0.5); halo.position.set(0, 0.85, 0); g.add(halo);   // self-lit violet bloom
     return g;
+  }, tall: () => {
+    // Grand spire: one towering shard flanked by two leaning splinters. The main
+    // spire burns brighter than the splinters so the beacon has hierarchy.
+    const g = new THREE.Group(), m = toon(0x9a7bff, { emissive: 0x2a1a55, flat: true });
+    const main = new THREE.Mesh(new THREE.ConeGeometry(0.44, 2.6, 5), toon(0x9a7bff, { emissive: 0x352070, flat: true })); main.position.y = 1.3; main.castShadow = true; ink(main, 1.06); g.add(main);
+    [[-0.44, 0.75, 0.16], [0.46, 0.6, -0.18]].forEach(([x, h, rz]) => {
+      const c = new THREE.Mesh(new THREE.ConeGeometry(0.2, h * 2, 5), m); c.position.set(x, h, 0); c.rotation.z = rz; c.castShadow = true; ink(c, 1.1); g.add(c);
+    });
+    const halo = glow(0xb59bff, 2.2, 0.5); halo.position.set(0, 2.2, 0); g.add(halo);   // beacon glow rides near the tip
+    return g;
   } },
   tombstone: { action: 'jump', color: 0x8a93a6, build: () => {
     const g = new THREE.Group(), m = toon(0x8a93a6, { flat: true });
     const slab = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.3, 0.25), m); slab.position.y = 0.75; slab.castShadow = true; ink(slab, 1.05);
     const top = new THREE.Mesh(new THREE.SphereGeometry(0.45, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), m); top.position.y = 1.4; top.scale.z = 0.56; top.castShadow = true; ink(top, 1.06);
     g.add(slab, top); return g;
+  }, tall: () => {
+    // Leaning obelisk: stepped plinth, tapering pillar with a recessed epitaph
+    // plate, domed cap draped in moss — tilted 7° because an old grave leans.
+    const g = new THREE.Group(), m = toon(0x8a93a6, { flat: true });
+    const plinth = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.3, 0.7), m); plinth.position.y = 0.15; plinth.castShadow = true; ink(plinth, 1.05); g.add(plinth);
+    const lean = new THREE.Group(); lean.position.y = 0.3; lean.rotation.z = 0.12; g.add(lean);   // everything above the plinth leans together
+    const step = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.25, 0.55), m); step.position.y = 0.12; step.castShadow = true; ink(step, 1.06); lean.add(step);
+    const col = new THREE.Mesh(new THREE.BoxGeometry(0.56, 1.75, 0.4), m); col.position.y = 1.1; col.castShadow = true; ink(col, 1.05); lean.add(col);
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.45, 0.04), toon(0x767e90, { flat: true })); plate.position.set(0, 1.35, 0.21); lean.add(plate);
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.34, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), m); cap.position.y = 1.97; cap.scale.z = 0.7; cap.castShadow = true; ink(cap, 1.08); lean.add(cap);
+    const moss = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), toon(0x7fbf6b)); moss.position.set(-0.2, 2.15, 0.1); moss.scale.y = 0.4; moss.rotation.z = 0.7; ink(moss, 1.1); lean.add(moss);
+    return g;
   } },
   beam: { action: 'duck', color: 0xc9a7ff, build: () => duckBar(toon(0xc9a7ff, { emissive: 0x5a3a8a }), toon(0x6a5a8a)) },
 
@@ -90,11 +162,40 @@ const OBSTACLES = {
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 1.3, 12), m); pole.position.y = 0.65; pole.castShadow = true; ink(pole, 1.08);
     const hook = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.16, 8, 12, Math.PI), toon(0xffffff)); hook.position.set(0.28, 1.3, 0); hook.castShadow = true; ink(hook, 1.1);
     g.add(pole, hook); return g;
+  }, tall: () => {
+    // Giant candy cane: a lamppost-sized white pole wound with fat saturated
+    // pink stripes (1:1 with the white — author it hot, the fog softens it) and
+    // a thick hook. Stripes at ~0.35 spacing read as a barber-pole at distance.
+    const g = new THREE.Group(), stripeM = toon(0xff5f8f);
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.19, 2.1, 12), toon(0xffffff)); pole.position.y = 1.05; pole.castShadow = true; ink(pole, 1.07); g.add(pole);
+    [0.3, 1.0, 1.7].forEach(y => { const s = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.35, 12), stripeM); s.position.y = y; g.add(s); });
+    const hook = new THREE.Mesh(new THREE.TorusGeometry(0.4, 0.25, 8, 14, Math.PI), stripeM); hook.position.set(0.4, 2.1, 0); hook.castShadow = true; ink(hook, 1.08); g.add(hook);
+    return g;
   } },
   gumdrop: { action: 'jump', color: 0xff8ad0, build: () => {
     const g = new THREE.Group();
     const d = new THREE.Mesh(new THREE.ConeGeometry(0.6, 1.2, 18), toon(0xff8ad0, { emissive: 0x3a0022 })); d.position.y = 0.6; d.castShadow = true; ink(d, 1.06); g.add(d);
     const halo = glow(0xffb0e0, 1.5, 0.4); halo.position.set(0, 0.6, 0); g.add(halo);   // candy sheen
+    return g;
+  }, tall: () => {
+    // Gumdrop tower: four squashed DOMES sunk into each other, big→small (cones
+    // read as a Christmas tree), in over-saturated pink/mint/lilac that survive
+    // the fog. The glowing sugar pearl on top is the only lit thing on it.
+    const g = new THREE.Group();
+    let y = 0;
+    [[0.62, 0xff7fb0], [0.50, 0x63dbb0], [0.38, 0xc79bf2], [0.29, 0xff7fb0]].forEach(([r, col], i) => {
+      const h = r * 0.72;
+      y += i === 0 ? h : h * 0.6;
+      const d = new THREE.Mesh(new THREE.SphereGeometry(r, 16, 12), toon(col)); d.position.y = y; d.scale.y = 0.72; d.castShadow = true; ink(d, 1.06); g.add(d);
+      y += h;
+    });
+    const pearl = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 10), toon(0xffffff, { emissive: 0x4c4649 })); pearl.position.y = y + 0.02; ink(pearl, 1.12); g.add(pearl);
+    const sugarM = toon(0xffffff);
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 + 0.3;
+      const s = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 6), sugarM);
+      s.position.set(Math.cos(a) * 0.46, 0.73 + Math.sin(i * 2.1) * 0.06, Math.sin(a) * 0.46); g.add(s);
+    }
     return g;
   } },
   licorice: { action: 'duck', color: 0x3a2a4a, build: () => duckBar(toon(0x3a2a4a), toon(0xffd23f)) },
@@ -105,6 +206,23 @@ const OBSTACLES = {
     const m = toon(0x7fb8e6, { emissive: 0x1f3a5a, flat: true }), g = new THREE.Group();
     const main = new THREE.Mesh(new THREE.ConeGeometry(0.46, 1.9, 6), m); main.position.y = 0.95; main.castShadow = true; ink(main, 1.08, 0x3a4a5a); g.add(main);
     [[-0.46, 0.55, 0.34], [0.44, 0.48, -0.36]].forEach(([x, h, z]) => { const c = new THREE.Mesh(new THREE.ConeGeometry(0.22, h * 2, 6), m); c.position.set(x, h, z); c.castShadow = true; ink(c, 1.12, 0x3a4a5a); g.add(c); });
+    return g;
+  }, tall: () => {
+    // Glacier pillar: a faceted ice column wearing a splayed jester-crown of
+    // uneven spikes (one proud) and a glowing frost waistband — the double-jump
+    // beacon in an all-white biome.
+    const m = toon(0x7fb8e6, { emissive: 0x1f3a5a, flat: true }), g = new THREE.Group();
+    const col = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.48, 1.9, 6), m); col.position.y = 0.95; col.castShadow = true; ink(col, 1.07, 0x3a4a5a); g.add(col);
+    const crownM = toon(0x9fd4ee, { emissive: 0x2a4a6a, flat: true });
+    const peak = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.9, 6), crownM); peak.position.y = 2.3; peak.castShadow = true; ink(peak, 1.08, 0x3a4a5a); g.add(peak);
+    [[0, 0.5, 0.26], [1, 0.4, 0.26], [2, 0.45, 0.28], [3, 0.35, 0.24]].forEach(([i, h, tilt]) => {
+      const a = (i / 4) * Math.PI * 2 + 0.4;
+      const c = new THREE.Mesh(new THREE.ConeGeometry(0.11, h, 6), crownM);
+      c.position.set(Math.cos(a) * 0.24, 1.95 + h / 2, Math.sin(a) * 0.24);
+      c.rotation.set(Math.sin(a) * tilt, 0, -Math.cos(a) * tilt);
+      c.castShadow = true; ink(c, 1.12, 0x3a4a5a); g.add(c);
+    });
+    const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.5, 0.22, 6), toon(0xdff4ff, { emissive: 0x223842 })); collar.position.y = 1.1; ink(collar, 1.08, 0x3a4a5a); g.add(collar);
     return g;
   } },
   snowman: { action: 'jump', color: 0xd6e6f2, build: () => {
@@ -119,6 +237,22 @@ const OBSTACLES = {
     const twig = toon(0x5a4632);
     [-1, 1].forEach(s => { const a = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.62, 6), twig); a.position.set(s * 0.5, 0.72, 0); a.rotation.z = s * 0.9; a.castShadow = true; g.add(a); });
     g.add(base, head); return g;
+  }, tall: () => {
+    // Classic three-ball snowman in a top hat — a full head-and-shoulders taller.
+    const g = new THREE.Group(), m = toon(0xd6e6f2);
+    const base = new THREE.Mesh(new THREE.SphereGeometry(0.62, 14, 14), m); base.position.y = 0.62; base.castShadow = true; ink(base, 1.08); g.add(base);
+    const mid = new THREE.Mesh(new THREE.SphereGeometry(0.46, 14, 14), m); mid.position.y = 1.5; mid.castShadow = true; ink(mid, 1.1); g.add(mid);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.33, 14, 14), m); head.position.y = 2.15; head.castShadow = true; ink(head, 1.12); g.add(head);
+    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.3, 8), toon(0xff8a3d)); nose.position.set(0, 2.15, 0.35); nose.rotation.x = Math.PI / 2; g.add(nose);
+    const coal = toon(0x3a3a3a);
+    [[-0.11, 2.23, 0.28, 0.045], [0.11, 2.23, 0.28, 0.045], [0, 1.62, 0.42, 0.05], [0, 1.38, 0.44, 0.05], [0, 0.9, 0.56, 0.05]].forEach(([x, y, z, r]) => { const c = new THREE.Mesh(new THREE.SphereGeometry(r, 8, 8), coal); c.position.set(x, y, z); g.add(c); });
+    const twig = toon(0x5a4632);
+    [-1, 1].forEach(s => { const a = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.66, 6), twig); a.position.set(s * 0.56, 1.62, 0); a.rotation.z = s * 0.95; a.castShadow = true; g.add(a); });
+    const hatM = toon(0x2a2030);
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.44, 0.06, 14), hatM); brim.position.y = 2.42; ink(brim, 1.08); g.add(brim);   // slightly too-big brim, toy-like on purpose
+    const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.34, 14), hatM); crown.position.y = 2.62; crown.castShadow = true; ink(crown, 1.08); g.add(crown);
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.09, 14), toon(0xff5fa6)); band.position.y = 2.5; g.add(band);
+    return g;
   } },
   frostbar: { action: 'duck', color: 0xafd4f0, build: () => {
     const g = duckBar(toon(0xafd4f0, { emissive: 0x24465e }), toon(0xcfe6f2));
@@ -139,12 +273,41 @@ const OBSTACLES = {
     [[-0.22, 0.55, 0.52, 0.5], [0.27, 0.6, 0.46, -0.4]].forEach(([x, y, z, rz]) => { const c = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.11, 0.07), crackM); c.position.set(x, y, z); c.rotation.z = rz; g.add(c); });
     const halo = glow(0xff7a2e, 1.35, 0.62); halo.position.set(0.05, 0.72, 0.18); g.add(halo);   // molten core glow — reads through the dark ashland palette
     return g;
+  }, tall: () => {
+    // Basalt columns: three stacked HEX prisms (columnar, so it never twins the
+    // Meadow cairn's round pebbles), magma glowing in the joints, molten crown.
+    const g = new THREE.Group(), m = toon(0x6e5a52, { flat: true });
+    [[0.5, 0.9, 0.45, 0], [0.42, 0.8, 1.3, 0.44], [0.34, 0.7, 2.05, 0.87]].forEach(([r, h, y, ry]) => {
+      const s = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 1.08, h, 6), m); s.position.y = y; s.rotation.y = ry; s.castShadow = true; ink(s, 1.06, 0x9a8478); g.add(s);
+    });
+    const crackM = toon(0xff8a3d, { emissive: 0xff8a3d, flat: true });
+    [[0.18, 0.92, 0.38, 0.35], [-0.2, 0.88, 0.34, -0.6], [0.1, 1.72, 0.3, 0.5], [-0.14, 1.68, 0.28, -0.3]].forEach(([x, y, z, rz]) => {
+      const c = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.045, 0.05), crackM); c.position.set(x, y, z); c.rotation.z = rz; g.add(c);
+    });
+    const lava = toon(0xff6a2a, { emissive: 0xff5a10, flat: true });
+    const core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.2, 0), lava); core.position.set(0.04, 2.44, 0.06); g.add(core);
+    const halo = glow(0xff7a2e, 1.3, 0.6); halo.position.set(0.04, 2.42, 0.06); g.add(halo);   // molten crown
+    return g;
   } },
   emberspire: { action: 'jump', color: 0xc23a1a, build: () => {
     const g = new THREE.Group(), m = toon(0xc23a1a, { emissive: 0x7a2008, flat: true });
     const spire = new THREE.Mesh(new THREE.ConeGeometry(0.46, 1.9, 7), m); spire.position.y = 0.95; spire.castShadow = true; ink(spire, 1.06); g.add(spire);
     const tip = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.55, 7), toon(0xff8a2d, { emissive: 0xff8a2d })); tip.position.y = 1.75; ink(tip, 1.1); g.add(tip);
     const halo = glow(0xff9a3a, 1.2, 0.5); halo.position.set(0, 1.7, 0); g.add(halo);   // burning tip
+    return g;
+  }, tall: () => {
+    // Grand vent: a towering spire broken out of "traffic cone" by a bulging
+    // skirt at the base and two molten side vents at deliberately uneven
+    // heights/sizes; fierce glowing tip crowns it.
+    const g = new THREE.Group(), m = toon(0xe07b3a, { emissive: 0x7a2008, flat: true });
+    const spire = new THREE.Mesh(new THREE.ConeGeometry(0.5, 2.6, 7), m); spire.position.y = 1.3; spire.castShadow = true; ink(spire, 1.05); g.add(spire);
+    const skirt = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.15, 8, 14), m); skirt.position.y = 0.12; skirt.rotation.x = Math.PI / 2; skirt.castShadow = true; ink(skirt, 1.06); g.add(skirt);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.7, 7), toon(0xffb347, { emissive: 0xffb347 })); tip.position.y = 2.5; ink(tip, 1.1); g.add(tip);
+    [[-0.44, 0.9, 0.5, 0.38], [0.4, 1.4, 0.35, -0.45]].forEach(([x, y, sc, rz]) => {
+      const v = new THREE.Mesh(new THREE.ConeGeometry(0.36 * sc, 1.6 * sc, 7), m); v.position.set(x, y, 0); v.rotation.z = rz; v.castShadow = true; ink(v, 1.1); g.add(v);
+      const vt = new THREE.Mesh(new THREE.ConeGeometry(0.13 * sc, 0.45 * sc, 7), toon(0xffb347, { emissive: 0xffb347 })); vt.position.set(x - Math.sin(rz) * 0.8 * sc, y + Math.cos(rz) * 0.8 * sc, 0); vt.rotation.z = rz; g.add(vt);
+    });
+    const halo = glow(0xff9a3a, 1.5, 0.55); halo.position.set(0, 2.5, 0); g.add(halo);   // burning crown
     return g;
   } },
   emberbar: { action: 'duck', color: 0xc24a1e, build: () => {
@@ -164,6 +327,22 @@ const OBSTACLES = {
       const nub = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 10), tipM); nub.position.set(x - Math.sin(rz) * 0.4, y + Math.cos(rz) * 0.4, 0); ink(nub, 1.1); g.add(nub);
     });
     return g;
+  }, tall: () => {
+    // Lollipop coral: THREE wildly-uneven branches tipped with fat gold bulbs
+    // (parallel same-length fingers + five of them read as a waving hand), plus
+    // two capped stubs low on the trunk so it reads "growing organism, not limb".
+    const g = new THREE.Group(), m = toon(0xff8fb8, { emissive: 0x3a0a18 }), bulbM = toon(0xffd166, { emissive: 0x403419 });   // lit gold tips — the Reef row's one warm beacon
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.34, 1.5, 8), m); trunk.position.y = 0.75; trunk.castShadow = true; ink(trunk, 1.06); g.add(trunk);
+    [[-0.16, -0.44, 1.0], [0.06, 0.09, 0.65], [0.3, 0.52, 0.45]].forEach(([x, rz, h]) => {
+      const y = 1.45 + Math.cos(rz) * h / 2;
+      const b = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, h, 8), m); b.position.set(x - Math.sin(rz) * h / 2, y, 0); b.rotation.z = rz; b.castShadow = true; ink(b, 1.1); g.add(b);
+      const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 12), bulbM); bulb.position.set(x - Math.sin(rz) * h, 1.45 + Math.cos(rz) * h, 0); bulb.castShadow = true; ink(bulb, 1.1); g.add(bulb);
+    });
+    [[-0.3, 0.6, 0.9], [0.32, 0.42, -0.9]].forEach(([x, y, rz]) => {
+      const s = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 0.2, 8), m); s.position.set(x, y, 0); s.rotation.z = rz; ink(s, 1.12); g.add(s);
+      const c = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 8), bulbM); c.position.set(x * 1.35, y + 0.06, 0); ink(c, 1.12); g.add(c);
+    });
+    return g;
   } },
   clam: { action: 'jump', color: 0xff8fb0, build: () => {
     const g = new THREE.Group(), m = toon(0xff8fb0);
@@ -171,6 +350,19 @@ const OBSTACLES = {
     const upper = new THREE.Mesh(new THREE.SphereGeometry(0.62, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), m); upper.position.y = 0.68; upper.rotation.x = -0.55; upper.castShadow = true; ink(upper, 1.06);
     const pearl = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 12), toon(0xfff4ff, { emissive: 0xddc8dd })); pearl.position.y = 0.6;
     g.add(lower, upper, pearl); return g;
+  }, tall: () => {
+    // Pearl pedestal: a WIDE-gaping pink clam on a dark barnacled column, pearl
+    // nested visibly in the bottom shell — open + flat shells + a seated pearl
+    // is what stops the "giant eyeball on a stick" read.
+    const g = new THREE.Group(), rockM = toon(0xb9a68e, { flat: true });
+    const col = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.5, 1.6, 9), rockM); col.position.y = 0.8; col.castShadow = true; ink(col, 1.06); g.add(col);
+    const barnM = toon(0xe8dcc8);
+    [[-0.3, 0.35], [0.32, 0.9], [0.05, 1.3]].forEach(([x, y]) => { const b = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), barnM); b.position.set(x, y, 0.3); ink(b, 1.14); g.add(b); });
+    const lower = new THREE.Mesh(new THREE.SphereGeometry(0.55, 16, 12), toon(0xf2b6cc)); lower.position.y = 1.9; lower.scale.set(1, 0.45, 0.85); lower.castShadow = true; ink(lower, 1.06); g.add(lower);
+    const lip = new THREE.Mesh(new THREE.SphereGeometry(0.48, 14, 10), toon(0xffe9f2)); lip.position.y = 1.98; lip.scale.set(1, 0.32, 0.78); g.add(lip);
+    const upper = new THREE.Mesh(new THREE.SphereGeometry(0.55, 16, 12), toon(0xf7c8d8)); upper.position.set(0, 2.16, -0.14); upper.scale.set(1, 0.45, 0.85); upper.rotation.x = -0.96; upper.castShadow = true; ink(upper, 1.06); g.add(upper);
+    const pearl = new THREE.Mesh(new THREE.SphereGeometry(0.22, 14, 14), toon(0xfdfdff, { emissive: 0x55555a })); pearl.position.set(0, 2.06, 0.1); g.add(pearl);
+    return g;
   } },
   kelp: { action: 'duck', color: 0x2f9f6a, build: () => {
     const g = duckBar(toon(0x2f9f6a, { emissive: 0x0a3a22 }), toon(0x3a6a4a));
@@ -182,16 +374,18 @@ const OBSTACLES = {
 
 export function makeObstacle(kind, tall = false) {
   const def = OBSTACLES[kind] || OBSTACLES.cactus;
-  const g = def.build();
-  g.add(contactShadow(def.action === 'duck' ? 0.95 : 0.6));   // ground it under the soft cast shadow
+  // TALL variant: only jump obstacles grow (a taller duck bar makes no sense).
+  // Each kind builds its own bespoke double-height model (stretching the base
+  // read as cheap); the higher clear threshold stamped below is what the loop
+  // checks — a single hop won't clear it.
+  const grow = tall && def.action === 'jump';
+  const g = grow && def.tall ? def.tall() : def.build();
+  g.add(contactShadow(def.action === 'duck' ? 0.95 : grow ? 0.72 : 0.6));   // ground it under the soft cast shadow
   g.userData.kind = kind;
   g.userData.color = def.color;
   g.userData.duck = def.action === 'duck';   // generic flag the loop reads for collision
-  // TALL variant: only jump obstacles grow (a taller duck bar makes no sense).
-  // Stretch it vertically so the extra height reads at a glance, and stamp the
-  // higher clear threshold the loop checks — now a single hop won't clear it.
-  if (tall && def.action === 'jump') {
-    g.scale.y = TALL_SCALE;
+  if (grow) {
+    if (!def.tall) g.scale.y = TALL_SCALE;   // fallback stretch for any future kind without a bespoke tall build
     g.userData.tall = true;
     g.userData.clearH = TALL_CLEAR_H;
   }
@@ -339,6 +533,38 @@ export function makeRoll() {
   paper.rotation.x = Math.PI / 2; hole.rotation.x = Math.PI / 2; paper.castShadow = true; ink(paper, 1.07);
   g.add(paper, hole); g.position.y = 0.95;
   g.add(contactShadow(0.34, 0.12, -0.92));   // a faint shadow on the road grounds the roll too (kept light so it never darkens a pale biome floor)
+  return g;
+}
+
+// A PACK of rolls — the high-speed stand-in for a whole air ribbon: one chunky
+// shrink-wrapped 2×2 bundle (worth ROLL_PACK_COUNT rolls) floating at the apex
+// the arc would have peaked at. A pastel sleeve + carry handle read "multipack"
+// at gameplay distance; a soft warm glow marks it as the bigger prize. `h` is
+// the float height, used to drop the contact shadow onto the road below.
+export function makeRollPack(h = 0) {
+  const g = new THREE.Group();
+  const paperM = toon(0xfff6ec, { emissive: 0x222222 }), holeM = toon(0xd9b48a);   // warm paper so it separates from biome whites
+  [[-0.36, 0.36], [0.36, 0.36], [-0.36, -0.36], [0.36, -0.36]].forEach(([x, y]) => {
+    const paper = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.56, 18), paperM);
+    const hole = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.6, 12), holeM);
+    paper.rotation.x = Math.PI / 2; hole.rotation.x = Math.PI / 2;
+    paper.position.set(x, y, 0); hole.position.set(x, y, 0);
+    paper.castShadow = true; ink(paper, 1.085);   // heavier ink than obstacles — "interactive" in manga language
+    g.add(paper, hole);
+  });
+  // Hot-pink sleeve covering ~45% of the pack's height — the product-band read —
+  // with three printed roll dots on the face so it says "multipack" at a glance.
+  const band = new THREE.Mesh(new THREE.BoxGeometry(1.46, 0.63, 0.6), toon(0xff6fa5)); band.castShadow = true; ink(band, 1.06); g.add(band);
+  const dotM = toon(0xffffff);
+  [-0.34, 0, 0.34].forEach(x => { const d = new THREE.Mesh(new THREE.CircleGeometry(0.09, 12), dotM); d.position.set(x, 0, 0.305); g.add(d); });
+  // Fat carry handle on top, same pink — one colour story per prop.
+  const handle = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.083, 8, 16, Math.PI), toon(0xff6fa5)); handle.position.y = 0.72; ink(handle, 1.14); g.add(handle);
+  // The "jump for me" signal: a big warm-gold aura (pulsed by the loop via
+  // userData.halo) — unsubtle on purpose, it's the one-shot prize.
+  const halo = glow(0xffd98a, 2.3, 0.35); halo.position.z = -0.1; g.add(halo);
+  g.userData.halo = halo;
+  g.position.y = 0.95 + h;
+  g.add(contactShadow(0.5, 0.14, -(0.93 + h)));   // shadow lands on the road, not mid-air
   return g;
 }
 
