@@ -748,6 +748,25 @@ const SCENARIOS = [
     },
   },
   {
+    // The core four each dress their gem with an identifying topper (magnet
+    // horseshoe, 2× coins, ghost, dash rocket) so they no longer read as
+    // interchangeable coloured gems — proven via the same deterministic
+    // fingerprints. Unlike relics they are NOT scaled up (stay ×1) and carry
+    // no gold crown, so the relic tier still reads as clearly more special.
+    name: 'boost-core-dress',
+    fn: (c, assert) => {
+      const g = c.gfx();
+      assert(g.powerupMeshes > 0, 'the base gem probe reports its mesh count');
+      ['magnet', 'x2', 'ghost', 'dash'].forEach(k => {
+        const r = g.relicDress[k];
+        assert(!!r, `core boost "${k}" now dresses its pickup`);
+        assert(r.scale === 1, `"${k}" is a core gem, NOT a scaled-up relic (×${r.scale})`);
+        assert(r.meshes > g.powerupMeshes, `"${k}" adds an identifying topper (${r.meshes} meshes vs base ${g.powerupMeshes})`);
+        assert(r.spins >= 1, `"${k}" registers at least one idle spinner for its topper`);
+      });
+    },
+  },
+  {
     name: 'emote-and-cheer',
     fn: (c, assert) => {
       c.start({ magnetR: 0 }); c.clearField();
