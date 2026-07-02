@@ -4,7 +4,7 @@
 // a mis-read still kills, just slower.
 import { relicDress } from './_relic.js';
 
-const VIOLET = 0x7a2ff2;   // deep violet — emissive gem keeps it readable on every biome
+const VIOLET = 0x5a1ec8;   // deep violet — dark enough to stay purple (not pink) after the ramp lift
 
 export default {
   id: 'chrono',
@@ -18,6 +18,8 @@ export default {
 
   dress(g, THREE, helpers) {
     relicDress(g, THREE, helpers);
+    // Deepen the gem's self-glow so the violet holds instead of lifting pink.
+    g.userData.gem.material.emissive.setHex(0x3a1080);
     // Topper: a tiny hourglass — two cones meeting at the waist above the crown.
     const m = helpers.toon(VIOLET, { emissive: 0x3a1080 });
     const top = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.2, 8), m);

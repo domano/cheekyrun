@@ -21,12 +21,14 @@ export default {
     // Deepen the gem's self-glow: the standard full-strength emissive washes
     // this red toward dash's orange — a darker ember keeps it reading RED.
     g.userData.gem.material.emissive.setHex(0x8a1408);
-    // Topper: two stubby ram-horn arcs curling off the gem's shoulders.
-    const m = helpers.toon(0xf2e2c8, { emissive: 0x4a2a10 });
+    // Topper: two curled ram-horn half-tori off the gem's shoulders, darker
+    // than the gem so they read as horn, not gem-arm (Pixie pass).
+    const m = helpers.toon(0xb0250f, { emissive: 0x3a0c04 });
     [-1, 1].forEach(s => {
-      const horn = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.06, 6, 10, Math.PI * 1.25), m);
-      horn.position.set(s * 0.42, 0.3, 0);
-      horn.rotation.set(0.2, s * 0.5, s * -1.9);
+      const horn = new THREE.Mesh(new THREE.TorusGeometry(0.09, 0.035, 6, 12, Math.PI * 1.22), m);
+      horn.position.set(s * 0.5, 0.34, 0.05);
+      // arc opens forward — the tip curls toward the camera like a ram's horn
+      horn.rotation.set(-0.35, s * 1.25, s * -0.4);
       helpers.ink(horn, 1.14);
       g.add(horn);
     });

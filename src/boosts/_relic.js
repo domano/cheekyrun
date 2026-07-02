@@ -23,13 +23,15 @@ export function relicDress(g, THREE, { toon, ink }) {
 
   // Three tiny orbiting stars — cheap flat quads that twinkle as the pivot turns.
   const orbit = new THREE.Group(); orbit.position.y = 0.12;
+  // sized ×2 with near-full opacity — additive sparkles die on the palest
+  // biome otherwise (Pixie pass)
   const starMat = new THREE.MeshBasicMaterial({
-    color: GOLD, transparent: true, opacity: 0.85,
+    color: GOLD, transparent: true, opacity: 0.9,
     blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
   });
   for (let i = 0; i < 3; i++) {
     const a = i * Math.PI * 2 / 3;
-    const star = new THREE.Mesh(new THREE.CircleGeometry(0.13, 4), starMat);
+    const star = new THREE.Mesh(new THREE.CircleGeometry(0.26, 4), starMat);
     star.position.set(Math.cos(a) * 0.82, Math.sin(a * 2) * 0.16, Math.sin(a) * 0.82);
     star.rotation.z = Math.PI / 4;   // square → 4-point sparkle read
     orbit.add(star);

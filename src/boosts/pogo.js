@@ -4,7 +4,7 @@
 // SPENT double-jump (main.js updatePlayer), so auto-bounces never farm it.
 import { relicDress } from './_relic.js';
 
-const SPRING = 0x35e07c;   // spring green
+const SPRING = 0x18b85f;   // deep spring green — must stay green (not aqua) next to the ice-blue magnet gem
 
 export default {
   id: 'pogo',
@@ -18,6 +18,9 @@ export default {
 
   dress(g, THREE, helpers) {
     relicDress(g, THREE, helpers);
+    // Deepen the gem's self-glow: the standard full-strength emissive lifts
+    // this green to magnet-gem aqua on pale biomes — it must stay GREEN.
+    g.userData.gem.material.emissive.setHex(0x0a5a2e);
     // Topper: a coil spring under the gem — three flat rings narrowing upward.
     const m = helpers.toon(SPRING, { emissive: 0x0a5a2e });
     [[-0.5, 0.34], [-0.58, 0.38], [-0.66, 0.42]].forEach(([y, r]) => {

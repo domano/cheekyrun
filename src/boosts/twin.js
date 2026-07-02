@@ -10,7 +10,7 @@ import * as THREE from 'three';
 import { toon } from '../materials.js';
 import { relicDress } from './_relic.js';
 
-const PINK = 0xff8ad4;   // pastel magenta — reads as a friendly double, not a hazard
+const PINK = 0xf25fb0;   // deep candy pink — the toon ramp lifts it pastel; paler washes to white
 
 // Module state is safe here: only one boost is ever active at a time.
 let clones = null, bobT = 0;
@@ -52,8 +52,11 @@ export default {
     // aside and overlap a paler echo of it.
     const gem = g.userData.gem;
     gem.scale.setScalar(0.74); gem.position.x = -0.16;
+    // Deepen both gems' self-glow — full-strength emissive pink washes to
+    // white on the palest biome.
+    gem.material.emissive.setHex(0x7a2058);
     const echo = new THREE_.Mesh(new THREE_.IcosahedronGeometry(0.46, 0),
-      helpers.toon(0xffb9e6, { emissive: 0xffb9e6, flat: true }));
+      helpers.toon(0xf28ac8, { emissive: 0x8a3a68, flat: true }));
     echo.scale.setScalar(0.58); echo.position.set(0.22, 0.1, 0.08);
     helpers.ink(echo, 1.1);
     g.add(echo);
