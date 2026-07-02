@@ -56,9 +56,11 @@ export const BIOMES = [
   {
     name: 'Sunset',
     bg: ['#ffd194', '#ffae8b', '#ff7a88', '#a85aa3'],
+    // Authored darker than the perceived target — the sRGB output lift + warm
+    // fog brighten everything a band, so pale hexes here render snow-white.
     fog: 0xffc6a0,
-    ground: 0xd9b46a,
-    path: 0xbb8a58,
+    ground: 0xe6cc8e,
+    path: 0xcf9f5e,
     hills: [0xe08a5a, 0xd06a6a, 0xe0a060],
     disc: 0xffd27f,
     obstacles: { jump: ['barrel', 'boulder'], duck: 'bar' },
@@ -69,23 +71,26 @@ export const BIOMES = [
   {
     name: 'Twilight',
     bg: ['#2b2d5e', '#46337e', '#6d4b8f', '#caa1c9'],
-    fog: 0x4a3a6a,
+    fog: 0x4a3c6e,
     ground: 0x5a7a8c,
     path: 0x4d4d72,
     hills: [0x4a5a8a, 0x3a4a7a, 0x5a6a9a],
     disc: 0xeef0ff,
     obstacles: { jump: ['crystal', 'tombstone'], duck: 'beam' },
     scenery: ['deadtree', 'deadtree', 'mushroom', 'crystalcluster'],   // spooky night
-    air: { near: 30, far: 58 },                 // close, murky — you see hazards later
+    air: { near: 34, far: 58 },                 // close, murky — you see hazards later
     play: { hazardBias: 1.25, rollBias: 0.9 },  // tense: more compound hazards, fewer rolls
   },
   {
     name: 'Candyland',
-    bg: ['#ffd1ec', '#ffc2e2', '#ffb3d9', '#ffd6a5'],
-    fog: 0xffd6ee,
-    ground: 0xf589b5,
-    path: 0x9c5cae,
-    hills: [0xff9ec9, 0xffb3d9, 0xffc2a8],
+    // Value anchors so pink-on-pink still reads: darker sky top, pale ground,
+    // and the berry path as the darkest band — the frame keeps its romance
+    // without smothering the hazards.
+    bg: ['#ff9ec6', '#ffb9d8', '#ffd4e6', '#ffe9f2'],
+    fog: 0xffd0e6,
+    ground: 0xf6bfda,
+    path: 0xc77bd9,
+    hills: [0xe79bc2, 0xdf8fba, 0xf0aed0],
     disc: 0xfff0a0,
     obstacles: { jump: ['candycane', 'gumdrop'], duck: 'licorice' },
     scenery: ['lollipop', 'lollipop', 'candybush', 'peppermint'],   // bright sweets
@@ -109,8 +114,8 @@ export const BIOMES = [
     name: 'Ember',
     bg: ['#3a1410', '#6e2410', '#b8431a', '#e08a2a'],
     fog: 0x5a2418,
-    ground: 0x4a2620,
-    path: 0x7a5042,
+    ground: 0x8a6560,
+    path: 0x5e423a,
     hills: [0x5a2418, 0x7a2e1a, 0x9a3a1a],
     disc: 0xff8a3a,
     obstacles: { jump: ['lavarock', 'emberspire'], duck: 'emberbar' },

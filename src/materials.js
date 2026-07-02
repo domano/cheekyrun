@@ -31,8 +31,32 @@ export function makeGradient() {
 // The darkest ramp band, so tests can assert the shadow is cool-tinted (b > r).
 export function rampShadow() { return RAMP_BANDS[0].slice(); }
 
+// The hero's own ramp: WARM pink-leaning shade bands (a plush peach in shadow,
+// not a grey paper cut-out) and a wider shade footprint (3/8 texels ≈ the bottom
+// 35%) so the cel read shows on the star at gameplay distance. Props keep the
+// cool RAMP_BANDS; only the character's skin/inner/tail sample this one.
+const HERO_BANDS = [
+  [232, 182, 170], [232, 182, 170], [232, 182, 170],  // shade — warm pink, bottom ~35%
+  [244, 216, 205], [244, 216, 205],                   // mid
+  [252, 242, 235], [252, 242, 235],                   // lit
+  [255, 252, 248],                                    // highlight
+];
+let heroMap;
+export function heroGradient() {
+  if (heroMap) return heroMap;
+  const data = new Uint8Array(HERO_BANDS.length * 4);
+  HERO_BANDS.forEach(([r, g, b], i) => data.set([r, g, b, 255], i * 4));
+  heroMap = new THREE.DataTexture(data, HERO_BANDS.length, 1, THREE.RGBAFormat);
+  heroMap.minFilter = heroMap.magFilter = THREE.NearestFilter;
+  heroMap.generateMipmaps = false;
+  heroMap.needsUpdate = true;
+  return heroMap;
+}
+// The hero shade band, so tests can assert it stays warm (r > b — plush, not grey).
+export function heroShadow() { return HERO_BANDS[0].slice(); }
+
 export function toon(color, opts = {}) {
-  const m = new THREE.MeshToonMaterial({ color, gradientMap: gradMap, fog: true });
+  const m = new THREE.MeshToonMaterial({ color, gradientMap: opts.ramp || gradMap, fog: true });
   if (opts.emissive !== undefined) m.emissive = new THREE.Color(opts.emissive);
   if (opts.flat) m.flatShading = true;
   if (opts.transparent) { m.transparent = true; m.opacity = opts.opacity ?? 1; }

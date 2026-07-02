@@ -136,7 +136,7 @@ export const POWERUP_CHANCE = 0.06;    // chance on an eligible (off-cooldown) r
 export const POWERUP_MIN_DIFF = 0.12;  // only after a short warm-up
 export const POWERUP_COOLDOWN = 14;    // rows guaranteed between power-up spawns
 export const POWERUPS = {
-  magnet: { icon: '🧲', color: 0x4fd0ff, label: 'Magnet' },
+  magnet: { icon: '🧲', color: 0x3ed8c8, label: 'Magnet' },
   x2:     { icon: '✨', color: 0xffd23f, label: '2× Score' },
   ghost:  { icon: '👻', color: 0xb488ff, label: 'Ghost' },
   dash:   { icon: '🚀', color: 0xff7a3a, label: 'Boost' },

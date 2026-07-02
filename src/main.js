@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { LANES, SPAWN_Z, DESPAWN_Z, GATE_MIN_DIFF, GATE_CHANCE, GATE_CHANCE_RAMP, GATE_COOLDOWN, COMBO_WINDOW, comboMult, NEARMISS_MARGIN, NEARMISS_BONUS, SKIM_MARGIN, SKIM_BONUS, SKIM_WINDOW, SAFE_HAZARD_MIN_DIFF, SAFE_HAZARD_CHANCE, TALL_CLEAR_H, TALL_CLEAR_PER_JUMP, TALL_MIN_DIFF, TALL_CHANCE, ROLL_GRAB_H, AIR_ARC_MIN_DIFF, AIR_ARC_CHANCE, AIR_ARC_TALL_CHANCE, AIR_ARC_TALL_PEAK, AIR_MIN_H, AIR_BASE, AIR_POINTS, AIR_PEAK_CAP, JUMP_BUFFER, HITSTOP_SHIELD, HITSTOP_DEATH, SLOWMO_FACTOR, SLOWMO_TIME, SLOWMO_MIN_MULT, SLOWMO_TIGHT_MARGIN, SLOWMO_TIGHT_TIME, DIFF_RAMP, ROW_MIN_GAP, COMBO_DECAY_STEP, COMBO_STEP, SCORE_FLOW_RATE, HEAT_PER_LEVEL, HEAT_LEVEL_CAP, HEAT_MAX, PHOENIX_COMBO, PHOENIX_INVULN, GREED_CAP, RING_TIME, POWERUP_DURATION, POWERUP_CHANCE, POWERUP_MIN_DIFF, POWERUP_COOLDOWN, POWERUPS, POWERUP_KINDS, DASH_SPEED_MULT, DRAFT_EVERY, DRAFT_CHOICES, DRAFT_ARM, DRAFT_GRACE, mulberry32, dailyKey, dailySeed, $, buzz, shuffle } from './config.js';
-import { makeGradient, toon, glow, glowTexture, shadowTexture, rampShadow } from './materials.js';
+import { makeGradient, toon, glow, glowTexture, shadowTexture, rampShadow, heroShadow } from './materials.js';
 import { makeObstacle, makeHurdle, makeGate, makeRoll, makePowerup, makeScenery, makeCloud, makeFinishLine, makeCheerCrowd, tickCheerCrowd, OBSTACLE_KINDS } from './props.js';
 import { createParticles } from './particles.js';
 import { buildPlayer, applyGear, tickGear } from './player.js';
@@ -195,9 +195,11 @@ function init() {
   // A real key-to-fill ratio so the cel bands actually land on the hero: less
   // hemisphere wash, a stronger lower-slung key so a shadow side exists. The
   // hemisphere tints per biome (writeBiome) so lighting agrees with the sky.
-  hemiLight = new THREE.HemisphereLight(0xdff0ff, 0xffd6b0, 0.4);
+  // Total irradiance on an upward face is held near 1.0 — any higher and every
+  // pale albedo clips to white (the old wash-out), killing saturation and bands.
+  hemiLight = new THREE.HemisphereLight(0xdff0ff, 0xffd6b0, 0.32);
   scene.add(hemiLight);
-  const sun = new THREE.DirectionalLight(0xfff0dc, 1.0);
+  const sun = new THREE.DirectionalLight(0xfff0dc, 0.85);
   sun.position.set(6, 10, 7); scene.add(sun);
 
   // Warm back/rim light from behind the play area — no shadow map. It kisses the
@@ -205,7 +207,7 @@ function init() {
   // off similarly-valued biomes (peachy hero on pale twilight road, props on snow).
   // Warm, not cool: a cool rim vanishes on a cool biome. Angled ~20° off dead
   // centre so it catches one ear edge and the tail rather than flattening evenly.
-  const rim = new THREE.DirectionalLight(0xfff2e6, 0.6);
+  const rim = new THREE.DirectionalLight(0xfff2e6, 0.45);
   rim.position.set(-7, 9, -15); scene.add(rim);
 
   discMat = new THREE.MeshBasicMaterial({ color: 0xfff2b0, fog: false });   // fog:false so the sun/moon stays a bright disc at the foggy horizon, not a dark bruise
@@ -289,8 +291,8 @@ function init() {
 
   // The hero's blob shadow: a crisp height-reactive decal that shrinks and fades
   // as the character rises — the grounding cue a PCF smudge never gave the star.
-  playerShadow = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 1.9),
-    new THREE.MeshBasicMaterial({ map: shadowTexture(), color: 0x2a2338, transparent: true, opacity: 0.32, depthWrite: false }));
+  playerShadow = new THREE.Mesh(new THREE.PlaneGeometry(1.8, 1.3),
+    new THREE.MeshBasicMaterial({ map: shadowTexture(), color: 0x3a2a38, transparent: true, opacity: 0.2, depthWrite: false }));
   playerShadow.rotation.x = -Math.PI / 2; playerShadow.position.y = 0.035; playerShadow.renderOrder = -1;
   scene.add(playerShadow);
 
@@ -958,7 +960,7 @@ function moveObstacles(dt) {
 }
 function moveRolls(dt) {
   for (let i = rolls.length - 1; i >= 0; i--) {
-    const o = rolls[i]; const prevZ = o.position.z; o.position.z += speed * dt; o.rotation.y += dt * 4;
+    const o = rolls[i]; const prevZ = o.position.z; o.position.z += speed * dt; o.rotation.y += dt * 1.05;   // a lazy ~60°/s twirl
     const h = o.userData.h || 0;   // elevated rolls float at a height; grabbing needs matching air
     // Magnet: tug nearby rolls toward the player so they're easier to grab. Acts
     // on the logical lane X (lx), not the curved render X, so it pulls true. Skips
@@ -993,8 +995,8 @@ function moveRolls(dt) {
     }
     const off = trackOffset(o.position.z, distance);
     // Time-based bob so rolls visibly hover like pickups (the old z-driven wobble
-    // was invisible at speed).
-    const bob = Math.sin(simTime * 3 + o.position.z * 0.25) * 0.1;
+    // was invisible at speed): ±0.15u at ~1.6 Hz.
+    const bob = Math.sin(simTime * 10 + o.position.z * 0.25) * 0.15;
     o.position.x = lx + off.x; o.position.y = 0.95 + h + bob + off.y;
     // Project the grounding decal down to the road: an elevated air-ribbon roll
     // keeps a (smaller, fainter) shadow on the ground telling you where the arc
@@ -1010,6 +1012,7 @@ function moveRolls(dt) {
 function movePickups(dt) {
   for (let i = pickups.length - 1; i >= 0; i--) {
     const o = pickups[i]; o.position.z += speed * dt; o.rotation.y += dt * 2.5;
+    o.rotation.z = Math.sin(simTime * 6.3) * 0.26;   // a ~15° rocking sway so the gem beckons
     if (o.userData.gem) o.userData.gem.rotation.y += dt * 4;
     if (o.userData.sparkle) { o.userData.sparkle.rotation.y -= dt * 2.5; o.userData.sparkle.rotation.z += dt * 1.2; }   // hold facing the camera, twinkle slowly
     const lx = o.userData.lx;
@@ -1049,6 +1052,8 @@ function moveScenery(dt) {
   for (let i = scenery.length - 1; i >= 0; i--) {
     const o = scenery[i]; o.position.z += v;
     const off = trackOffset(o.position.z, distance); o.position.x = o.userData.lx + off.x; o.position.y = off.y;
+    // A slow breathing pulse on the tagged ember glows — sells "alive volcano".
+    if (o.userData.pulseMat) o.userData.pulseMat.opacity = o.userData.pulseBase * (0.8 + 0.2 * Math.sin(simTime * 3.1 + o.userData.pulsePh));
     if (o.position.z > DESPAWN_Z) { scene.remove(o); scenery.splice(i, 1); }
   }
 }
@@ -1153,10 +1158,10 @@ function updatePlayer(dt, t) {
   // Blob shadow: track the hero on the ground, shrinking and fading with height
   // so the jump arc reads from the road, widening slightly into a duck.
   if (playerShadow) {
-    const hk = 1 / (1 + Math.max(0, groundY) * 0.55);
+    const hk = 1 / (1 + Math.max(0, groundY) * 0.4);
     playerShadow.position.x = player.position.x; playerShadow.position.z = player.position.z;
-    playerShadow.scale.setScalar((1 + duckAmt * 0.18 + Math.max(0, squash) * 0.3) * hk);
-    playerShadow.material.opacity = 0.32 * hk;
+    playerShadow.scale.setScalar((1 + duckAmt * 0.15 + Math.max(0, squash) * 0.25) * (0.6 + 0.4 * hk));
+    playerShadow.material.opacity = 0.08 + 0.12 * hk;   // 0.20 grounded -> ~0.08 at apex
   }
 }
 function updateCamera(dt, t) {
@@ -1182,7 +1187,9 @@ function scrollStripes(dt) {
     const off = trackOffset(d.position.z, distance); d.position.x = d.userData.bx + off.x; d.position.y = 0.02 + off.y;
   });
 }
-function driftClouds(dt) { clouds.forEach(c => { c.position.z += (state === 'playing' ? speed * 0.25 * worldScale : 1.5) * dt; if (c.position.z > 16) { c.position.z = -60; c.position.x = (Math.random() - 0.5) * 30; } }); }
+// Clouds recycle well before the camera (-6, not +16) so one can never balloon
+// into a frame-filling corner blob as it sails past the lens.
+function driftClouds(dt) { clouds.forEach(c => { c.position.z += (state === 'playing' ? speed * 0.25 * worldScale : 1.5) * dt; if (c.position.z > -6) { c.position.z = -60; c.position.x = (Math.random() - 0.5) * 30; } }); }
 // The level-up shockwave: expand the flat ring out from the player and fade it.
 function updateFx(dt) {
   if (ringT <= 0) return;
@@ -1249,12 +1256,20 @@ function writeBiome() {
     hemiLight.color.setHex(0xdff0ff).lerp(bCur.sky, 0.55);
     hemiLight.groundColor.setHex(0xffd6b0).lerp(bCur.ground, 0.5);
   }
-  if (cloudMat) cloudMat.color.setHex(0xffffff).lerp(bCur.fog, 0.3);
+  // Clouds tint deeper the darker the sky, so night biomes never fly paper-white
+  // puffs; day biomes keep a faint airy wash.
+  if (cloudMat) {
+    const lum = (bCur.sky.r + bCur.sky.g + bCur.sky.b) / 3;
+    const night = Math.max(0, Math.min(1, (0.55 - lum) * 2));
+    cloudMat.color.setHex(0xffffff).lerp(bCur.fog, 0.25 + 0.45 * night);
+  }
   if (ridgeMats.length) {
     ridgeMats[0].color.copy(_c1.copy(bCur.hills[1]).lerp(bCur.fog, 0.5));
     ridgeMats[1].color.copy(_c2.copy(bCur.hills[0]).lerp(bCur.fog, 0.3));
   }
-  if (horizonGlowMat) horizonGlowMat.color.copy(_c1.copy(bCur.fog).lerp(bCur.disc, 0.4));
+  // The horizon band leans toward the biome GROUND (lifted toward white) so it
+  // blends the seam it sits on instead of stamping a fixed lavender stripe.
+  if (horizonGlowMat) horizonGlowMat.color.copy(_c1.copy(bCur.ground).lerp(bCur.fog, 0.5).lerp(_c2.setHex(0xffffff), 0.3));
   if (starMat) starMat.opacity = starCur;
 }
 function tweenBiome(dt) {
@@ -1407,6 +1422,8 @@ function buildDebugApi() {
       directionalLights: lights.filter(o => o.isDirectionalLight).length,
       hemiLights: lights.filter(o => o.isHemisphereLight).length,
       rampShadow: rampShadow(),
+      heroRamp: heroShadow(),
+      heroRampUsed: playerMats.skin.gradientMap !== null && playerMats.skin.gradientMap.image.width > 4,
       pathVertexColors: !!pathMat.vertexColors,
       discHalo: !!discHaloMat,
       crystalGlows: countGlow(makeObstacle('crystal')),

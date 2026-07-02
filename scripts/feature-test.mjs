@@ -579,7 +579,7 @@ const SCENARIOS = [
     fn: (c, assert) => {
       // Classic is the free default and is live on the character at boot.
       assert(c.skin().selected === 'classic', 'a fresh save wears Classic');
-      assert(c.skin().applied.skin === 0xffbfa8, 'Classic colours are on the live mats');
+      assert(c.skin().applied.skin === 0xffdcc6, 'Classic colours are on the live mats');
 
       // Achievement skins are locked until earned: selecting one is a no-op.
       c.pickSkin('golden');
@@ -1752,6 +1752,9 @@ const SCENARIOS = [
       assert(g.sunCorona === true, 'the sun/moon halo is two-layer (core + corona)');
       assert(g.horizonGlow === true, 'a glow band blends the horizon seam');
       assert(g.rollGlows >= 1, 'rolls carry a grab-me glow like the gems');
+      const [hr, , hb] = g.heroRamp;
+      assert(hr > hb, 'the hero ramp shade band is WARM (plush peach, not grey)');
+      assert(g.heroRampUsed === true, 'the hero materials sample the wider hero ramp');
       // Meadow: bright sky -> no stars; wide fog band keeps the mid-field crisp.
       const s = c.state();
       assert(s.fog.near >= 40 && s.fog.far >= 72, 'Meadow fog pushed out of the mid-field');

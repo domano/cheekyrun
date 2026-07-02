@@ -5,7 +5,7 @@
 import { skinOwned, ownSkin, hasAch, spend } from './save.js';
 
 export const SKINS = [
-  { id: 'classic', name: 'Classic', cost: 0,                    skin: 0xffbfa8, inner: 0xff7ea6, tail: 0xfff4ef },
+  { id: 'classic', name: 'Classic', cost: 0,                    skin: 0xffdcc6, inner: 0xff92ac, tail: 0xffffff },
   { id: 'choco',   name: 'Choco',   cost: 120,                  skin: 0x9c6a44, inner: 0xd79a64, tail: 0xf3e1c8 },
   { id: 'mint',    name: 'Mint',    cost: 120,                  skin: 0x9fe3bd, inner: 0x59c48a, tail: 0xffffff },
   { id: 'berry',   name: 'Berry',   cost: 220,                  skin: 0xb98cff, inner: 0xff8fd0, tail: 0xfff0ff },

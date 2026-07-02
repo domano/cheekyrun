@@ -43,9 +43,9 @@ const OBSTACLES = {
     const aR = aL.clone(); aR.position.x = 0.36; aR.rotation.z = -0.5;
     g.add(body, aL, aR); return g;
   } },
-  rock: { action: 'jump', color: 0x99a3ad, build: () => {
+  rock: { action: 'jump', color: 0xc6c9d2, build: () => {   // cool grey — hazards never wear the pickup gold
     const g = new THREE.Group();
-    const r = new THREE.Mesh(new THREE.IcosahedronGeometry(0.6, 0), toon(0x99a3ad, { flat: true })); r.position.y = 0.5; r.scale.set(1.3, 0.9, 1.1); r.castShadow = true; ink(r, 1.08); g.add(r); return g;
+    const r = new THREE.Mesh(new THREE.IcosahedronGeometry(0.6, 0), toon(0xc6c9d2, { flat: true })); r.position.y = 0.5; r.scale.set(1.3, 0.9, 1.1); r.castShadow = true; ink(r, 1.08); g.add(r); return g;
   } },
   branch: { action: 'duck', color: 0x8a5a33, build: () => {
     const g = duckBar(toon(0x8a5a33), toon(0x9c6b43));
@@ -62,9 +62,9 @@ const OBSTACLES = {
     [0.25, 0.95].forEach(y => { const b = new THREE.Mesh(new THREE.CylinderGeometry(0.54, 0.54, 0.12, 16), bandM); b.position.y = y; g.add(b); });
     g.add(body); return g;
   } },
-  boulder: { action: 'jump', color: 0xb89a6a, build: () => {
+  boulder: { action: 'jump', color: 0xada294, build: () => {   // cool taupe, clear of the golden pickups
     const g = new THREE.Group();
-    const r = new THREE.Mesh(new THREE.DodecahedronGeometry(0.7, 0), toon(0xb89a6a, { flat: true })); r.position.y = 0.6; r.scale.set(1.2, 1.0, 1.0); r.castShadow = true; ink(r, 1.06); g.add(r); return g;
+    const r = new THREE.Mesh(new THREE.DodecahedronGeometry(0.7, 0), toon(0xada294, { flat: true })); r.position.y = 0.6; r.scale.set(1.2, 1.0, 1.0); r.castShadow = true; ink(r, 1.06); g.add(r); return g;
   } },
   bar: { action: 'duck', color: 0xff5151, build: () => duckBar(toon(0xff5151), toon(0xe0d3c0), [1.7, 0.34, 0.34]) },
 
@@ -73,7 +73,7 @@ const OBSTACLES = {
     const g = new THREE.Group(), m = toon(0x9a7bff, { emissive: 0x2a1a55, flat: true });
     const main = new THREE.Mesh(new THREE.ConeGeometry(0.4, 1.5, 5), m); main.position.y = 0.75; main.castShadow = true; ink(main, 1.07); g.add(main);
     [[-0.42, 0.5, 0.45], [0.42, 0.42, -0.4]].forEach(([x, h, z]) => { const c = new THREE.Mesh(new THREE.ConeGeometry(0.18, h * 2, 5), m); c.position.set(x, h, z); c.castShadow = true; ink(c, 1.1); g.add(c); });
-    const halo = glow(0xb59bff, 1.9, 0.5); halo.position.set(0, 0.85, 0); g.add(halo);   // self-lit violet bloom
+    const halo = glow(0xc9b8ff, 1.1, 0.3); halo.position.set(0, 0.85, 0); g.add(halo);   // self-lit violet bloom — tinted, never blown-out white
     return g;
   } },
   tombstone: { action: 'jump', color: 0x8a93a6, build: () => {
@@ -94,7 +94,7 @@ const OBSTACLES = {
   gumdrop: { action: 'jump', color: 0xff8ad0, build: () => {
     const g = new THREE.Group();
     const d = new THREE.Mesh(new THREE.ConeGeometry(0.6, 1.2, 18), toon(0xff8ad0, { emissive: 0x3a0022 })); d.position.y = 0.6; d.castShadow = true; ink(d, 1.06); g.add(d);
-    const halo = glow(0xffb0e0, 1.5, 0.4); halo.position.set(0, 0.6, 0); g.add(halo);   // candy sheen
+    const halo = glow(0xffb0e0, 0.9, 0.3); halo.position.set(0, 0.6, 0); g.add(halo);   // candy sheen
     return g;
   } },
   licorice: { action: 'duck', color: 0x3a2a4a, build: () => duckBar(toon(0x3a2a4a), toon(0xffd23f)) },
@@ -137,14 +137,14 @@ const OBSTACLES = {
     const crackM = toon(0xff6a2a, { emissive: 0xff6a2a, flat: true });
     const core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.22, 0), lava); core.position.set(0.05, 0.78, 0.18); g.add(core);
     [[-0.22, 0.55, 0.52, 0.5], [0.27, 0.6, 0.46, -0.4]].forEach(([x, y, z, rz]) => { const c = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.11, 0.07), crackM); c.position.set(x, y, z); c.rotation.z = rz; g.add(c); });
-    const halo = glow(0xff7a2e, 1.35, 0.62); halo.position.set(0.05, 0.72, 0.18); g.add(halo);   // molten core glow — reads through the dark ashland palette
+    const halo = glow(0xff8e4d, 0.9, 0.3); halo.position.set(0.05, 0.72, 0.18); g.add(halo);   // molten core glow — reads through the dark ashland palette
     return g;
   } },
   emberspire: { action: 'jump', color: 0xc23a1a, build: () => {
     const g = new THREE.Group(), m = toon(0xc23a1a, { emissive: 0x7a2008, flat: true });
     const spire = new THREE.Mesh(new THREE.ConeGeometry(0.46, 1.9, 7), m); spire.position.y = 0.95; spire.castShadow = true; ink(spire, 1.06); g.add(spire);
     const tip = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.55, 7), toon(0xff8a2d, { emissive: 0xff8a2d })); tip.position.y = 1.75; ink(tip, 1.1); g.add(tip);
-    const halo = glow(0xff9a3a, 1.2, 0.5); halo.position.set(0, 1.7, 0); g.add(halo);   // burning tip
+    const halo = glow(0xff9a3a, 0.8, 0.3); halo.position.set(0, 1.7, 0); g.add(halo);   // burning tip
     return g;
   } },
   emberbar: { action: 'duck', color: 0xc24a1e, build: () => {
@@ -334,13 +334,13 @@ export function tickCheerCrowd(crowd, t) {
 
 export function makeRoll() {
   const g = new THREE.Group();
-  // Warm cream (not pure white) so the core collectible separates from pale
-  // Meadow/Candyland roads, plus a soft golden grab-me glow like the gems get.
-  const paper = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.5, 22), toon(0xfff2d8, { emissive: 0x2a2214 }));
-  const hole = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.55, 16), toon(0xd9b48a));
+  // Pickups OWN warm gold (hazards never touch it): golden paper + amber core,
+  // with a grab-me glow strong enough to survive the bright daylight biomes.
+  const paper = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.5, 22), toon(0xffcb82, { emissive: 0x332411 }));
+  const hole = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.55, 16), toon(0xffa845));
   paper.rotation.x = Math.PI / 2; hole.rotation.x = Math.PI / 2; paper.castShadow = true; ink(paper, 1.07);
   g.add(paper, hole); g.position.y = 0.95;
-  const halo = glow(0xffe08a, 0.95, 0.34); g.add(halo);
+  const halo = glow(0xffd66b, 1.5, 0.4); g.add(halo);
   // The grounding decal is tagged so an elevated (air-ribbon) roll can project it
   // down to the road each frame instead of letting it float up with the arc.
   const sh = contactShadow(0.34, 0.18, -0.92);
@@ -367,6 +367,7 @@ export function makePowerup(color) {
   const sparkle = new THREE.Mesh(new THREE.CircleGeometry(0.56, 4), new THREE.MeshBasicMaterial({ color: ringCol.getHex(), transparent: true, opacity: 0.6, depthWrite: false, blending: THREE.AdditiveBlending }));
   sparkle.position.z = -0.12; sparkle.rotation.z = Math.PI / 4;
   g.add(halo, sparkle, ring, gem);
+  g.scale.setScalar(1.45);   // a power-up must announce itself — bigger than any roll
   g.position.y = 1.0; g.userData.gem = gem; g.userData.sparkle = sparkle;
   return g;
 }
@@ -416,11 +417,11 @@ const SCENERY = {
   // Tall enough to hold its saguaro silhouette at distance (thin scratches read
   // as noise), chunky trunk + arms doing the shape; a third sprout a pink blossom.
   saguaro: () => {
-    const g = new THREE.Group(), m = toon(0x5fc9a8);
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.32, 2.0, 12), m); body.position.y = 1.0; body.castShadow = true; ink(body, 1.06); g.add(body);
+    const g = new THREE.Group(), m = toon(0x6fcfae);   // chubby friend, not celery
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.4, 2.0, 12), m); body.position.y = 1.0; body.castShadow = true; ink(body, 1.06); g.add(body);
     [-1, 1].forEach(s => {
-      const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.15, 0.55, 10), m); arm.position.set(s * 0.32, 1.05, 0); arm.rotation.z = -s * 1.1; ink(arm, 1.1); g.add(arm);
-      const up = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, s > 0 ? 1.0 : 0.7, 10), m); up.position.set(s * 0.58, s > 0 ? 1.5 : 1.35, 0); ink(up, 1.1); g.add(up);
+      const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.22, 0.55, 10), m); arm.position.set(s * 0.36, 1.05, 0); arm.rotation.z = -s * 1.1; ink(arm, 1.1); g.add(arm);
+      const up = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, s > 0 ? 1.0 : 0.7, 10), m); up.position.set(s * 0.62, s > 0 ? 1.5 : 1.35, 0); ink(up, 1.1); g.add(up);
     });
     if (Math.random() < 0.34) {
       const bl = toon(0xff8fb0);
@@ -428,12 +429,12 @@ const SCENERY = {
     }
     return g;
   },
-  deadbush: () => {
-    const g = new THREE.Group(), m = toon(0xb5895c);   // dry tan, not grey
-    for (let i = 0; i < 6; i++) {
-      const b = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.03, 0.7, 5), m);
-      b.position.set((Math.random() - 0.5) * 0.4, 0.34, (Math.random() - 0.5) * 0.4); b.rotation.set((Math.random() - 0.5) * 1.3, 0, (Math.random() - 0.5) * 1.3); ink(b, 1.12); g.add(b);
-    }
+  deadbush: () => {   // three fat wheat tufts — a real silhouette, not scribbled sticks
+    const g = new THREE.Group(), m = toon(0xe8c98a);
+    [[0, 0.7], [-0.24, 0.5], [0.22, 0.5]].forEach(([x, h]) => {
+      const c = new THREE.Mesh(new THREE.ConeGeometry(0.18, h, 7), m);
+      c.position.set(x, h / 2, (Math.random() - 0.5) * 0.2); c.castShadow = true; ink(c, 1.1); g.add(c);
+    });
     return g;
   },
   desertrock: () => {
@@ -444,12 +445,21 @@ const SCENERY = {
   // Twilight — spooky night.
   // Chunky stump + stubby cone branches so it doesn't read as a grey scratch;
   // desaturated purple-grey keeps it in the biome (crystals own the violet pop).
+  // Chunky lavender snag with round "paw" tips — Cartoon Network spooky, not
+  // Tim Burton: gentle splay, sphere-capped branches, 40% sprout a leaf tuft.
   deadtree: () => {
-    const g = new THREE.Group(), m = toon(0x4a4368);
-    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.16, 1.7, 8), m); trunk.position.y = 0.85; trunk.castShadow = true; ink(trunk, 1.07); g.add(trunk);
-    [[-0.32, 1.3, 0.9], [0.34, 1.55, -0.9]].forEach(([x, y, rz]) => {
-      const b = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.5, 6), m); b.position.set(x, y, 0); b.rotation.z = rz; b.castShadow = true; ink(b, 1.1); g.add(b);
+    const g = new THREE.Group(), m = toon(0x8e86a8);
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.2, 1.7, 8), m); trunk.position.y = 0.85; trunk.castShadow = true; ink(trunk, 1.07); g.add(trunk);
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 10), m); cap.position.y = 1.72; ink(cap, 1.1); g.add(cap);
+    [[-0.26, 1.3, 0.5], [0.28, 1.5, -0.5]].forEach(([x, y, rz]) => {
+      const b = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.5, 6), m); b.position.set(x, y, 0); b.rotation.z = rz; b.castShadow = true; ink(b, 1.1); g.add(b);
+      const paw = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 10), m);
+      paw.position.set(x - Math.sin(rz) * 0.25, y + Math.cos(rz) * 0.25, 0); ink(paw, 1.12); g.add(paw);
     });
+    if (Math.random() < 0.4) {
+      const tuft = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 10), toon(0xb8a8e0));
+      tuft.position.set(0.05, 1.86, 0.05); ink(tuft, 1.12); g.add(tuft);
+    }
     return g;
   },
   mushroom: () => {   // mint-glow cap on a pale stem pops off the dusky blue ground
@@ -458,7 +468,7 @@ const SCENERY = {
     const cap = new THREE.Mesh(new THREE.SphereGeometry(0.32, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), toon(0x8fe6d0, { emissive: 0x2a6a5a })); cap.position.y = 0.5; cap.scale.y = 0.8; cap.castShadow = true; ink(cap, 1.08); g.add(cap);
     const spotM = toon(0xf0fbf6, { emissive: 0xbfeee2 });
     [[-0.14, 0.56, 0.2], [0.16, 0.6, 0.16], [0, 0.66, -0.18]].forEach(([x, y, z]) => { const sp = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), spotM); sp.position.set(x, y, z); g.add(sp); });
-    const halo = glow(0x9ff0dc, 1.2, 0.42); halo.position.set(0, 0.5, 0); g.add(halo);   // bioluminescent cap
+    const halo = glow(0xffe9f2, 0.7, 0.3); halo.position.set(0, 0.5, 0); g.add(halo);   // bioluminescent cap — a soft tinted blush, not a white blob
     return g;
   },
   crystalcluster: () => {
@@ -466,7 +476,7 @@ const SCENERY = {
     [[0, 0.5, 0.14], [-0.24, 0.34, 0.11], [0.27, 0.3, 0.11]].forEach(([x, h, w]) => {
       const c = new THREE.Mesh(new THREE.ConeGeometry(w, h * 2, 5), m); c.position.set(x, h, 0); c.castShadow = true; ink(c, 1.1); g.add(c);
     });
-    const halo = glow(0xb59bff, 1.3, 0.4); halo.position.set(0, 0.5, 0); g.add(halo);
+    const halo = glow(0xc9b8ff, 0.8, 0.3); halo.position.set(0, 0.5, 0); g.add(halo);
     return g;
   },
 
@@ -476,8 +486,12 @@ const SCENERY = {
   lollipop: () => {
     const g = new THREE.Group();
     const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.0, 8), toon(0xffffff)); stick.position.y = 0.5; ink(stick, 1.08); g.add(stick);
-    const candy = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.12, 20), toon(0xff5ca8, { emissive: 0x3a0022 })); candy.position.y = 1.05; candy.rotation.x = Math.PI / 2; candy.castShadow = true; ink(candy, 1.06); g.add(candy);
+    // Heads alternate candy-pink / mint — the classic complement that makes the
+    // pink biome sing instead of smother.
+    const col = Math.random() < 0.5 ? 0xff6fa5 : 0x9fe8d8;
+    const candy = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.12, 20), toon(col, { emissive: 0x241018 })); candy.position.y = 1.05; candy.rotation.x = Math.PI / 2; candy.castShadow = true; ink(candy, 1.06); g.add(candy);
     const swirl = new THREE.Mesh(new THREE.CircleGeometry(0.24, 20), toon(0xffffff)); swirl.position.set(0, 1.05, 0.075); g.add(swirl);   // fakes a candy swirl, breaks the flat disc
+    g.scale.setScalar(1.45);
     return g;
   },
   candybush: () => {
@@ -526,13 +540,17 @@ const SCENERY = {
   // Chunky charred stump (not a wire), warm charcoal with a soft light ink edge
   // so it reads charred rather than inked-black on the dark ashland floor.
   charredtree: () => {
-    const g = new THREE.Group(), m = toon(0x3a2e2e);
-    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.18, 1.5, 8), m); trunk.position.y = 0.75; trunk.castShadow = true; ink(trunk, 1.06, 0x5a4a46); g.add(trunk);
-    [[-0.32, 1.15, 0.9], [0.36, 1.45, -0.9], [0.05, 1.7, 0.2]].forEach(([x, y, rz]) => {
-      const b = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.5, 6), m); b.position.set(x, y, 0); b.rotation.z = rz; b.castShadow = true; ink(b, 1.08, 0x5a4a46); g.add(b);
+    const g = new THREE.Group(), m = toon(0x6f5b58);
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.19, 1.5, 8), m); trunk.position.y = 0.75; trunk.castShadow = true; ink(trunk, 1.06, 0x8a726e); g.add(trunk);
+    const tipM = toon(0xff9e55, { emissive: 0x66300a });   // ember-lit branch tips
+    [[-0.28, 1.15, 0.5], [0.3, 1.4, -0.5]].forEach(([x, y, rz]) => {
+      const b = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.5, 6), m); b.position.set(x, y, 0); b.rotation.z = rz; b.castShadow = true; ink(b, 1.08, 0x8a726e); g.add(b);
+      const paw = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 10), tipM);
+      paw.position.set(x - Math.sin(rz) * 0.25, y + Math.cos(rz) * 0.25, 0); ink(paw, 1.12, 0x8a726e); g.add(paw);
     });
-    const ember = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 8), toon(0xff6a2a, { emissive: 0xff5a10 })); ember.position.set(0.1, 0.14, 0.22); g.add(ember);
-    const halo = glow(0xff7a2a, 0.8, 0.5); halo.position.set(0.1, 0.16, 0.22); g.add(halo);   // smouldering root
+    const ember = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), toon(0xffe08a, { emissive: 0xcc7a20 })); ember.position.set(0.1, 0.14, 0.22); g.add(ember);
+    const halo = glow(0xff8e4d, 0.7, 0.35); halo.position.set(0.1, 0.16, 0.22); g.add(halo);   // smouldering root
+    if (Math.random() < 0.3) { g.userData.pulseMat = halo.material; g.userData.pulseBase = 0.35; g.userData.pulsePh = Math.random() * 6.28; }
     return g;
   },
   basaltrock: () => {
@@ -544,8 +562,9 @@ const SCENERY = {
   cinder: () => {   // the best Ember prop — a glowing core peeks through the dark mound
     const g = new THREE.Group();
     const r = new THREE.Mesh(new THREE.IcosahedronGeometry(0.32, 0), toon(0x2e2422, { flat: true })); r.position.y = 0.2; r.scale.y = 0.6; r.castShadow = true; ink(r, 1.08, 0x7a5a4a); g.add(r);
-    const core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.19, 0), toon(0xff6a2b, { emissive: 0xff6a2b, flat: true })); core.position.set(0, 0.26, 0.05); g.add(core);
-    const halo = glow(0xff8a3a, 0.95, 0.55); halo.position.set(0, 0.28, 0.05); g.add(halo);   // glowing ember core
+    const core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.15, 0), toon(0xffe08a, { emissive: 0xdd8a2a, flat: true })); core.position.set(0, 0.26, 0.05); g.add(core);
+    const halo = glow(0xff8e4d, 0.8, 0.35); halo.position.set(0, 0.28, 0.05); g.add(halo);   // glowing ember core
+    if (Math.random() < 0.3) { g.userData.pulseMat = halo.material; g.userData.pulseBase = 0.35; g.userData.pulsePh = Math.random() * 6.28; }
     return g;
   },
 
