@@ -441,7 +441,7 @@ const SCENERY = {
     return g;
   },
   deadbush: () => {   // three fat wheat tufts — a real silhouette, not scribbled sticks
-    const g = new THREE.Group(), m = toon(0xe8c98a);
+    const g = new THREE.Group(), m = toon(0xd9ae6b);   // two steps below the pale ground so the fill reads solid at distance
     [[0, 0.9], [-0.3, 0.65], [0.28, 0.65]].forEach(([x, h]) => {
       const c = new THREE.Mesh(new THREE.ConeGeometry(0.24, h, 7), m);
       c.position.set(x, h / 2, (Math.random() - 0.5) * 0.2); c.castShadow = true; ink(c, 1.1); g.add(c);
