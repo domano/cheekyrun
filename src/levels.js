@@ -77,7 +77,7 @@ export const BIOMES = [
     hills: [0x4a5a8a, 0x3a4a7a, 0x5a6a9a],
     disc: 0xeef0ff,
     obstacles: { jump: ['crystal', 'tombstone'], duck: 'beam' },
-    scenery: ['deadtree', 'deadtree', 'mushroom', 'crystalcluster'],   // spooky night
+    scenery: ['deadtree', 'mushroom', 'mushroom', 'crystalcluster'],   // spooky night — snags rationed so the verge isn't a fence-post graveyard
     air: { near: 34, far: 58 },                 // close, murky — you see hazards later
     play: { hazardBias: 1.25, rollBias: 0.9 },  // tense: more compound hazards, fewer rolls
   },

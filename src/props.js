@@ -91,9 +91,14 @@ const OBSTACLES = {
     const hook = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.16, 8, 12, Math.PI), toon(0xffffff)); hook.position.set(0.28, 1.3, 0); hook.castShadow = true; ink(hook, 1.1);
     g.add(pole, hook); return g;
   } },
-  gumdrop: { action: 'jump', color: 0xff8ad0, build: () => {
+  // Candy-corn tiers with a dark berry base so the hazard anchors against the
+  // pink road instead of dissolving into it (pale pink-on-pink dodged the read).
+  gumdrop: { action: 'jump', color: 0xe05585, build: () => {
     const g = new THREE.Group();
-    const d = new THREE.Mesh(new THREE.ConeGeometry(0.6, 1.2, 18), toon(0xff8ad0, { emissive: 0x3a0022 })); d.position.y = 0.6; d.castShadow = true; ink(d, 1.06); g.add(d);
+    [[0.6, 0.44, 0.5, 0xe05585, 0.25], [0.44, 0.26, 0.42, 0xffffff, 0.7], [0.26, 0.03, 0.36, 0xff6fa5, 1.06]].forEach(([rb, rt, h, c, y]) => {
+      const t = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, 16), toon(c, { emissive: 0x1a0410 }));
+      t.position.y = y; t.castShadow = true; ink(t, 1.06); g.add(t);
+    });
     const halo = glow(0xffb0e0, 0.9, 0.3); halo.position.set(0, 0.6, 0); g.add(halo);   // candy sheen
     return g;
   } },
@@ -340,6 +345,12 @@ export function makeRoll() {
   const hole = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.55, 16), toon(0xffa845));
   paper.rotation.x = Math.PI / 2; hole.rotation.x = Math.PI / 2; paper.castShadow = true; ink(paper, 1.07);
   g.add(paper, hole); g.position.y = 0.95;
+  // A loose paper-flap tab trailing off one side locks in "toilet roll" from
+  // the chase camera (thin sheet — no ink, double-sided).
+  const flap = new THREE.Mesh(new THREE.PlaneGeometry(0.18, 0.3),
+    new THREE.MeshToonMaterial({ color: 0xfff3dc, side: THREE.DoubleSide }));
+  flap.position.set(0.4, -0.28, 0.05); flap.rotation.set(0.15, 0.5, -0.5);
+  g.add(flap);
   const halo = glow(0xffd66b, 1.5, 0.4); g.add(halo);
   // The grounding decal is tagged so an elevated (air-ribbon) roll can project it
   // down to the road each frame instead of letting it float up with the arc.
@@ -431,8 +442,8 @@ const SCENERY = {
   },
   deadbush: () => {   // three fat wheat tufts — a real silhouette, not scribbled sticks
     const g = new THREE.Group(), m = toon(0xe8c98a);
-    [[0, 0.7], [-0.24, 0.5], [0.22, 0.5]].forEach(([x, h]) => {
-      const c = new THREE.Mesh(new THREE.ConeGeometry(0.18, h, 7), m);
+    [[0, 0.9], [-0.3, 0.65], [0.28, 0.65]].forEach(([x, h]) => {
+      const c = new THREE.Mesh(new THREE.ConeGeometry(0.24, h, 7), m);
       c.position.set(x, h / 2, (Math.random() - 0.5) * 0.2); c.castShadow = true; ink(c, 1.1); g.add(c);
     });
     return g;

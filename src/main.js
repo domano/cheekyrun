@@ -769,13 +769,15 @@ function doJump() {
   fart();
 }
 function duck() { duckTimer = 0.5; buzz(12); sfxDuck(); if (!grounded) vy = Math.min(vy, -3) - 6; fart(); }
-// A cheeky little parp — a soft green puff that lingers behind the character on
-// every jump and slide. `fartCount` is a deterministic hook for the tests.
+// A cheeky little parp — a soft warm puff that lingers behind the character on
+// every jump and slide. The gag lives in the SFX + puff; the colour stays in
+// the path-dust family so it never reads as a green stain under the hero.
+// `fartCount` is a deterministic hook for the tests.
 function fart() {
   fartCount++;
   sfxFart();
   particles.emit(new THREE.Vector3(player.position.x, player.position.y + 0.35, player.position.z + 0.55),
-    { count: 7, color: 0xc6e26a, speed: 1.3, up: 0.5, life: .75, grav: 1.4, size: 0.7 });
+    { count: 7, color: 0xe8d9a6, speed: 1.3, up: 0.5, life: .75, grav: 1.4, size: 0.7 });
 }
 // A quick happy squish — bouncy stretch + perked ears for a beat. Fired on rolls
 // and clean near-misses so good play visibly delights the character.
