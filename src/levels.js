@@ -50,7 +50,7 @@ export const BIOMES = [
     disc: 0xfff2b0,
     obstacles: { jump: ['cactus', 'rock'], duck: 'branch' },
     scenery: ['tree', 'tree', 'bush', 'flower'],   // leafy & green — the tree's home
-    air: { near: 32, far: 64 },                 // open, gentle — the warm-up stage
+    air: { near: 40, far: 72 },                 // open, gentle — the warm-up stage
     play: {},                                   // neutral baseline
   },
   {
@@ -63,7 +63,7 @@ export const BIOMES = [
     disc: 0xffd27f,
     obstacles: { jump: ['barrel', 'boulder'], duck: 'bar' },
     scenery: ['saguaro', 'deadbush', 'deadbush', 'desertrock'],   // warm desert
-    air: { near: 30, far: 60 },
+    air: { near: 38, far: 70 },
     play: { gateBias: 1.5 },                    // golden-hour gauntlet: more full-width gates
   },
   {
@@ -71,12 +71,12 @@ export const BIOMES = [
     bg: ['#2b2d5e', '#46337e', '#6d4b8f', '#caa1c9'],
     fog: 0x4a3a6a,
     ground: 0x5a7a8c,
-    path: 0x6a6a8a,
+    path: 0x4d4d72,
     hills: [0x4a5a8a, 0x3a4a7a, 0x5a6a9a],
     disc: 0xeef0ff,
     obstacles: { jump: ['crystal', 'tombstone'], duck: 'beam' },
     scenery: ['deadtree', 'deadtree', 'mushroom', 'crystalcluster'],   // spooky night
-    air: { near: 22, far: 48 },                 // close, murky — you see hazards later
+    air: { near: 30, far: 58 },                 // close, murky — you see hazards later
     play: { hazardBias: 1.25, rollBias: 0.9 },  // tense: more compound hazards, fewer rolls
   },
   {
@@ -84,12 +84,12 @@ export const BIOMES = [
     bg: ['#ffd1ec', '#ffc2e2', '#ffb3d9', '#ffd6a5'],
     fog: 0xffd6ee,
     ground: 0xf589b5,
-    path: 0xb07ad6,
+    path: 0x9c5cae,
     hills: [0xff9ec9, 0xffb3d9, 0xffc2a8],
     disc: 0xfff0a0,
     obstacles: { jump: ['candycane', 'gumdrop'], duck: 'licorice' },
     scenery: ['lollipop', 'lollipop', 'candybush', 'peppermint'],   // bright sweets
-    air: { near: 34, far: 66 },                 // bright, airy
+    air: { near: 42, far: 72 },                 // bright, airy
     play: { rollBias: 1.4, rowMult: 0.92 },     // sugar rush: dense rolls, tighter spacing
   },
   {
@@ -102,7 +102,7 @@ export const BIOMES = [
     disc: 0xeaf6ff,
     obstacles: { jump: ['icespike', 'snowman'], duck: 'frostbar' },
     scenery: ['pine', 'pine', 'snowmound', 'iceshard'],   // icy tundra — snow-capped pines
-    air: { near: 26, far: 56 },                 // a crisp, biting blue haze
+    air: { near: 34, far: 64 },                 // a crisp, biting blue haze
     play: { hazardBias: 1.15 },                 // frostbite: more compound hazards
   },
   {
@@ -115,7 +115,7 @@ export const BIOMES = [
     disc: 0xff8a3a,
     obstacles: { jump: ['lavarock', 'emberspire'], duck: 'emberbar' },
     scenery: ['charredtree', 'charredtree', 'basaltrock', 'cinder'],   // volcanic ashlands
-    air: { near: 20, far: 44 },                 // choking ash — hazards loom late
+    air: { near: 26, far: 52 },                 // choking ash — hazards loom late
     play: { hazardBias: 1.3, rollBias: 0.85 },  // brutal: dense hazards, scarce rolls
   },
   {
@@ -128,7 +128,7 @@ export const BIOMES = [
     disc: 0xfff6c0,
     obstacles: { jump: ['coral', 'clam'], duck: 'kelp' },
     scenery: ['seaweed', 'seaweed', 'coralnub', 'anemone'],   // sunlit coral seabed
-    air: { near: 30, far: 60 },                 // clear, sunlit shallows
+    air: { near: 38, far: 68 },                 // clear, sunlit shallows
     play: { rollBias: 1.25, rowMult: 0.95 },    // current sweep: dense rolls, flowing rows
   },
 ];
@@ -152,7 +152,7 @@ export const scenerySet = (level) => biomeOf(level).scenery || BIOMES[0].scenery
 // Resolved gameplay knobs for a level's biome (defaults filled in).
 export const biomePlay = (level) => ({ ...PLAY_DEFAULTS, ...(biomeOf(level).play || {}) });
 // The fog band for a level's biome.
-export const biomeAir = (level) => biomeOf(level).air || { near: 32, far: 64 };
+export const biomeAir = (level) => biomeOf(level).air || { near: 40, far: 72 };
 
 // Fraction (0..1) of the way through the current level.
 export const levelProgress = (d) => (d % LEVEL_DIST) / LEVEL_DIST;

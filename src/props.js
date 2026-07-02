@@ -334,11 +334,17 @@ export function tickCheerCrowd(crowd, t) {
 
 export function makeRoll() {
   const g = new THREE.Group();
-  const paper = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.5, 22), toon(0xffffff, { emissive: 0x222222 }));
+  // Warm cream (not pure white) so the core collectible separates from pale
+  // Meadow/Candyland roads, plus a soft golden grab-me glow like the gems get.
+  const paper = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.5, 22), toon(0xfff2d8, { emissive: 0x2a2214 }));
   const hole = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.55, 16), toon(0xd9b48a));
   paper.rotation.x = Math.PI / 2; hole.rotation.x = Math.PI / 2; paper.castShadow = true; ink(paper, 1.07);
   g.add(paper, hole); g.position.y = 0.95;
-  g.add(contactShadow(0.34, 0.12, -0.92));   // a faint shadow on the road grounds the roll too (kept light so it never darkens a pale biome floor)
+  const halo = glow(0xffe08a, 0.95, 0.34); g.add(halo);
+  // The grounding decal is tagged so an elevated (air-ribbon) roll can project it
+  // down to the road each frame instead of letting it float up with the arc.
+  const sh = contactShadow(0.34, 0.18, -0.92);
+  g.add(sh); g.userData.shadow = sh;
   return g;
 }
 
@@ -590,13 +596,18 @@ export function makeScenery(kind) {
 export const SCENERY_KINDS = Object.keys(SCENERY);
 
 // Clouds are positioned on creation; caller adds the returned group to the scene.
-export function makeCloud() {
-  const g = new THREE.Group(), m = toon(0xffffff);
-  for (let i = 0; i < 3; i++) {
-    const p = new THREE.Mesh(new THREE.SphereGeometry(0.9 + Math.random() * 0.6, 12, 12), m);
-    p.position.set(i * 0.9 - 0.9, Math.random() * 0.3, 0); g.add(p);
+// `mat` is the shared, biome-tinted cloud material (main recolors it per stage so
+// Twilight puffs go dusky and Ember's ashen, instead of staying paper-white).
+// Puff count/size/stacking vary so no two clouds share a silhouette.
+export function makeCloud(mat) {
+  const g = new THREE.Group(), m = mat || toon(0xffffff);
+  const n = 2 + (Math.random() * 3 | 0);
+  for (let i = 0; i < n; i++) {
+    const p = new THREE.Mesh(new THREE.SphereGeometry(0.7 + Math.random() * 0.8, 12, 12), m);
+    p.position.set((i - (n - 1) / 2) * (0.8 + Math.random() * 0.3), Math.random() * 0.5, (Math.random() - 0.5) * 0.4);
+    g.add(p);
   }
-  g.scale.y = 0.7;
+  g.scale.y = 0.6 + Math.random() * 0.2;
   g.position.set((Math.random() - 0.5) * 30, 6 + Math.random() * 4, -Math.random() * 60);
   return g;
 }

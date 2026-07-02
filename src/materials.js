@@ -12,10 +12,10 @@ let gradMap, inkMat;
 // pure white so lit surfaces keep their colour. MeshToonMaterial samples this
 // RGB and multiplies the albedo.
 const RAMP_BANDS = [
-  [100, 100, 116],  // deep shadow — a gentle cool lean, lifted so the peachy hero stays warm (not blue-violet)
-  [150, 152, 166],  // mid shadow — barely cool
-  [205, 202, 194],  // lit — near-neutral, a hair warm
-  [242, 238, 228],  // highlight — warm white, held off pure white
+  [96, 98, 120],    // deep shadow — a gentle cool lean, lifted so the peachy hero stays warm (not blue-violet)
+  [148, 148, 168],  // mid shadow — barely cool
+  [196, 190, 186],  // lit — pulled down so it reads as a distinct band, not part of the highlight
+  [238, 232, 222],  // highlight — warm white with a smaller footprint, held off pure white
 ];
 
 export function makeGradient() {

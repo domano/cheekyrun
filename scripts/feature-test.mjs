@@ -1734,6 +1734,41 @@ const SCENARIOS = [
       assert(g.sceneryContact === true, 'roadside scenery drops a contact shadow too');
     },
   },
+  {
+    // Graphics-fidelity pass: layered parallax ridges + a horizon glow soften the
+    // flat horizon, ground mottling breaks the vinyl-sheet plane, shadow maps are
+    // swapped for stylised decals (hero gets a height-reactive blob), rolls get a
+    // grab-me glow, the sun gains a corona, clouds tint with the biome, and stars
+    // fade in on dark skies. Each piece has a deterministic fingerprint here; the
+    // look itself is judged by Pixie.
+    name: 'graphics-fidelity-pass',
+    fn: (c, assert) => {
+      c.start();
+      const g = c.gfx();
+      assert(g.ridges === 2, 'two parallax ridge silhouettes layer the horizon');
+      assert(g.groundVertexColors === true, 'the ground plane carries baked mottling');
+      assert(g.shadowMapOff === true, 'shadow maps are off — decals do the grounding');
+      assert(g.playerShadow === true, 'the hero has a dedicated blob shadow');
+      assert(g.sunCorona === true, 'the sun/moon halo is two-layer (core + corona)');
+      assert(g.horizonGlow === true, 'a glow band blends the horizon seam');
+      assert(g.rollGlows >= 1, 'rolls carry a grab-me glow like the gems');
+      // Meadow: bright sky -> no stars; wide fog band keeps the mid-field crisp.
+      const s = c.state();
+      assert(s.fog.near >= 40 && s.fog.far >= 72, 'Meadow fog pushed out of the mid-field');
+      assert(g.starOpacity < 0.05, 'no stars against the bright Meadow sky');
+      // Twilight: dark sky -> stars fade in; hemisphere light leans into the sky.
+      c.set({ level: 3 }); c.step(30);
+      const g2 = c.gfx();
+      assert(g2.starOpacity > 0.1, 'stars fade in on the dark Twilight sky');
+      assert(g2.cloudTinted === true, 'clouds tint with the biome instead of staying white');
+      // Blob shadow fades as the hero rises, so the jump reads from the road.
+      c.set({ level: 1 }); c.clearField();
+      const onGround = c.gfx().playerShadowOpacity;
+      c.jump(); c.step(14);
+      const inAir = c.gfx().playerShadowOpacity;
+      assert(inAir < onGround, 'the hero blob shadow fades with jump height');
+    },
+  },
   // ---- late-game shop unlocks (src/upgrades/*.js) ----
   // Each owns its upgrade via the debug own() helper (bypassing cost + gate),
   // starts a run, and asserts the effect folded into mods AND its worn prop
